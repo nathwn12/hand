@@ -9,7 +9,7 @@ not to be claimed.
 | | |
 |---|---|
 | Host | `NECESSE`, Windows 11 Pro, x64, Ryzen 7 5800X, 31.9 GB |
-| Build | `cargo` 1.100.0, dev profile, `hand-mcp 0.1.0` |
+| Build | `cargo` 1.100.0, dev and release profiles, `hand 0.1.0` |
 | Browser | `chrome-headless-shell` 155.0.8059.84 (`Google Chrome for Testing`) |
 | Browser path | `%LOCALAPPDATA%\gladius\chromium\155.0.8059.84-5ca590a4\chrome-headless-shell-win64\chrome-headless-shell.exe` |
 | Browser SHA-256 | `64db9686dab042ba3282f7ab6fef98de266b015fd4d056c30760244425091d39` (matches `crates/browser-engine/scripts/chromium-manifest.json`) |
@@ -39,6 +39,8 @@ not to be claimed.
 | Vendored engine unit tests | `cargo test -p browser-engine`: 69/69 (includes Chromium pin-drift check); `cargo test -p desktop-engine -- --skip live_`: 203/203 |
 | Clean EOF shutdown with a launched engine | `tests/lifecycle.rs`: exit 0, bounded; a manual probe observed 0.06 s, zero `chrome-headless-shell` processes before and after, and the next start swept the previous run's stale owned profile |
 | Pinned browser artifact | File SHA-256 recomputed and equal to the manifest; `--version` reports 155.0.8059.84 |
+| Selector engine: `role=`, `role=…[name="…"]`, `name=`, `text=`, `label=` | `tests/selectors.rs` (17 tests), resolved on `Accessibility.getFullAXTree` and acted on by backend id. Uniqueness is enforced before acting: zero → `invalid_target`/`not_found`, many → `invalid_target`/`ambiguous` listing every candidate. Names match case-insensitively after whitespace normalisation, and the resolver accepts both the raw AX name and the name `browser_snapshot` prints. `text=` reads visible text with fragments concatenated, innermost owner first; `label=` accepts only `labelfor`/`labelwrapped` provenance. CSS keeps first-match, `@eN` stays snapshot-bound with typed stale refs. Measured on 155.0.8059.84: a frame's tree excludes iframe content (the iframe is one opaque node), so scope is one frame tree and the refusals say so. |
+| Installed server proven, not assumed | `scripts/verify-install.mjs`: the installed binary's stamp must equal HEAD and not be `-dirty`; `--loaded` additionally requires a running process on that exact file started after it was written. The binary name is read from `Cargo.toml`, so a rename cannot leave a stale path. |
 
 Commands run (all exit 0):
 
@@ -47,7 +49,7 @@ cargo test
 cargo test -p browser-engine
 cargo test -p desktop-engine -- --skip live_
 $env:HAND_LIVE_DESKTOP='1'; cargo test --test no_steal live_read_only_target_capture_keeps_foreground
-node baseline/scripts/compare-catalog.mjs --serve target\debug\hand-mcp.exe --baseline hand
+node baseline/scripts/compare-catalog.mjs --serve target\debug\hand.exe --baseline hand
 ```
 
 ## Missing or unverified
@@ -64,8 +66,6 @@ These are not implemented, not exercised, or not safe to claim from this slice.
   kill of hand is not a cleanup path for an attached engine.
 - Same-origin/OOPIF frame-scoped acting beyond the engine's existing `frame`
   parameters: no new frame capability was added or tested here.
-- Selector engine by role/accessible name/text with scoping and uniqueness; the
-  catalog keeps refs and CSS only.
 - Scroll-with-read-back, double/right-click, drag/drop, downloads.
 - Ordered form batches with per-step partial failure reporting.
 - Extended navigation result with observed HTTP status and a versioned
@@ -101,8 +101,13 @@ existing target takes precedence over the hidden-launch request.
 
 ### Lifecycle and distribution
 
-- `oc-hand` OpenCode wiring: not added. No npm package, no publication, no
-  remote.
+- `oc-hand` OpenCode wiring: live at `C:\Users\nathan\.local\bin\hand.exe`, 33
+  tools. Private remote `github.com/nathwn12/hand`. No npm package and nothing
+  published; the npm name `hand-mcp` is reserved by intent only.
+- Product and executable are `hand`; the repo, crate and binary were renamed
+  from `hand-mcp`. Fixture ids, baseline captures and benchmark receipt schemas
+  keep the `hand-mcp` names on purpose: they record what was measured, and
+  rewriting a fingerprint would invalidate archived receipts.
 - Attached external browser (`GLADIUS_CDP_URL`) survival of hand shutdown: not
   tested end to end. A clean detach preserves an external engine, but a restore
   cut at the EOF drain bound is reported `UNVERIFIED`, and no external CDP
@@ -122,9 +127,9 @@ existing target takes precedence over the hidden-launch request.
 
   | Scenario | hand p95 | baseline p95 |
   |---|---:|---:|
-  | warm-ping | 0.11 ms | Gladius 0.12 ms, Puppet 0.09 ms |
-  | browser-snapshot | 21.7 ms | Gladius 29.1 ms |
-  | desktop-enumerate | 2.36 ms | Puppet 1.99 ms |
+  | warm-ping | 0.071 ms | Gladius 0.115 ms, Puppet 0.093 ms |
+  | browser-snapshot | 18.6 ms | Gladius 29.1 ms |
+  | desktop-enumerate | 1.65 ms | Puppet 1.99 ms |
 
   `desktop-capture` is **not measured**. The 1280×720 fixture proved the native
   path live (image and source 1280×720, `printwindow`, content check, matching
