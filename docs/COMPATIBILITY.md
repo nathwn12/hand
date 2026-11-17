@@ -51,10 +51,18 @@ modified or retired; no drop-in compatibility is claimed.
   `ping`, `tools/list`, `tools/call`, `server/discover`.
 - `resultType: "complete"` is added to `tools/list`, `tools/call` and
   `server/discover` results for a 2026-07-28 peer, matching both engines.
-- Tool failures are results (`isError: true` + `structuredContent`), never
-  protocol errors. Missing name is `-32602`; unknown method is `-32601`;
-  malformed frames are `-32700`/`-32600`.
-- Concurrency: 4 browser calls, 8 desktop jobs; beyond that `-32603 Server busy`.
+- Tool failures are results (`isError: true` + `structuredContent`) except where
+  the request itself is invalid: missing name is `-32602`, unknown method is
+  `-32601`, malformed frames are `-32700`/`-32600`, a reused in-flight desktop
+  request id is `-32600` with `data.reason: "duplicate_in_flight"`, and a
+  desktop worker fault outside the engine's own containment is `-32603`.
+- Concurrency: 4 browser calls, 8 desktop jobs. An excess call is not started
+  and returns a typed `busy`/`concurrency_limit` tool result carrying
+  `inFlight`, `available`, `started: false` and `retry: "safe"`.
+- A timed-out or cancelled call is never described as stopped. Its answer
+  carries `stopped: false`, `outcome: "unknown"`, `retry: "unsafe"`,
+  `sideEffects: "may_still_land"` and the browser slot it still holds
+  (`slots.limit`, `slots.heldByThisCall`).
 
 ### Identity extension
 
@@ -93,7 +101,7 @@ so an attached or capability-restricted engine is described as it really is.
 - Desktop production admission: calls run through Puppet's `run_tool_job` +
   `production_execute` wrapper (admission guard, mutating-input lock,
   cancellation token, panic containment), not a direct call to `tools_call`.
-- Engine unit tests remain compiled: 56 browser tests, 203 desktop tests (25
+- Engine unit tests remain compiled: 69 browser tests, 228 desktop tests (25
   live-desktop tests are not run by default).
 
 ## Intentional differences
@@ -101,11 +109,13 @@ so an attached or capability-restricted engine is described as it really is.
 1. **Cancellation is domain-specific.**
    - Browser: the client receives the typed `cancelled`/`client_cancelled`
      result immediately; the in-flight engine call is allowed to finish so a
-     running restore is not cut off, and its late result is discarded. Gladius
-     aborts the task after its critical section; hand trades immediate task
-     abortion for an uncut restore. Nothing is retried.
+     restoration can continue, and its late result is discarded. A dispatched
+     action can still happen: `stopped:false`, `outcome:"unknown"` and
+     `retry:"unsafe"` distinguish that from a confirmed cancellation. Cleanup
+     is bounded, so restoration is unverified if that bound is reached.
    - Desktop: Puppet's silence contract is preserved. The token is flipped, the
-     job's result is dropped, and no response is written for that id.
+     job's result is dropped, and no response is written for that id; the
+     outcome of an already-dispatched action is unknown.
    Tested by `tests/cancel.rs`.
 
 2. **One cancellation token is published before desktop execution.** The
@@ -123,7 +133,20 @@ so an attached or capability-restricted engine is described as it really is.
    tool reaches Puppet's argument validator and is refused there; desktop
    budgets stay Puppet's own.
 
-6. **Vendored-tree adaptations** (marked in place):
+6. **Shutdown and teardown are bounded and reported honestly.** EOF drains
+   tracked workers with 5 s (owned engine) or 30 s (attached engine), then one
+   shared 1 s abort settle, then the browser close (30 s bound), then a 2 s
+   runtime teardown bound in `main`. A browser worker cut at a bound has its
+   restoration reported `UNVERIFIED`. A started `spawn_blocking` desktop job
+   cannot be aborted: its outcome is `UNKNOWN` and process exit ends the thread.
+   A panic in the server loop skips normal shutdown, so an attached browser is
+   not detached and its page state is unverified.
+7. **A hidden desktop launch that never created its target is an error.**
+   Puppet's burst keeps `ok` tied to per-action results, so a refused hidden
+   launch with only target-free actions used to answer `ok: true`. hand reports
+   `ok: false` and `isError: true` with `hidden_desktop.desktop_created: false`.
+   An explicit `target` still takes precedence and keeps its ordinary verdict.
+8. **Vendored-tree adaptations** (marked in place):
    - `desktop-engine/src/lib.rs` is Puppet's `main.rs` as a library: no `main`,
      no Windows-subsystem attribute, public module declarations.
    - `desktop-engine/src/serve.rs` gains `hand_tools_list`, `hand_call` and the

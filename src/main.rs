@@ -31,6 +31,16 @@ fn main() {
     std::process::exit(code);
 }
 
+/// Runtime teardown bound after `serve()` returns. Tokio's `Runtime::drop`
+/// waits forever for a started `spawn_blocking` task (Tokio 1.54:
+/// "blocking functions ... keep running until they return" and "Drop waits
+/// forever"), so a desktop job stuck in a UIA call would hold the process past
+/// every drain bound. `shutdown_timeout` stops waiting at this bound; the
+/// process then exits, which ends the blocked thread. It does NOT cancel the
+/// job: an action it had already delivered keeps its outcome unknown, and the
+/// log says so.
+const RUNTIME_EXIT_BOUND: std::time::Duration = std::time::Duration::from_secs(2);
+
 fn run_server() -> i32 {
     // The browser launch + ws connect chain is deep in a debug profile. Give
     // the runtime a known stack instead of trusting the process default.
@@ -48,13 +58,49 @@ fn run_server() -> i32 {
                     return 1;
                 }
             };
-            match rt.block_on(server::serve()) {
-                Ok(()) => 0,
-                Err(e) => {
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                rt.block_on(server::serve())
+            }));
+            let code = match result {
+                Ok(Ok(())) => 0,
+                Ok(Err(e)) => {
                     eprintln!("[hand] {e}");
                     1
                 }
+                Err(_) => {
+                    // The hook already printed the location, not the payload.
+                    // The normal shutdown did NOT run, so say exactly what that
+                    // leaves unverified; do not claim a restore or a detach.
+                    eprintln!(
+                        "[hand] server loop panicked; its normal shutdown did not run, so an \
+                         attached browser was NOT detached and any page state it changed is \
+                         UNVERIFIED; in-flight desktop actions' outcomes are UNKNOWN"
+                    );
+                    1
+                }
+            };
+            // `serve()` has closed/detached the browser and flushed the writer.
+            // Only blocking threads can remain; bound their teardown so the
+            // process cannot hang behind a desktop job that cannot be aborted.
+            let started = std::time::Instant::now();
+            rt.shutdown_timeout(RUNTIME_EXIT_BOUND);
+            if started.elapsed() >= RUNTIME_EXIT_BOUND {
+                let outstanding =
+                    server::ACTIVE_DESKTOP_JOBS.load(std::sync::atomic::Ordering::SeqCst);
+                if outstanding > 0 {
+                    eprintln!(
+                        "[hand] shutdown: runtime teardown reached its {RUNTIME_EXIT_BOUND:?} \
+                         bound; {outstanding} blocking desktop job(s) were still running and were \
+                         NOT stopped, so their outcome is UNKNOWN (the process exits now)"
+                    );
+                } else {
+                    eprintln!(
+                        "[hand] shutdown: runtime teardown reached its {RUNTIME_EXIT_BOUND:?} \
+                         bound before teardown completed; the process exits now"
+                    );
+                }
             }
+            code
         });
     match handle {
         Ok(h) => h.join().unwrap_or(1),

@@ -28,12 +28,14 @@ not to be claimed.
 | Desktop semantic inspection of a background window | same test: `desktop_elements` on a real non-foreground window, backend named, `rect_space: "screen"`, explicit empty/UIA state |
 | Desktop typed missing-target refusal | same test: unknown `titleContains` → tool error containing `target_gone`/`bad_target` |
 | Private-desktop act and effect | `tests/desktop_fixture.rs`: controlled app receives posted input and independently records the resulting state; the tool's unverified delivery verdict is not promoted to proof |
-| Hidden launch cleanup | `tests/hidden_cleanup.rs`: hard server kill reaps the controlled target and child; a failed launch reports `ok:false` and `isError:true` |
+| Hidden launch cleanup | `tests/hidden_cleanup.rs`: hard server kill reaps the controlled target and child; a failed launch reports `ok:false` and `isError:true`; the test cleanup terminates only identity-verified processes (image plus creation time) |
+| Browser and desktop shutdown bounds | `tests/server_regressions.rs` (11 tests): a timed-out capture still restores; a timed-out or cancelled call can still land its action and says so; a full pool answers typed `busy`; EOF drain is globally bounded and names the abandoned work; a blocking desktop job cannot stop the process indefinitely |
+| No-steal and hidden safety after shutdown changes | `tests/no_steal.rs` (12 tests) and `tests/hidden_cleanup.rs` (7 tests) still pass on this tree |
 | No foreground takeover or pointer movement | same test + `HAND_LIVE_DESKTOP=1 cargo test --test no_steal live_read_only_target_capture_keeps_foreground` (captured a real GitHub Desktop window, foreground stayed on the terminal) |
 | Desktop no-steal static, wire and gate checks | `tests/no_steal.rs`, 12 tests: banned APIs absent from all three source trees; target on every acting tool; zero `sendinput_calls`; focus refused with and without the flag; dead target typed; clipboard write refused while the burst continues |
 | Browser cancellation | `tests/cancel.rs`: typed `cancelled` immediately, no late second response, engine usable afterwards |
 | Desktop cancellation admission | `tests/cancel.rs`: token published before the worker, cancelled job stays silent (direct through the production wrapper) |
-| Vendored engine unit tests | `cargo test -p browser-engine`: 56/56 (includes Chromium pin-drift check); `cargo test -p desktop-engine -- --skip live_`: 203/203 |
+| Vendored engine unit tests | `cargo test -p browser-engine`: 69/69 (includes Chromium pin-drift check); `cargo test -p desktop-engine -- --skip live_`: 203/203 |
 | Clean EOF shutdown with a launched engine | `tests/lifecycle.rs`: exit 0, bounded; a manual probe observed 0.06 s, zero `chrome-headless-shell` processes before and after, and the next start swept the previous run's stale owned profile |
 | Pinned browser artifact | File SHA-256 recomputed and equal to the manifest; `--version` reports 155.0.8059.84 |
 
@@ -97,16 +99,16 @@ existing target takes precedence over the hidden-launch request.
 - `oc-hand` OpenCode wiring: not added. No npm package, no publication, no
   remote.
 - Attached external browser (`GLADIUS_CDP_URL`) survival of hand shutdown: not
-  tested.
+  tested end to end. A clean detach preserves an external engine, but a restore
+  cut at the EOF drain bound is reported `UNVERIFIED`, and no external CDP
+  fixture exercises that path in the suite.
 - Hard-kill reap/job-object behavior inside hand: inherited from the engine,
   not re-tested.
 - Crash isolation between domains: none (one process by design).
 - Performance gate: not measured by this slice. The repository carries a
-  `fixtures/` 100-control page and a `benchmarks/` harness from the parallel
-  baseline work, but no 100-sample p95 run (ping, snapshot, window enumeration,
-  capture), no comparison against installed Gladius/Puppet, and no benchmark
-  receipt was produced here. The specification's numeric targets remain
-  unverified.
+  `fixtures/` 100-control page and a benchmark harness from the parallel baseline
+  work, but no measurement is recorded here. The specification's numeric targets
+  remain unverified.
 - Windows x64 only; no macOS/Linux desktop support is implied.
 
 ### Scope notes

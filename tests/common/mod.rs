@@ -27,8 +27,28 @@ impl Session {
         Self::spawn_with_env(&[])
     }
 
+    /// Spawn the server with a hermetic inherited environment.
+    ///
+    /// A developer's shell must not decide what a suite exercises: an inherited
+    /// `GLADIUS_CDP_URL` would attach every "owned engine" assertion to their
+    /// own browser, a budget env would change timing, and a capability env would
+    /// remove the rendering path. The test hooks are stripped too, so only a
+    /// test that opts in through `env` can enable them.
+    ///
+    /// Explicit `env` entries are applied AFTER the removals, because a test
+    /// that deliberately starts an external fixture (`context_wire`) must still
+    /// be able to pass its own URL. Inherited values never win.
     pub fn spawn_with_env(env: &[(&str, &str)]) -> Self {
         let mut cmd = Command::new(env!("CARGO_BIN_EXE_hand-mcp"));
+        // Pin the knobs a suite depends on. Values are hand's documented
+        // defaults (90 s budget, render caps, hooks off); an explicit `env`
+        // entry below can still opt into a deliberate variant.
+        cmd.env("HAND_TOOL_BUDGET_MS", "90000");
+        cmd.env("GLADIUS_TOOL_BUDGET_MS", "90000");
+        cmd.env("GLADIUS_BACKEND_CAPS", "render");
+        cmd.env("HAND_TEST_HOOKS", "0");
+        cmd.env_remove("GLADIUS_CDP_URL");
+        cmd.env_remove("HAND_TEST_STUCK_DESKTOP_MS");
         for (k, v) in env {
             cmd.env(k, v);
         }
