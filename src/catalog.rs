@@ -10,8 +10,8 @@ use serde_json::{json, Value};
 pub const BROWSER_PREFIX: &str = "browser_";
 pub const DESKTOP_PREFIX: &str = "desktop_";
 
-/// The 25 Gladius tools, in catalog order.
-pub const BROWSER_TOOLS: [&str; 25] = [
+/// The 25 Gladius tools, in catalog order, followed by hand's own additions.
+pub const BROWSER_TOOLS: [&str; 26] = [
     "navigate",
     "snapshot",
     "screenshot",
@@ -37,6 +37,7 @@ pub const BROWSER_TOOLS: [&str; 25] = [
     "cdp",
     "close",
     "fetch_text",
+    "context",
 ];
 
 /// The 7 Puppet tools, in catalog order.
@@ -98,6 +99,12 @@ fn prefixed(prefix: &str, tools: Value) -> Vec<Value> {
 /// The combined catalog: `browser_*` then `desktop_*`.
 pub fn combined_list() -> Value {
     let mut tools = prefixed(BROWSER_PREFIX, browser_engine::list());
+    // hand's own browser capability, published through the same prefixing so a
+    // client sees one namespace and one schema shape.
+    tools.extend(prefixed(
+        BROWSER_PREFIX,
+        json!({ "tools": [browser_engine::contexts::tool_schema()] }),
+    ));
     tools.extend(prefixed(DESKTOP_PREFIX, desktop_engine::tools_list()));
     json!({ "tools": tools })
 }

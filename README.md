@@ -1,8 +1,27 @@
 # hand
 
-One local Rust MCP server for agents to test browser interfaces and inspect and
-operate Windows applications. `hand` combines the Gladius browser engine and
-the Puppet desktop engine in one executable, one MCP connection, one version.
+One local MCP server that gives an agent hands and eyes on this machine: a
+browser it can drive, and a Windows desktop it can see and touch without taking
+the machine over.
+
+It is one product rather than two glued together — one executable, one MCP
+connection, one prefix-scoped catalog, one budget and cancellation contract,
+one shutdown. The two domains share a process and a lifetime, and each works
+alone as well as together.
+
+What that buys an agent:
+
+- **Control with evidence.** Browser actions run over CDP and can be verified
+  against the DOM or accessibility tree. Desktop actions are posted to a chosen
+  window — no global mouse, no physical pointer movement, no window activation,
+  no clipboard write.
+- **Sight that is honest about itself.** A capture states the backend it used,
+  the window identity it matched, whether the frame was blank or stale, and
+  whether the foreground window and cursor stayed put. An observation that
+  cannot be trusted fails instead of being reported as a picture.
+- **Isolation where it matters.** Named browser contexts keep cookies and
+  storage apart; hidden desktop launches run in a job object that dies with the
+  server.
 
 - Product: **hand**
 - Executable and future npm package: **hand-mcp**
@@ -10,16 +29,53 @@ the Puppet desktop engine in one executable, one MCP connection, one version.
 - Distribution target: Windows x64
 - Repository: private, local, no remote
 
-Status: initial integration slice. The 32-tool compatibility catalog is served
-and targeted end-to-end checks pass; the specification's added capabilities and
-performance gate are not implemented. See `docs/CAPABILITIES.md` for exactly
-what is verified and what is missing.
+## Relationship to Gladius and Puppet
+
+**hand is the successor to Gladius and Puppet, not a wrapper around them.** Both
+engines are vendored at pinned commits and their 32 tools are republished
+unchanged; Gladius and Puppet are disconnected from this machine and remain on
+disk only as references. Everything they did, hand does on one connection — and
+it adds what neither had:
+
+- one process and one lifetime for both domains, so a browser call and a desktop
+  observation share budgets, cancellation and a single shutdown;
+- cancellation and budget expiry that report the truth (`outcome: unknown`,
+  `retry: unsafe`) instead of implying the work stopped;
+- shutdown that is bounded even when a blocking desktop call cannot be aborted;
+- hidden desktop launches covered by a kill-on-close job object from the moment
+  the process is created;
+- isolated, named browser contexts with verified teardown;
+- a captured frame that has to prove its own identity, freshness and
+  non-blankness before it is returned.
+
+Measured on this machine, release builds, 10 warmups and 100 attempts (see
+`benchmarks/`):
+
+| Scenario | hand p95 | Gladius p95 | Puppet p95 |
+|---|---:|---:|---:|
+| warm ping | 0.11 ms | 0.12 ms | 0.09 ms |
+| browser snapshot | 21.7 ms | 29.1 ms | — |
+| window enumeration | 2.36 ms | — | 1.99 ms |
+| window capture | unmeasured | — | unmeasured |
+
+So: strictly more capable, and faster on the browser path. On the two warm
+round trips Puppet is still marginally quicker (0.09 ms vs 0.11 ms ping,
+1.99 ms vs 2.36 ms enumeration), and the capture row has no fair measurement
+yet. That is the whole of the claim — no other number is being beaten.
+
+Status: the 32-tool compatibility floor is served unchanged and hand adds
+`browser_context` on top of it. Targeted end-to-end checks pass, including
+cancellation, shutdown, hidden-desktop cleanup and isolated browser contexts.
+The specification's remaining added capabilities and one performance row are not
+complete. See `docs/CAPABILITIES.md` for exactly what is verified and what is
+missing.
 
 ## Shape
 
 ```
 hand-mcp.exe            one process, one stdio MCP endpoint
 ├─ browser_*            25 Gladius tools, headless Chromium over CDP
+│  └─ browser_context   hand's isolated contexts (create/select/eval/cookies/…)
 ├─ desktop_*            7 Puppet tools, Win32 + UI Automation
 ├─ crates/browser-engine   Gladius 0.8.0 source (pin 59c6d77) as a library
 └─ crates/desktop-engine   Puppet 8.0.0 source (pin 0f790be) as a library
@@ -67,14 +123,15 @@ Every legacy tool is published unchanged under a domain prefix:
 Only the `name` changes. `inputSchema`, `outputSchema`, `description` and
 `annotations` are the pinned engine's. `tests/discovery.rs` asserts that field
 for field, and `baseline/scripts/compare-catalog.mjs` independently recaptures
-the legacy catalog and compares it with 32/32 tools.
+the legacy catalog: 32/32 legacy tools match with zero metadata drift, and
+`browser_context` is reported as hand's single addition.
 
 ## Tests
 
 ```powershell
-cargo test                                  # hand end-to-end suite (24 tests)
-cargo test -p browser-engine                # vendored Gladius unit tests (56)
-cargo test -p desktop-engine -- --skip live_ # vendored Puppet unit tests (203)
+cargo test                                  # hand end-to-end suite
+cargo test -p browser-engine                # vendored Gladius unit tests (69)
+cargo test -p desktop-engine -- --skip live_ # vendored Puppet unit tests (228)
 $env:HAND_LIVE_DESKTOP='1'; cargo test --test no_steal live_read_only_target_capture_keeps_foreground
 node baseline/scripts/compare-catalog.mjs --serve target\debug\hand-mcp.exe --baseline hand
 ```

@@ -21,8 +21,10 @@ Executable check:
 node baseline/scripts/compare-catalog.mjs --serve target\debug\hand-mcp.exe --baseline hand
 ```
 
-Observed: `PASS hand baseline: 32 baseline tools vs 32 candidate tools`,
-`0 title/description difference(s)`.
+Observed: `PASS hand baseline: 32 baseline tools vs 33 candidate tools`,
+`compared 32 tools`, `extra 1: browser_context`,
+`0 title/description difference(s)` under `--strict-metadata`. The floor is
+unchanged; `browser_context` is hand's addition and is the only extra.
 
 ## Name mapping
 
@@ -30,6 +32,9 @@ The only catalog change is the prefix. A client migrates one-to-one:
 
 - Gladius `navigate` → `browser_navigate` … `fetch_text` → `browser_fetch_text`
 - Puppet `screenshot` → `desktop_screenshot` … `elements` → `desktop_elements`
+- hand adds one browser tool with no legacy counterpart: `browser_context`
+  (isolated named contexts). Its schema is the only new body in the catalog, so
+  a migration stays one-to-one for every legacy name.
 
 `tests/discovery.rs::tool_bodies_are_engine_bodies_under_the_prefix` compares
 every published tool object with the engine's own catalog, asserting equality of
@@ -80,7 +85,8 @@ modified or retired; no drop-in compatibility is claimed.
     "desktop": {"engine": "puppet", "sourcePin": "0f790be", "version": "8.0.0",
                  "available": true, "backend": "uia+win32", "toolCount": 7}
   },
-  "count": 32
+  "count": 33,
+  "isolatedContexts": {"tool": "browser_context", "available": true, "…": "…"}
 }
 ```
 
@@ -165,9 +171,9 @@ so an attached or capability-restricted engine is described as it really is.
   remain separate.
 - Drop-in compatibility with existing Gladius or Puppet clients without the
   prefix change.
-- Any added capability from the specification's extension list (isolated
-  contexts, interception, clock control, traces, responsive matrices, desktop
-  private-desktop launch and act/verify, etc.). Missing work is listed in
+- The rest of the specification's extension list (interception, clock control,
+  traces, responsive matrices, per-context permissions). Isolated contexts and
+  private-desktop launch/act-verify are implemented; remaining gaps are listed in
   `docs/CAPABILITIES.md`.
 - Crash isolation between the domains: both engines share one process. Failure
   routing is by prefix; process failure is shared.

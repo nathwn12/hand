@@ -85,6 +85,10 @@ const ABORT_SETTLE: Duration = Duration::from_secs(1);
 /// sweep and the process exited over an incomplete cleanup.
 const BROWSER_CLOSE_GRACE: Duration = Duration::from_secs(30);
 
+/// Context disposal budget. `ContextRegistry::shutdown` disposes hand's own
+/// contexts over CDP before the browser closes; it must not hold shutdown open.
+const CONTEXT_CLOSE_GRACE: Duration = Duration::from_secs(10);
+
 /// Canonical request-id key, identical to both engines: the JSON serialization
 /// of the raw id, so `1` and `"1"` never collide.
 fn id_key(id: &Value) -> String {
@@ -117,6 +121,9 @@ fn server_info() -> Value {
             }
         },
         "count": catalog::BROWSER_TOOLS.len() + catalog::DESKTOP_TOOLS.len(),
+        // hand's own browser capability, stated where discovery reads it so a
+        // client learns what contexts do and do not guarantee before using one.
+        "isolatedContexts": browser_engine::contexts::capability_info()["isolatedContexts"].clone(),
     })
 }
 
@@ -496,6 +503,9 @@ fn test_stuck_desktop_ms() -> Option<u64> {
 
 struct State {
     browser: Arc<browser_engine::Browser>,
+    /// hand's isolated browser contexts, which own no engine of their own: they
+    /// act through `browser` and must be shut down before it closes.
+    contexts: Arc<browser_engine::contexts::ContextRegistry>,
     browser_sem: Arc<Semaphore>,
     desktop_sem: Arc<Semaphore>,
     browser_calls: Arc<Mutex<HashMap<String, Arc<BrowserCall>>>>,
@@ -505,8 +515,13 @@ struct State {
 
 impl State {
     fn new() -> Self {
+        let browser = Arc::new(browser_engine::Browser::new());
+        let contexts = Arc::new(browser_engine::contexts::ContextRegistry::new(
+            browser.clone(),
+        ));
         Self {
-            browser: Arc::new(browser_engine::Browser::new()),
+            browser,
+            contexts,
             browser_sem: Arc::new(Semaphore::new(MAX_BROWSER_CALLS)),
             desktop_sem: Arc::new(Semaphore::new(MAX_DESKTOP_CALLS)),
             browser_calls: Arc::new(Mutex::new(HashMap::new())),
@@ -734,6 +749,20 @@ async fn shutdown(state: &Arc<State>) {
         EngineKind::Attached => EOF_DRAIN_ATTACHED,
     };
     state.drain_tasks(grace, kind).await;
+    // Contexts act through this browser, so they are disposed before it closes:
+    // closing first would leave their ids unaddressable and could relaunch an
+    // engine purely to dispose them. Bounded, because disposal is CDP work.
+    if tokio::time::timeout(CONTEXT_CLOSE_GRACE, state.contexts.shutdown())
+        .await
+        .is_err()
+    {
+        eprintln!(
+            "[hand] shutdown ({}): context disposal did not finish within {CONTEXT_CLOSE_GRACE:?}; \
+             what the registry still tracks is reported by a later `browser_context list`, and any \
+             context it had already removed from tracking is not claimed as disposed",
+            kind.label()
+        );
+    }
     if tokio::time::timeout(BROWSER_CLOSE_GRACE, state.browser.close())
         .await
         .is_err()
@@ -934,6 +963,7 @@ async fn dispatch_call(
                 map.insert(key.clone(), entry.clone());
             }
             let browser = state.browser.clone();
+            let contexts = state.contexts.clone();
             let calls = state.browser_calls.clone();
             let tx = tx.clone();
             let task = tokio::spawn(async move {
@@ -945,7 +975,21 @@ async fn dispatch_call(
                 let engine_tool = legacy.clone();
                 let engine_args = args.clone();
                 let engine_browser = browser.clone();
+                let engine_contexts = contexts.clone();
                 let mut worker = EngineTask::spawn(async move {
+                    // hand's own contexts are dispatched first and share the
+                    // browser's slot, budget and cancellation path, so a
+                    // cancelled create still commits (its acquisition runs in a
+                    // task of its own).
+                    if let Some(body) = browser_engine::contexts::dispatch(
+                        &engine_tool,
+                        &engine_args,
+                        &engine_contexts,
+                    )
+                    .await
+                    {
+                        return body;
+                    }
                     browser_engine::call(&engine_tool, &engine_args, &engine_browser).await
                 });
 

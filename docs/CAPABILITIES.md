@@ -19,7 +19,8 @@ not to be claimed.
 | Capability | Evidence |
 |---|---|
 | One executable, one stdio MCP connection | `tests/discovery.rs` (7 tests): initialize, ping, tools/list, tools/call, server/discover, version gate |
-| Both catalogs, 32 tools, exact legacy bodies | `catalog_is_exactly_the_32_prefixed_tools`, `tool_bodies_are_engine_bodies_under_the_prefix`; independent `baseline/scripts/compare-catalog.mjs` PASS 32/32, 0 metadata differences |
+| Both catalogs plus `browser_context`, exact legacy bodies | `catalog_is_exactly_the_32_prefixed_tools`, `tool_bodies_are_engine_bodies_under_the_prefix`; independent `baseline/scripts/compare-catalog.mjs` PASS: 32/32 legacy tools compared, 0 metadata differences, `browser_context` reported as the only extra |
+| Isolated, named browser contexts over the real MCP route | `tests/context_wire.rs`: published schema; two contexts with separate cookie jars; legacy page and legacy tab space untouched; `targets select` refuses a context page; typed errors; shutdown disposes only hand's contexts (two clients attached to one external engine, the other's context, page and cookie survive) |
 | Browser backend identity and availability | `initialize_identifies_version_platform_and_both_engines`: `gladius` pin, `puppet` pin, platform, counts, instructions |
 | Live headless browser inspect → act → verify | `tests/browser_live.rs`: loopback fixture; navigate, AX snapshot, click by `@eN`, DOM effect proven by evaluate, type into a labelled field and read back |
 | Deterministic browser screenshot | same test: `deterministic:true`, PNG > 1000 bytes, checksum present |
@@ -55,8 +56,12 @@ These are not implemented, not exercised, or not safe to claim from this slice.
 
 ### Browser extensions from the specification
 
-- Isolated, named browser contexts with separate cookie/storage; explicit
-  create/select/teardown. (Only the engine's tabs exist, in one context.)
+- Isolated browser contexts: built and routed (`browser_context`, see above).
+  Remaining limits, all stated in the tool's own `limits` and in
+  `capability_info()`: storage partitioning inside one browser process, not a
+  crash boundary; IndexedDB and HTTP-cache separation expected but unverified;
+  no per-context permissions; no dialog auto-handling in a context page; a hard
+  kill of hand is not a cleanup path for an attached engine.
 - Same-origin/OOPIF frame-scoped acting beyond the engine's existing `frame`
   parameters: no new frame capability was added or tested here.
 - Selector engine by role/accessible name/text with scoping and uniqueness; the
@@ -102,6 +107,11 @@ existing target takes precedence over the hidden-launch request.
   tested end to end. A clean detach preserves an external engine, but a restore
   cut at the EOF drain bound is reported `UNVERIFIED`, and no external CDP
   fixture exercises that path in the suite.
+- Context page `source`/`titleNote`: a page's `url` and membership come from CDP
+  target info, while its `title` is labelled `targetInfo+liveRead` when the
+  document itself supplied it and `targetInfo` when the engine's cached value is
+  all that exists; a failed live read carries a `titleNote` instead of pretending
+  the cached title is current. `tests/browser_contexts.rs` covers both labels.
 - Hard-kill reap/job-object behavior inside hand: inherited from the engine,
   not re-tested.
 - Crash isolation between domains: none (one process by design).

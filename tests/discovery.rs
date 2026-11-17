@@ -10,7 +10,7 @@ mod common;
 use common::{text_of, tool, Session};
 use serde_json::{json, Value};
 
-const BROWSER_TOOLS: [&str; 25] = [
+const BROWSER_TOOLS: [&str; 26] = [
     "navigate",
     "snapshot",
     "screenshot",
@@ -36,6 +36,7 @@ const BROWSER_TOOLS: [&str; 25] = [
     "cdp",
     "close",
     "fetch_text",
+    "context",
 ];
 
 const DESKTOP_TOOLS: [&str; 7] = [
@@ -65,7 +66,10 @@ fn initialize_identifies_version_platform_and_both_engines() {
     assert_eq!(info["name"].as_str(), Some("hand"));
     assert!(!info["version"].as_str().unwrap_or("").is_empty());
     assert_eq!(info["platform"].as_str(), Some("windows-x64"));
-    assert_eq!(info["count"].as_u64(), Some(32));
+    assert_eq!(
+        info["count"].as_u64(),
+        Some((BROWSER_TOOLS.len() + DESKTOP_TOOLS.len()) as u64)
+    );
 
     let browser = &info["engines"]["browser"];
     assert_eq!(browser["engine"].as_str(), Some("gladius"));
@@ -102,14 +106,19 @@ fn initialize_identifies_version_platform_and_both_engines() {
 fn catalog_is_exactly_the_32_prefixed_tools() {
     let mut s = Session::spawn();
     let tools = s.list_tools();
-    assert_eq!(tools.len(), 32, "catalog must publish all 32 tools");
+    let expected = BROWSER_TOOLS.len() + DESKTOP_TOOLS.len();
+    assert_eq!(
+        tools.len(),
+        expected,
+        "catalog must publish all {expected} tools"
+    );
     let mut names: Vec<String> = tools
         .iter()
         .filter_map(|t| t["name"].as_str().map(str::to_string))
         .collect();
     names.sort();
     names.dedup();
-    assert_eq!(names.len(), 32, "tool names must be unique");
+    assert_eq!(names.len(), expected, "tool names must be unique");
 
     for legacy in BROWSER_TOOLS {
         let name = format!("browser_{legacy}");
@@ -211,7 +220,10 @@ fn modern_peer_gets_result_type_and_a_bad_version_is_refused_before_dispatch() {
         json!({"_meta": {"io.modelcontextprotocol/protocolVersion": "2026-07-28"}}),
     );
     assert_eq!(modern["result"]["resultType"].as_str(), Some("complete"));
-    assert_eq!(modern["result"]["tools"].as_array().map(Vec::len), Some(32));
+    assert_eq!(
+        modern["result"]["tools"].as_array().map(Vec::len),
+        Some(BROWSER_TOOLS.len() + DESKTOP_TOOLS.len())
+    );
 
     let refused = s.request(
         "tools/list",
