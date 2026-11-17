@@ -1,0 +1,67 @@
+{
+  "schema": "hand-mcp.benchmark.build-receipt/v1",
+  "ok": true,
+  "product": "hand",
+  "profile": "release",
+  "source": {
+    "root": "Q:\\PROJECTS\\PERSONAL\\hand-mcp",
+    "gitHead": "8912ca9d772fff2a820838f4b3a42d9f39046c51",
+    "branch": "work/hand-mcp",
+    "dirty": false,
+    "statusSha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "trackedDiffSha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "command": {
+    "program": "cargo",
+    "args": [
+      "build",
+      "--release",
+      "--locked",
+      "--manifest-path",
+      "Q:\\PROJECTS\\PERSONAL\\hand-mcp\\Cargo.toml",
+      "--bin",
+      "hand-mcp",
+      "--target-dir",
+      "Q:\\PROJECTS\\PERSONAL\\hand-mcp\\target"
+    ],
+    "cwd": "Q:\\PROJECTS\\PERSONAL\\hand-mcp",
+    "startedAtUtc": "2026-11-17T22:35:29.717Z",
+    "finishedAtUtc": "2026-11-17T22:35:29.991Z",
+    "durationMs": 273,
+    "exitCode": 0,
+    "stdoutBytes": 0,
+    "stderrBytes": 2443,
+    "stdoutSha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stderrSha256": "sha256:8fd5e35f0edc74f01b6d7d5ae89f950cd2f807282d0fdf5f6e2f557264c64886",
+    "stdoutTail": "",
+    "stderrTail": "warning: unused imports: `DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2`, `PROCESS_PER_MONITOR_DPI_AWARE`, `SetProcessDpiAwarenessContext`, and `SetProcessDpiAwareness`\n  --> crates\\desktop-engine\\src\\lib.rs:46:22\n   |\n46 |     GetDpiForWindow, SetProcessDpiAwareness, SetProcessDpiAwarenessContext,\n   |                      ^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n47 |     DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, PROCESS_PER_MONITOR_DPI_AWARE,\n   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n   |\n   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default\n\nwarning: value assigned to `posted` is never read\n    --> crates\\desktop-engine\\src\\burst.rs:3800:41\n     |\n3771 |                         posted += 1;\n     |                         ----------- `posted` is overwritten here before the previous value is read\n...\n3800 |                                         posted += 1;\n     |                                         ^^^^^^^^^^^ this value is reassigned later and never used\n     |\n     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default\n\nwarning: value assigned to `posted` is never read\n    --> crates\\desktop-engine\\src\\burst.rs:4001:37\n     |\n4001 |                                     posted += 1;\n     |                                     ^^^^^^^^^^^ this value is reassigned later and never used\n...\n4014 |                         posted += 1;\n     |                         ----------- `posted` is overwritten here before the previous value is read\n\nwarning: `desktop-engine` (lib) generated 3 warnings (run `cargo fix --lib -p desktop-engine` to apply 1 suggestion)\nwarning: use of deprecated method `std::sync::atomic::Atomic::<u32>::fetch_update`: renamed to `try_update` for consistency\n   --> crates\\browser-engine\\src\\capture.rs:481:10\n    |\n481 |         .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))\n    |          ^^^^^^^^^^^^\n    |\n    = note: `#[warn(deprecated)]` on by default\nhelp: replace the use of the deprecated method\n    |\n481 -         .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))\n481 +         .try_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))\n    |\n\nwarning: `browser-engine` (lib) generated 1 warning (run `cargo fix --lib -p browser-engine` to apply 1 suggestion)\n    Finished `release` profile [optimized] target(s) in 0.21s\n"
+  },
+  "toolchain": {
+    "cargo": {
+      "status": 0,
+      "stdout": "cargo 1.100.0 (3acc79c0c 2026-11-05)",
+      "stderr": ""
+    },
+    "rustc": {
+      "status": 0,
+      "stdout": "rustc 1.100.0 (0ef1bc386 2026-11-09)\nbinary: rustc\ncommit-hash: 0ef1bc386059596dada8fb65b50425aab2ea637a\ncommit-date: 2026-11-09\nhost: x86_64-pc-windows-msvc\nrelease: 1.100.0\nLLVM version: 23.1.5",
+      "stderr": ""
+    },
+    "host": "x86_64-pc-windows-msvc",
+    "target": "x86_64-pc-windows-msvc"
+  },
+  "output": {
+    "path": "Q:\\PROJECTS\\PERSONAL\\hand-mcp\\benchmarks\\receipts\\builds\\artifacts\\hand-8912ca9d-20261117T223530230Z-hand-mcp.exe",
+    "buildPath": "Q:\\PROJECTS\\PERSONAL\\hand-mcp\\target\\release\\hand-mcp.exe",
+    "bytes": 13805056,
+    "sha256": "sha256:37b85ce5c9eea2cc5542dadb6e47d79c8568dc7ec883545486e1c99e8a61b99a",
+    "modifiedAtUtc": "2026-11-17T22:35:16.432Z",
+    "durable": true
+  },
+  "version": {
+    "status": 0,
+    "stdout": "hand-mcp 0.1.0 (gladius 59c6d77, puppet 0f790be; x86_64)",
+    "stderr": ""
+  },
+  "generatedAtUtc": "2026-11-17T22:35:30.277Z"
+}
