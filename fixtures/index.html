@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1280, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>hand-mcp benchmark fixture - 100 controls</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #ffffff; color: #111111; }
+  body { font-family: "Segoe UI", system-ui, -apple-system, sans-serif; font-size: 13px; line-height: 1.2; }
+  .page { width: 1280px; height: 720px; padding: 16px 20px; display: flex; flex-direction: column; gap: 10px; }
+  header { height: 44px; flex: none; }
+  h1 { margin: 0; font-size: 18px; line-height: 24px; font-weight: 600; }
+  .meta { margin: 2px 0 0; height: 18px; font-size: 12px; line-height: 18px; color: #444444; }
+  #grid { flex: none; display: grid; grid-template-columns: repeat(10, 112px); grid-auto-rows: 48px; gap: 6px 8px; width: 1192px; }
+  button[data-hand-control] { width: 112px; height: 48px; margin: 0; padding: 0 8px; border: 1px solid #444444; border-radius: 0; background: #ffffff; color: #111111; font: inherit; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+  button[data-hand-control]:hover { background: #f2f2f2; }
+  button[data-hand-control]:focus-visible { outline: 2px solid #005fcc; outline-offset: 1px; }
+  #status { flex: none; height: 18px; margin: 0; font-size: 12px; line-height: 18px; color: #222222; }
+</style>
+</head>
+<body data-fixture="hand-benchmark" data-control-count="100">
+  <div class="page">
+    <header>
+      <h1>hand benchmark fixture</h1>
+      <p class="meta">100 visible labelled controls | 1280x720 viewport | fixture v1</p>
+    </header>
+    <div id="grid" role="group" aria-label="Benchmark controls">
+      <button type="button" id="control-001" data-hand-control="001" data-label="Control 001" aria-label="Control 001">Control 001</button>
+      <button type="button" id="control-002" data-hand-control="002" data-label="Control 002" aria-label="Control 002">Control 002</button>
+      <button type="button" id="control-003" data-hand-control="003" data-label="Control 003" aria-label="Control 003">Control 003</button>
+      <button type="button" id="control-004" data-hand-control="004" data-label="Control 004" aria-label="Control 004">Control 004</button>
+      <button type="button" id="control-005" data-hand-control="005" data-label="Control 005" aria-label="Control 005">Control 005</button>
+      <button type="button" id="control-006" data-hand-control="006" data-label="Control 006" aria-label="Control 006">Control 006</button>
+      <button type="button" id="control-007" data-hand-control="007" data-label="Control 007" aria-label="Control 007">Control 007</button>
+      <button type="button" id="control-008" data-hand-control="008" data-label="Control 008" aria-label="Control 008">Control 008</button>
+      <button type="button" id="control-009" data-hand-control="009" data-label="Control 009" aria-label="Control 009">Control 009</button>
+      <button type="button" id="control-010" data-hand-control="010" data-label="Control 010" aria-label="Control 010">Control 010</button>
+      <button type="button" id="control-011" data-hand-control="011" data-label="Control 011" aria-label="Control 011">Control 011</button>
+      <button type="button" id="control-012" data-hand-control="012" data-label="Control 012" aria-label="Control 012">Control 012</button>
+      <button type="button" id="control-013" data-hand-control="013" data-label="Control 013" aria-label="Control 013">Control 013</button>
+      <button type="button" id="control-014" data-hand-control="014" data-label="Control 014" aria-label="Control 014">Control 014</button>
+      <button type="button" id="control-015" data-hand-control="015" data-label="Control 015" aria-label="Control 015">Control 015</button>
+      <button type="button" id="control-016" data-hand-control="016" data-label="Control 016" aria-label="Control 016">Control 016</button>
+      <button type="button" id="control-017" data-hand-control="017" data-label="Control 017" aria-label="Control 017">Control 017</button>
+      <button type="button" id="control-018" data-hand-control="018" data-label="Control 018" aria-label="Control 018">Control 018</button>
+      <button type="button" id="control-019" data-hand-control="019" data-label="Control 019" aria-label="Control 019">Control 019</button>
+      <button type="button" id="control-020" data-hand-control="020" data-label="Control 020" aria-label="Control 020">Control 020</button>
+      <button type="button" id="control-021" data-hand-control="021" data-label="Control 021" aria-label="Control 021">Control 021</button>
+      <button type="button" id="control-022" data-hand-control="022" data-label="Control 022" aria-label="Control 022">Control 022</button>
+      <button type="button" id="control-023" data-hand-control="023" data-label="Control 023" aria-label="Control 023">Control 023</button>
+      <button type="button" id="control-024" data-hand-control="024" data-label="Control 024" aria-label="Control 024">Control 024</button>
+      <button type="button" id="control-025" data-hand-control="025" data-label="Control 025" aria-label="Control 025">Control 025</button>
+      <button type="button" id="control-026" data-hand-control="026" data-label="Control 026" aria-label="Control 026">Control 026</button>
+      <button type="button" id="control-027" data-hand-control="027" data-label="Control 027" aria-label="Control 027">Control 027</button>
+      <button type="button" id="control-028" data-hand-control="028" data-label="Control 028" aria-label="Control 028">Control 028</button>
+      <button type="button" id="control-029" data-hand-control="029" data-label="Control 029" aria-label="Control 029">Control 029</button>
+      <button type="button" id="control-030" data-hand-control="030" data-label="Control 030" aria-label="Control 030">Control 030</button>
+      <button type="button" id="control-031" data-hand-control="031" data-label="Control 031" aria-label="Control 031">Control 031</button>
+      <button type="button" id="control-032" data-hand-control="032" data-label="Control 032" aria-label="Control 032">Control 032</button>
+      <button type="button" id="control-033" data-hand-control="033" data-label="Control 033" aria-label="Control 033">Control 033</button>
+      <button type="button" id="control-034" data-hand-control="034" data-label="Control 034" aria-label="Control 034">Control 034</button>
+      <button type="button" id="control-035" data-hand-control="035" data-label="Control 035" aria-label="Control 035">Control 035</button>
+      <button type="button" id="control-036" data-hand-control="036" data-label="Control 036" aria-label="Control 036">Control 036</button>
+      <button type="button" id="control-037" data-hand-control="037" data-label="Control 037" aria-label="Control 037">Control 037</button>
+      <button type="button" id="control-038" data-hand-control="038" data-label="Control 038" aria-label="Control 038">Control 038</button>
+      <button type="button" id="control-039" data-hand-control="039" data-label="Control 039" aria-label="Control 039">Control 039</button>
+      <button type="button" id="control-040" data-hand-control="040" data-label="Control 040" aria-label="Control 040">Control 040</button>
+      <button type="button" id="control-041" data-hand-control="041" data-label="Control 041" aria-label="Control 041">Control 041</button>
+      <button type="button" id="control-042" data-hand-control="042" data-label="Control 042" aria-label="Control 042">Control 042</button>
+      <button type="button" id="control-043" data-hand-control="043" data-label="Control 043" aria-label="Control 043">Control 043</button>
+      <button type="button" id="control-044" data-hand-control="044" data-label="Control 044" aria-label="Control 044">Control 044</button>
+      <button type="button" id="control-045" data-hand-control="045" data-label="Control 045" aria-label="Control 045">Control 045</button>
+      <button type="button" id="control-046" data-hand-control="046" data-label="Control 046" aria-label="Control 046">Control 046</button>
+      <button type="button" id="control-047" data-hand-control="047" data-label="Control 047" aria-label="Control 047">Control 047</button>
+      <button type="button" id="control-048" data-hand-control="048" data-label="Control 048" aria-label="Control 048">Control 048</button>
+      <button type="button" id="control-049" data-hand-control="049" data-label="Control 049" aria-label="Control 049">Control 049</button>
+      <button type="button" id="control-050" data-hand-control="050" data-label="Control 050" aria-label="Control 050">Control 050</button>
+      <button type="button" id="control-051" data-hand-control="051" data-label="Control 051" aria-label="Control 051">Control 051</button>
+      <button type="button" id="control-052" data-hand-control="052" data-label="Control 052" aria-label="Control 052">Control 052</button>
+      <button type="button" id="control-053" data-hand-control="053" data-label="Control 053" aria-label="Control 053">Control 053</button>
+      <button type="button" id="control-054" data-hand-control="054" data-label="Control 054" aria-label="Control 054">Control 054</button>
+      <button type="button" id="control-055" data-hand-control="055" data-label="Control 055" aria-label="Control 055">Control 055</button>
+      <button type="button" id="control-056" data-hand-control="056" data-label="Control 056" aria-label="Control 056">Control 056</button>
+      <button type="button" id="control-057" data-hand-control="057" data-label="Control 057" aria-label="Control 057">Control 057</button>
+      <button type="button" id="control-058" data-hand-control="058" data-label="Control 058" aria-label="Control 058">Control 058</button>
+      <button type="button" id="control-059" data-hand-control="059" data-label="Control 059" aria-label="Control 059">Control 059</button>
+      <button type="button" id="control-060" data-hand-control="060" data-label="Control 060" aria-label="Control 060">Control 060</button>
+      <button type="button" id="control-061" data-hand-control="061" data-label="Control 061" aria-label="Control 061">Control 061</button>
+      <button type="button" id="control-062" data-hand-control="062" data-label="Control 062" aria-label="Control 062">Control 062</button>
+      <button type="button" id="control-063" data-hand-control="063" data-label="Control 063" aria-label="Control 063">Control 063</button>
+      <button type="button" id="control-064" data-hand-control="064" data-label="Control 064" aria-label="Control 064">Control 064</button>
+      <button type="button" id="control-065" data-hand-control="065" data-label="Control 065" aria-label="Control 065">Control 065</button>
+      <button type="button" id="control-066" data-hand-control="066" data-label="Control 066" aria-label="Control 066">Control 066</button>
+      <button type="button" id="control-067" data-hand-control="067" data-label="Control 067" aria-label="Control 067">Control 067</button>
+      <button type="button" id="control-068" data-hand-control="068" data-label="Control 068" aria-label="Control 068">Control 068</button>
+      <button type="button" id="control-069" data-hand-control="069" data-label="Control 069" aria-label="Control 069">Control 069</button>
+      <button type="button" id="control-070" data-hand-control="070" data-label="Control 070" aria-label="Control 070">Control 070</button>
+      <button type="button" id="control-071" data-hand-control="071" data-label="Control 071" aria-label="Control 071">Control 071</button>
+      <button type="button" id="control-072" data-hand-control="072" data-label="Control 072" aria-label="Control 072">Control 072</button>
+      <button type="button" id="control-073" data-hand-control="073" data-label="Control 073" aria-label="Control 073">Control 073</button>
+      <button type="button" id="control-074" data-hand-control="074" data-label="Control 074" aria-label="Control 074">Control 074</button>
+      <button type="button" id="control-075" data-hand-control="075" data-label="Control 075" aria-label="Control 075">Control 075</button>
+      <button type="button" id="control-076" data-hand-control="076" data-label="Control 076" aria-label="Control 076">Control 076</button>
+      <button type="button" id="control-077" data-hand-control="077" data-label="Control 077" aria-label="Control 077">Control 077</button>
+      <button type="button" id="control-078" data-hand-control="078" data-label="Control 078" aria-label="Control 078">Control 078</button>
+      <button type="button" id="control-079" data-hand-control="079" data-label="Control 079" aria-label="Control 079">Control 079</button>
+      <button type="button" id="control-080" data-hand-control="080" data-label="Control 080" aria-label="Control 080">Control 080</button>
+      <button type="button" id="control-081" data-hand-control="081" data-label="Control 081" aria-label="Control 081">Control 081</button>
+      <button type="button" id="control-082" data-hand-control="082" data-label="Control 082" aria-label="Control 082">Control 082</button>
+      <button type="button" id="control-083" data-hand-control="083" data-label="Control 083" aria-label="Control 083">Control 083</button>
+      <button type="button" id="control-084" data-hand-control="084" data-label="Control 084" aria-label="Control 084">Control 084</button>
+      <button type="button" id="control-085" data-hand-control="085" data-label="Control 085" aria-label="Control 085">Control 085</button>
+      <button type="button" id="control-086" data-hand-control="086" data-label="Control 086" aria-label="Control 086">Control 086</button>
+      <button type="button" id="control-087" data-hand-control="087" data-label="Control 087" aria-label="Control 087">Control 087</button>
+      <button type="button" id="control-088" data-hand-control="088" data-label="Control 088" aria-label="Control 088">Control 088</button>
+      <button type="button" id="control-089" data-hand-control="089" data-label="Control 089" aria-label="Control 089">Control 089</button>
+      <button type="button" id="control-090" data-hand-control="090" data-label="Control 090" aria-label="Control 090">Control 090</button>
+      <button type="button" id="control-091" data-hand-control="091" data-label="Control 091" aria-label="Control 091">Control 091</button>
+      <button type="button" id="control-092" data-hand-control="092" data-label="Control 092" aria-label="Control 092">Control 092</button>
+      <button type="button" id="control-093" data-hand-control="093" data-label="Control 093" aria-label="Control 093">Control 093</button>
+      <button type="button" id="control-094" data-hand-control="094" data-label="Control 094" aria-label="Control 094">Control 094</button>
+      <button type="button" id="control-095" data-hand-control="095" data-label="Control 095" aria-label="Control 095">Control 095</button>
+      <button type="button" id="control-096" data-hand-control="096" data-label="Control 096" aria-label="Control 096">Control 096</button>
+      <button type="button" id="control-097" data-hand-control="097" data-label="Control 097" aria-label="Control 097">Control 097</button>
+      <button type="button" id="control-098" data-hand-control="098" data-label="Control 098" aria-label="Control 098">Control 098</button>
+      <button type="button" id="control-099" data-hand-control="099" data-label="Control 099" aria-label="Control 099">Control 099</button>
+      <button type="button" id="control-100" data-hand-control="100" data-label="Control 100" aria-label="Control 100">Control 100</button>
+    </div>
+    <p id="status" role="status" aria-live="polite">last activated: none (0)</p>
+  </div>
+  <script>
+  (() => {
+    const grid = document.getElementById('grid');
+    const status = document.getElementById('status');
+    let activations = 0;
+    grid.addEventListener('click', (event) => {
+      const button = event.target.closest('button[data-hand-control]');
+      if (!button) return;
+      activations += 1;
+      status.textContent = 'last activated: ' + button.dataset.label + ' (' + activations + ')';
+    });
+  })();
+  </script>
+</body>
+</html>

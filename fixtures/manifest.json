@@ -1,0 +1,103 @@
+{
+  "manifestVersion": 1,
+  "fixture": "hand-mcp-fixtures",
+  "version": "1.0.0",
+  "frozen": {
+    "viewport": { "width": 1280, "height": 720 },
+    "deviceScaleFactor": 1,
+    "network": "none beyond the loopback fixture server",
+    "time": "no timers, no clock reads, no animation",
+    "randomness": "none"
+  },
+  "benchmark": {
+    "page": "/index.html",
+    "selector": "[data-hand-control]",
+    "count": 100,
+    "labelPattern": "^Control (?:00[1-9]|0[1-9][0-9]|100)$",
+    "firstLabel": "Control 001",
+    "lastLabel": "Control 100",
+    "statusSelector": "#status",
+    "initialStatus": "last activated: none (0)",
+    "activation": {
+      "target": "#control-001",
+      "statusAfter": "last activated: Control 001 (1)"
+    },
+    "negative": {
+      "expected": "last activated: Control 002 (1)",
+      "observed": "last activated: Control 001 (1)",
+      "verdict": false
+    }
+  },
+  "actions": {
+    "page": "/actions.html",
+    "initial": {
+      "bodyState": "idle",
+      "result": "idle",
+      "noop-count": "0",
+      "counter-value": "0",
+      "name-value": "",
+      "greeting": "Hello, nobody.",
+      "mode-output": "alpha",
+      "flag-state": "off",
+      "flag-checked": false,
+      "dialog-state": "closed",
+      "dialog-open": false,
+      "scroll-offset": "0,0"
+    },
+    "effects": [
+      {
+        "name": "apply",
+        "expected": { "bodyState": "applied", "result": "applied" }
+      },
+      {
+        "name": "noop",
+        "expected": { "bodyState": "idle", "result": "idle", "noop-count": "1" }
+      },
+      {
+        "name": "incrementTwice",
+        "expected": { "counter-value": "2" }
+      },
+      {
+        "name": "applyNameAda",
+        "expected": { "greeting": "Hello, Ada." }
+      },
+      {
+        "name": "selectBeta",
+        "expected": { "mode-output": "beta" }
+      },
+      {
+        "name": "checkFlag",
+        "expected": { "flag-state": "on", "flag-checked": true }
+      },
+      {
+        "name": "openDialog",
+        "expected": { "dialog-state": "open", "dialog-open": true }
+      },
+      {
+        "name": "closeDialog",
+        "expected": { "dialog-state": "closed", "dialog-open": false }
+      },
+      {
+        "name": "scrollTo60x120",
+        "expected": { "scroll-offset": "60,120" }
+      },
+      {
+        "name": "missing404",
+        "expected": { "status": 404, "body": "404 not found\n" }
+      }
+    ],
+    "negative": {
+      "after": "noop",
+      "selector": "#result",
+      "expected": "applied",
+      "observed": "idle",
+      "reason": "The no-op control must not change result."
+    }
+  },
+  "server": {
+    "bind": "127.0.0.1",
+    "missingPath": "/missing.html",
+    "missingStatus": 404,
+    "missingBody": "404 not found\n"
+  }
+}
