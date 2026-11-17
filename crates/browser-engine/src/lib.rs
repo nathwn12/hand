@@ -1,15 +1,29 @@
 //! hand's browser engine: the Gladius 0.8.0 engine (pinned source `59c6d77`)
-//! as a library. The modules below are the pinned engine sources, unmodified
-//! except for the public surface declared here and the one `typed_envelope`
-//! shim at the end of `tools.rs`. hand's own MCP front end owns transport,
+//! as a library. `browser`, `capture`, `fetch`, `layout` and `visual` are the
+//! pinned engine sources; `tools` is the pinned tool table plus the
+//! `typed_envelope` shim at its end. hand's own MCP front end owns transport,
 //! catalogs and domain routing; this crate owns the CDP browser:
 //! launch/attach, snapshots, refs, actions, capture, layout/visual evidence
 //! and the legacy typed tool envelopes.
+//!
+//! Two additions are hand's, not Gladius's, and are listed so the provenance
+//! claim stays exact:
+//! - `contexts`: named isolated browser contexts (`Target.createBrowserContext`)
+//!   with explicit create/select/teardown, cookie/storage isolation and a
+//!   public dispatch hook for the `browser_context` tool;
+//! - the context-exclusion seam in `browser`: pages of a registered context
+//!   are filtered out of the legacy tab/selection space (`page_targets`,
+//!   `select_target`), the exclusion map is threaded through every launch and
+//!   attach, and `js_thrown` / `js_no_value` / `is_session_death` are
+//!   crate-visible so the context module reuses the pinned error shapes
+//!   instead of minting copies. Legacy behaviour is unchanged when no context
+//!   exists (the exclusion map is empty).
 //!
 //! Globals shared by the engine and hand:
 //! - `GLADIUS_CDP_URL` attaches to an external engine instead of launching.
 //! - `GLADIUS_CHROMIUM` / `GLADIUS_CHROMIUM_CACHE` select the owned
 //!   `chrome-headless-shell` build.
+//!
 //! These environment names are the pinned engine's contract; hand does not
 //! rename them, so a compatibility baseline measured against Gladius holds.
 
@@ -18,12 +32,14 @@
 
 mod browser;
 mod capture;
+pub mod contexts;
 mod fetch;
 mod layout;
 mod tools;
 mod visual;
 
-pub use browser::{backend_info, Browser};
+pub use browser::{backend_info, Browser, EngineOwnership};
+pub use contexts::ContextRegistry;
 pub use tools::{call, list};
 
 /// Where the owned `chrome-headless-shell` resolves to, or the engine's clear

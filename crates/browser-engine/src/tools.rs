@@ -347,8 +347,9 @@ pub fn list() -> Value {
 }
 
 /// Success envelope (G2b): the text block stays byte-identical JSON while
-/// `structuredContent` carries the parsed Value for machine readers.
-fn ok_text(s: String) -> Value {
+/// `structuredContent` carries the parsed Value for machine readers. Shared
+/// with `crate::contexts` so a new tool cannot mint a second envelope shape.
+pub(crate) fn ok_text(s: String) -> Value {
     let v: Value = serde_json::from_str(&s).unwrap_or(Value::Null);
     json!({"content": [{"type": "text", "text": s}], "structuredContent": v})
 }
@@ -364,6 +365,7 @@ fn ok_text(s: String) -> Value {
 /// what it always was - clients that pattern-match English keep working -
 /// and `isError` is unchanged. `structuredContent` rides alongside; a
 /// client that ignores the new field sees the old envelope exactly.
+#[derive(Debug)]
 pub(crate) struct ToolErr {
     prose: String,
     sc: Value,
@@ -387,8 +389,24 @@ impl ToolErr {
         }
     }
 
+    /// Re-mint a failure that WRAPS another one (a rollback reporting its
+    /// cause): the cause's `{code, reason}` survive when it carries a marker,
+    /// and its `typed:code:reason:` scaffolding never reaches the prose.
+    pub(crate) fn wrapping(cause: &str, prose: impl Into<String>) -> Self {
+        let mut e = Self::from(cause.to_string());
+        e.prose = prose.into();
+        e
+    }
+
     pub(crate) fn envelope(self) -> Value {
         json!({"content": [{"type": "text", "text": self.prose}], "isError": true, "structuredContent": self.sc})
+    }
+
+    /// The human-readable half (used by tests and by multi-step receipts that
+    /// must name a failed step in prose).
+    #[cfg(test)]
+    pub(crate) fn prose(&self) -> &str {
+        &self.prose
     }
 }
 
@@ -725,8 +743,9 @@ impl ToolReason {
 /// Fail-loud argument gate: any key outside the tool's own schema is a
 /// typed `invalid_args`/`unknown_arg` error, never a silent ignore. (A
 /// silently ignored `target`/`frame`/`contextId` once routed evaluations to
-/// the wrong realm with no error; that shape must never recur.)
-fn check_unknown(tool: &str, args: &Value, allowed: &[&str]) -> Result<(), ToolErr> {
+/// the wrong realm with no error; that shape must never recur.) Shared with
+/// `crate::contexts` so the new tool rejects unknown keys identically.
+pub(crate) fn check_unknown(tool: &str, args: &Value, allowed: &[&str]) -> Result<(), ToolErr> {
     if let Some(obj) = args.as_object() {
         for k in obj.keys() {
             if !allowed.contains(&k.as_str()) {
@@ -2152,7 +2171,10 @@ mod tests {
     #[test]
     fn unreadable_fallback_never_emits_a_credential() {
         assert_eq!(unreadable_value("textbox", "PW_SECRET_123"), "ÔÇóÔÇóÔÇóÔÇó");
-        assert_eq!(unreadable_value("searchbox", "PW_SECRET_123"), "ÔÇóÔÇóÔÇóÔÇó");
+        assert_eq!(
+            unreadable_value("searchbox", "PW_SECRET_123"),
+            "ÔÇóÔÇóÔÇóÔÇó"
+        );
         assert_eq!(unreadable_value("textbox", ""), "", "empty stays empty");
         assert_eq!(unreadable_value("button", "OK"), "OK");
         assert_eq!(

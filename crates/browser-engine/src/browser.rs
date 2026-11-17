@@ -201,6 +201,43 @@ struct Shared {
     /// override either. `Arc<Mutex>` so the guard can be owned (no borrow of
     /// a local Arc).
     capture: Arc<AsyncMutex<()>>,
+    /// Isolated browser contexts registered by `crate::contexts`
+    /// (`browserContextId -> context name`). A page target in one of these
+    /// contexts is NEVER a candidate for the legacy page/tab space: the
+    /// legacy `tabs`/`select`/`ensure_session` path must not attach to a
+    /// context's page, or two selection models would silently share one
+    /// active session. Empty unless a context was created. Shared with
+    /// `Browser` so registration never needs a live engine (and survives a
+    /// relaunch, which builds a fresh `Shared`).
+    excluded_contexts: Arc<Mutex<HashMap<String, String>>>,
+}
+
+/// Empty context-exclusion map (the legacy path's default: nothing excluded).
+fn no_excluded_contexts() -> Arc<Mutex<HashMap<String, String>>> {
+    Arc::new(Mutex::new(HashMap::new()))
+}
+
+/// Ownership of the engine behind a connection.
+///
+/// - `Owned`: hand launched the browser (`chrome-headless-shell`) itself, so its
+///   death (or our `close`) means the process and everything it hosted is gone.
+/// - `Attached`: hand connected to an engine it did not start (`GLADIUS_CDP_URL`).
+///   Losing that connection says nothing about the browser: it may still be
+///   running and still hold hand-created contexts. Callers must report that as
+///   UNKNOWN, never as "gone".
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EngineOwnership {
+    Owned,
+    Attached,
+}
+
+impl EngineOwnership {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            EngineOwnership::Owned => "owned",
+            EngineOwnership::Attached => "attached",
+        }
+    }
 }
 
 /// Ownership of the engine behind an `Inner` connection.
@@ -315,7 +352,7 @@ pub fn backend_info() -> Value {
 /// both the owned launch path and the attach path, so the session/target
 /// flow after the connect (`ensure_session` / `attach_to` / tools) is the
 /// SAME code, never a fork.
-fn new_shared(sink: WsSink) -> Arc<Shared> {
+fn new_shared(sink: WsSink, excluded_contexts: Arc<Mutex<HashMap<String, String>>>) -> Arc<Shared> {
     Arc::new(Shared {
         sink: AsyncMutex::new(sink),
         pending: Arc::new(Mutex::new(HashMap::new())),
@@ -336,6 +373,7 @@ fn new_shared(sink: WsSink) -> Arc<Shared> {
         dialog_policy: AsyncMutex::new(DialogPolicy::default()),
         extra_sessions: AsyncMutex::new(HashMap::new()),
         capture: Arc::new(AsyncMutex::new(())),
+        excluded_contexts,
     })
 }
 
@@ -393,14 +431,17 @@ async fn resolve_ws_url(raw: &str) -> Result<String, String> {
 /// Attach to an externally started engine.
 /// Connects to the resolved ws endpoint, then reuses the EXISTING
 /// session/target flow. Creates no profile, sweeps nothing, owns no pid.
-async fn attach(raw: &str) -> Result<Inner, String> {
+async fn attach(
+    raw: &str,
+    excluded_contexts: Arc<Mutex<HashMap<String, String>>>,
+) -> Result<Inner, String> {
     let ws_url = resolve_ws_url(raw).await?;
     eprintln!("[gladius] backend: external-cdp {ws_url} (attach; engine not owned)");
     let (ws, _) = connect_async(&ws_url)
         .await
         .map_err(|e| format!("ws connect {ws_url}: {e}"))?;
     let (sink, stream) = ws.split();
-    let shared = new_shared(sink);
+    let shared = new_shared(sink, excluded_contexts);
     let reader = tokio::spawn(reader_loop(stream, shared.clone()));
     eprintln!("[gladius] browser ready attached external-cdp");
     Ok(Inner {
@@ -451,6 +492,16 @@ pub struct Browser {
     snap_seq: std::sync::atomic::AtomicUsize,
     snap_cache: AsyncMutex<Option<SnapshotCache>>,
     snapshot_lock: AsyncMutex<()>,
+    /// Isolated browser contexts excluded from the legacy page/tab space
+    /// (see `Shared::excluded_contexts`). Held here too so registration is
+    /// possible before any engine exists and so each new connection inherits
+    /// the same set.
+    excluded_contexts: Arc<Mutex<HashMap<String, String>>>,
+    /// Engine generation: bumped once per successful launch (cold start and
+    /// each relaunch). Browser contexts are engine-scoped, so `crate::contexts`
+    /// uses it to prove a tracked context belongs to the CURRENT engine instead
+    /// of reporting a context from a dead one as alive.
+    generation: AtomicU64,
 }
 
 impl Browser {
@@ -466,7 +517,114 @@ impl Browser {
             snap_seq: std::sync::atomic::AtomicUsize::new(1),
             snap_cache: AsyncMutex::new(None),
             snapshot_lock: AsyncMutex::new(()),
+            excluded_contexts: no_excluded_contexts(),
+            generation: AtomicU64::new(0),
         }
+    }
+
+    /// Engine generation: bumped once per successful launch. Browser contexts
+    /// are engine-scoped, so `crate::contexts` compares this to prove a tracked
+    /// context still belongs to the live engine.
+    pub fn generation(&self) -> u64 {
+        self.generation.load(Ordering::SeqCst)
+    }
+
+    /// Register an isolated browser context (`crate::contexts`) so its page
+    /// targets are never chosen by the legacy tab/selection path. Never
+    /// launches or touches the engine: the set lives beside the connection and
+    /// is inherited by every relaunch.
+    pub fn exclude_browser_context(&self, context_id: &str, name: &str) {
+        self.excluded_contexts
+            .lock()
+            .unwrap()
+            .insert(context_id.to_string(), name.to_string());
+    }
+
+    /// Forget an excluded context (after its teardown was verified). A context
+    /// id is engine-scoped, so unregistering is bookkeeping, never a live
+    /// action.
+    pub fn include_browser_context(&self, context_id: &str) {
+        self.excluded_contexts.lock().unwrap().remove(context_id);
+    }
+
+    /// The isolated contexts currently excluded from the legacy space
+    /// (`browserContextId -> name`), for diagnostics and tests.
+    pub fn excluded_browser_contexts(&self) -> HashMap<String, String> {
+        self.excluded_contexts.lock().unwrap().clone()
+    }
+
+    /// Is a live engine connection present right now? Never launches: a dead,
+    /// closed or never-started engine answers false. Used by callers that must
+    /// not turn a shutdown or a dead-engine query into a browser launch.
+    pub async fn is_live(&self) -> bool {
+        let guard = self.state.lock().await;
+        guard
+            .as_ref()
+            .is_some_and(|inner| !inner.shared.dead.load(Ordering::SeqCst))
+    }
+
+    /// Who owns the engine this `Browser` talks to. Decided by the same env
+    /// switch `launch()` uses (`GLADIUS_CDP_URL`), so it is answerable without a
+    /// live connection — which is exactly when the distinction matters.
+    pub fn ownership(&self) -> EngineOwnership {
+        if cdp_url_override().is_some() {
+            EngineOwnership::Attached
+        } else {
+            EngineOwnership::Owned
+        }
+    }
+
+    /// Best-effort reconnect to an ATTACHED engine. Never launches an owned
+    /// browser (returns false for one): reconnecting to an explicitly configured
+    /// endpoint is a read-side recovery, relaunching a process is not. Two
+    /// attempts because the first one reaps the stale connection and the second
+    /// opens the new one. Returns whether a live connection now exists.
+    pub async fn reconnect_attached(&self) -> bool {
+        if self.is_live().await {
+            return true;
+        }
+        if self.ownership() != EngineOwnership::Attached {
+            return false;
+        }
+        for _ in 0..2 {
+            let _ = self.shared().await;
+            if self.is_live().await {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Send one CDP command ONLY when a live connection already exists.
+    ///
+    /// `None` = no live engine (nothing was sent, nothing launched);
+    /// `Some(Ok)` = the reply; `Some(Err)` = the CDP/transport failure. This is
+    /// the non-launching sibling of `command`, for teardown, diagnostics and
+    /// other paths that must never resurrect an engine as a side effect.
+    pub async fn cdp_if_live(
+        &self,
+        method: &str,
+        params: Value,
+        session: Option<String>,
+    ) -> Option<Result<Value, String>> {
+        let shared = {
+            let guard = self.state.lock().await;
+            match guard.as_ref() {
+                Some(inner) if !inner.shared.dead.load(Ordering::SeqCst) => inner.shared.clone(),
+                _ => return None,
+            }
+        };
+        Some(send_raw(&shared, method, params, session).await)
+    }
+
+    /// Name of the isolated browser context (`crate::contexts`) that owns
+    /// `browser_context_id`, or `None` for the default/unknown contexts.
+    pub fn isolated_context_name(&self, browser_context_id: &str) -> Option<String> {
+        self.excluded_contexts
+            .lock()
+            .unwrap()
+            .get(browser_context_id)
+            .cloned()
     }
 
     /// Store the ref table from the latest AX snapshot (`eN` -> entry).
@@ -626,7 +784,7 @@ impl Browser {
                     ));
                 }
                 eprintln!("[gladius] recovery: relaunching the owned engine (once per death)");
-                let inner = match launch().await {
+                let inner = match launch(self.excluded_contexts.clone()).await {
                     Ok(inner) => inner,
                     Err(e) => {
                         // The attempt is spent: the flag stays set until a
@@ -669,7 +827,7 @@ impl Browser {
                          engine)",
                     ));
                 }
-                let inner = launch().await?;
+                let inner = launch(self.excluded_contexts.clone()).await?;
                 self.respawn_used.store(false, Ordering::SeqCst);
                 Ok(self.install(inner).await)
             }
@@ -679,6 +837,7 @@ impl Browser {
     /// Make `inner` the live connection (its pid for diagnostics, its shared
     /// handle for the fast path). Returns the handle to hand out.
     async fn install(&self, inner: Inner) -> Arc<Shared> {
+        self.generation.fetch_add(1, Ordering::SeqCst);
         let shared = inner.shared.clone();
         let owned_pid: Option<u32> = match &inner.engine {
             Engine::Owned { pid, .. } => Some(*pid),
@@ -1557,6 +1716,18 @@ impl Browser {
                     }
                     *shared.session.lock().await = None;
                     *shared.target.lock().await = None;
+                    // Clean protocol close before the socket is dropped: it is
+                    // what lets the external engine honour `disposeOnDetach`
+                    // for the contexts hand created. Measured on the pinned
+                    // build: a graceful close disposes them, while an abrupt
+                    // socket drop left the context object behind after closing
+                    // its pages. Best-effort and bounded - the connection is
+                    // being discarded anyway.
+                    let _ = tokio::time::timeout(Duration::from_millis(500), async {
+                        let mut sink = shared.sink.lock().await;
+                        let _ = sink.close().await;
+                    })
+                    .await;
                     reader.abort();
                     eprintln!(
                         "[gladius] detach: external engine left running (not owned) {cdp_url}"
@@ -1785,13 +1956,26 @@ impl Browser {
                 continue;
             }
             let tid = t.get("targetId").and_then(|v| v.as_str()).unwrap_or("");
-            out.push(json!({
+            let mut row = json!({
                 "targetId": tid,
                 "type": t.get("type").and_then(|v| v.as_str()).unwrap_or(""),
                 "url": t.get("url").and_then(|v| v.as_str()).unwrap_or(""),
                 "title": t.get("title").and_then(|v| v.as_str()).unwrap_or(""),
                 "active": Some(tid.to_string()) == active,
-            }));
+            });
+            // Say when a target is an isolated context's page, so a caller can
+            // see why `targets select` / `evaluate target=` will refuse it.
+            // The field is absent for default-context targets (legacy shape).
+            if let Some(name) = t
+                .get("browserContextId")
+                .and_then(|v| v.as_str())
+                .and_then(|id| shared.excluded_contexts.lock().unwrap().get(id).cloned())
+            {
+                if let Some(obj) = row.as_object_mut() {
+                    obj.insert("context".to_string(), json!(name));
+                }
+            }
+            out.push(row);
         }
         Ok(json!({"targets": out}))
     }
@@ -1847,6 +2031,24 @@ impl Browser {
             .iter()
             .find(|t| t.get("targetId").and_then(|v| v.as_str()) == Some(target_id));
         let hit = hit.ok_or(format!("targets: no target with id {target_id}"))?;
+        // A page in a registered isolated context is not part of the legacy
+        // page space: refuse it by name rather than sharing one active session
+        // between two selection models.
+        let ctx_name = hit
+            .get("browserContextId")
+            .and_then(|v| v.as_str())
+            .and_then(|id| shared.excluded_contexts.lock().unwrap().get(id).cloned());
+        if let Some(name) = ctx_name {
+            return Err(typed_marker(
+                ToolCode::InvalidTarget,
+                ToolReason::NotFound,
+                &format!(
+                    "targets: target {target_id} belongs to isolated browser context '{name}' \
+                     (legacy tabs and select cover the default context only; use the context \
+                     tool for that page)"
+                ),
+            ));
+        }
         if hit.get("type").and_then(|v| v.as_str()) != Some("page") {
             let ty = hit.get("type").and_then(|v| v.as_str()).unwrap_or("");
             return Err(format!(
@@ -1892,6 +2094,26 @@ impl Browser {
         )
         .await
         .map_err(|e| format!("targets: no target with id {target_id}: {e}"))?;
+        // Boundary: a page in a registered isolated browser context is not
+        // reachable through the legacy realm-routing path. Without this check
+        // `evaluate target=` is a hole straight through the advertised
+        // separation (only `tabs select` used to be guarded).
+        if let Some(name) = info
+            .get("targetInfo")
+            .and_then(|t| t.get("browserContextId"))
+            .and_then(|v| v.as_str())
+            .and_then(|id| shared.excluded_contexts.lock().unwrap().get(id).cloned())
+        {
+            return Err(typed_marker(
+                ToolCode::InvalidTarget,
+                ToolReason::NotFound,
+                &format!(
+                    "evaluate: target {target_id} belongs to isolated browser context '{name}' \
+                     (legacy realm routing covers the default context only; use the context \
+                     tool for that page)"
+                ),
+            ));
+        }
         let ttype = info
             .get("targetInfo")
             .and_then(|t| t.get("type"))
@@ -2366,7 +2588,7 @@ fn engine_dead_transport(shared: &Arc<Shared>, what: &str) -> String {
 /// The page's JavaScript threw, typed at the error site (SPEC ┬º4.1, S3.3):
 /// `js_error`/`thrown`, never the untyped `code:"error"` residue. The prose is
 /// the same string the 0.7.x envelope carried.
-fn js_thrown(ex: &Value) -> String {
+pub(crate) fn js_thrown(ex: &Value) -> String {
     typed_marker(
         ToolCode::JsError,
         ToolReason::Thrown,
@@ -2377,7 +2599,7 @@ fn js_thrown(ex: &Value) -> String {
 /// A `Runtime.evaluate` reply that carried no value - JavaScript `undefined`
 /// or another valueless type, which stays distinguishable from an explicit
 /// `null`: `js_error`/`undefined_result` (SPEC ┬º4.1, S3.3).
-fn js_no_value(robj: &Value) -> String {
+pub(crate) fn js_no_value(robj: &Value) -> String {
     let t = robj
         .get("type")
         .and_then(|v| v.as_str())
@@ -2453,7 +2675,7 @@ async fn send_raw_with_timeout(
 /// session is gone (closed/crashed target, dropped session state, dead
 /// execution context) and must be invalidated ÔÇö never reused, never
 /// retried.
-fn is_session_death(error: &str) -> bool {
+pub(crate) fn is_session_death(error: &str) -> bool {
     let l = error.to_lowercase();
     l.contains("session with given id")
         || l.contains("cannot find context")
@@ -2676,7 +2898,10 @@ async fn ordered_targets(shared: &Arc<Shared>) -> Result<Vec<Value>, String> {
 }
 
 /// Page targets excluding devtools internals, in raw CDP order (unstable -
-/// use `ordered_targets` for anything index-facing).
+/// use `ordered_targets` for anything index-facing). Pages belonging to a
+/// registered isolated browser context (`crate::contexts`) are excluded: the
+/// legacy tab space is the default context only, so a legacy `tabs`/`select`
+/// can never attach to - or act on - a context's page.
 async fn page_targets(shared: &Arc<Shared>) -> Result<Vec<Value>, String> {
     let targets = send_raw(shared, "Target.getTargets", json!({}), None).await?;
     let infos = targets
@@ -2684,6 +2909,7 @@ async fn page_targets(shared: &Arc<Shared>) -> Result<Vec<Value>, String> {
         .and_then(|v| v.as_array())
         .cloned()
         .unwrap_or_default();
+    let excluded = shared.excluded_contexts.lock().unwrap().clone();
     Ok(infos
         .into_iter()
         .filter(|t| {
@@ -2693,6 +2919,10 @@ async fn page_targets(shared: &Arc<Shared>) -> Result<Vec<Value>, String> {
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .starts_with("devtools://")
+                && !t
+                    .get("browserContextId")
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|id| excluded.contains_key(id))
         })
         .collect())
 }
@@ -3387,16 +3617,16 @@ fn headed_unsupported_error() -> String {
 /// `GLADIUS_CDP_URL` set means attach to the external engine instead of
 /// launching; anything else launches the owned Chromium
 /// (`launch_owned_chromium`, the default and only launch path).
-async fn launch() -> Result<Inner, String> {
+async fn launch(excluded_contexts: Arc<Mutex<HashMap<String, String>>>) -> Result<Inner, String> {
     if headed_requested() {
         return Err(headed_unsupported_error());
     }
     // A bad caps value is a config error: fail fast on either path.
     backend_caps()?;
     if let Some(raw) = cdp_url_override() {
-        return attach(&raw).await;
+        return attach(&raw, excluded_contexts).await;
     }
-    launch_owned_chromium().await
+    launch_owned_chromium(excluded_contexts).await
 }
 
 /// Pinned Chromium identity (keep in lockstep with
@@ -3645,11 +3875,13 @@ where
 /// exactly like today's single launch ÔÇö same argv, same readiness poll,
 /// same budgets, same fail-closed confinement ÔÇö and exhaustion surfaces the
 /// last attempt's error unchanged.
-async fn launch_owned_chromium() -> Result<Inner, String> {
+async fn launch_owned_chromium(
+    excluded_contexts: Arc<Mutex<HashMap<String, String>>>,
+) -> Result<Inner, String> {
     retry_attempts(
         OWNED_LAUNCH_ATTEMPTS,
         |e: &String| launch_startup_exit_is_retryable(e),
-        launch_owned_chromium_once,
+        || launch_owned_chromium_once(excluded_contexts.clone()),
     )
     .await
 }
@@ -3670,7 +3902,9 @@ async fn launch_owned_chromium() -> Result<Inner, String> {
 /// post-connect session/target flow is never forked. Every wait here is
 /// bounded (the browser also drops idle browser WS connections at ~60-70 s,
 /// so clients connect lazily on first tool use and bound every wait).
-async fn launch_owned_chromium_once() -> Result<Inner, String> {
+async fn launch_owned_chromium_once(
+    excluded_contexts: Arc<Mutex<HashMap<String, String>>>,
+) -> Result<Inner, String> {
     let deadline = startup_timeout();
     // Fallback authority first (S2.2): a record whose owner is dead gets its
     // engine killed and its profile swept. The dir-only sweep below then
@@ -3835,7 +4069,7 @@ async fn launch_owned_chromium_once() -> Result<Inner, String> {
         ));
     }
     let (sink, stream) = ws.split();
-    let shared = new_shared(sink);
+    let shared = new_shared(sink, excluded_contexts);
     // This connection owns its engine: a transport death is recoverable by
     // relaunching it (S2.1), while an attached engine never is.
     shared.owned.store(true, Ordering::SeqCst);
@@ -4569,7 +4803,7 @@ mod tests {
         let url = format!("ws://127.0.0.1:{port}/");
         let (ws, _) = connect_async(&url).await.expect("ws connect");
         let (sink, stream) = ws.split();
-        let shared = new_shared(sink);
+        let shared = new_shared(sink, no_excluded_contexts());
         let reader = tokio::spawn(reader_loop(stream, shared.clone()));
         let mut std_cmd = std::process::Command::new("powershell");
         std_cmd
@@ -4613,6 +4847,8 @@ mod tests {
             snap_seq: AtomicUsize::new(1),
             snap_cache: AsyncMutex::new(None),
             snapshot_lock: AsyncMutex::new(()),
+            excluded_contexts: no_excluded_contexts(),
+            generation: AtomicU64::new(0),
         };
         TestRig {
             browser,
@@ -4704,7 +4940,7 @@ mod tests {
         let url = format!("ws://127.0.0.1:{port}/");
         let (ws, _) = connect_async(&url).await.expect("ws connect");
         let (sink, stream) = ws.split();
-        let shared = new_shared(sink);
+        let shared = new_shared(sink, no_excluded_contexts());
         let reader = tokio::spawn(reader_loop(stream, shared.clone()));
         let mut std_cmd = std::process::Command::new("powershell");
         std_cmd
@@ -4748,6 +4984,8 @@ mod tests {
             snap_seq: AtomicUsize::new(1),
             snap_cache: AsyncMutex::new(None),
             snapshot_lock: AsyncMutex::new(()),
+            excluded_contexts: no_excluded_contexts(),
+            generation: AtomicU64::new(0),
         };
         RecordingRig {
             browser,
@@ -5179,7 +5417,9 @@ mod tests {
             "Target closed.",
         ] {
             let fake = scripted_fake(Some(msg.to_string())).await;
-            let inner = attach(&fake.ws_url).await.expect("attach over ws");
+            let inner = attach(&fake.ws_url, no_excluded_contexts())
+                .await
+                .expect("attach over ws");
             let b = wrap_attached(inner);
             let before = probe_enables(&fake);
             let r = b.command("Page.enable", json!({"probe": true}), true).await;
@@ -5232,7 +5472,9 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn wait_for_expression_fails_fast_on_stale_session() {
         let fake = scripted_fake(Some("Session with given id not found".to_string())).await;
-        let inner = attach(&fake.ws_url).await.expect("attach over ws");
+        let inner = attach(&fake.ws_url, no_excluded_contexts())
+            .await
+            .expect("attach over ws");
         let b = wrap_attached(inner);
         let t0 = Instant::now();
         let r = b.wait_for_expression("true", Duration::from_secs(10)).await;
@@ -5266,7 +5508,9 @@ mod tests {
     async fn wait_for_expression_rejects_truthy_on_replacement_session() {
         let fake = scripted_fake(None).await;
         script_evals(&fake, vec![false, false, false, true]);
-        let inner = attach(&fake.ws_url).await.expect("attach over ws");
+        let inner = attach(&fake.ws_url, no_excluded_contexts())
+            .await
+            .expect("attach over ws");
         let b = wrap_attached(inner);
         let etx = fake.event_tx.clone();
         tokio::spawn(async move {
@@ -5302,7 +5546,9 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn wait_for_expression_stops_on_mid_wait_detach() {
         let fake = scripted_fake(None).await;
-        let inner = attach(&fake.ws_url).await.expect("attach over ws");
+        let inner = attach(&fake.ws_url, no_excluded_contexts())
+            .await
+            .expect("attach over ws");
         let b = wrap_attached(inner);
         // Establish the session the wait pins (first poll latches S1).
         assert!(b.eval("false").await.is_ok(), "session established");
@@ -5344,7 +5590,9 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn wait_network_idle_stops_on_dead_session() {
         let fake = scripted_fake(None).await;
-        let inner = attach(&fake.ws_url).await.expect("attach over ws");
+        let inner = attach(&fake.ws_url, no_excluded_contexts())
+            .await
+            .expect("attach over ws");
         let b = wrap_attached(inner);
         // Establish the session the wait pins (S1).
         assert!(b.eval("1").await.is_ok(), "session established");
@@ -5412,7 +5660,9 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn wait_for_network_idle_honors_budget_when_enable_is_held() {
         let fake = fake_cdp_withholding(&["Network.enable"]).await;
-        let inner = attach(&fake.ws_url).await.expect("attach over ws");
+        let inner = attach(&fake.ws_url, no_excluded_contexts())
+            .await
+            .expect("attach over ws");
         let b = wrap_attached(inner);
         assert!(
             b.eval("1+1").await.is_ok(),
@@ -5527,7 +5777,9 @@ mod tests {
             }
         });
         let ws_url = format!("ws://127.0.0.1:{port}/");
-        let inner = attach(&ws_url).await.expect("attach over ws");
+        let inner = attach(&ws_url, no_excluded_contexts())
+            .await
+            .expect("attach over ws");
         let b = wrap_attached(inner);
         // First network-idle enable lands on S1.
         b.ensure_network().await.expect("enable on S1");
@@ -5792,6 +6044,8 @@ mod tests {
             snap_seq: AtomicUsize::new(1),
             snap_cache: AsyncMutex::new(None),
             snapshot_lock: AsyncMutex::new(()),
+            excluded_contexts: no_excluded_contexts(),
+            generation: AtomicU64::new(0),
         }
     }
 
@@ -5825,7 +6079,9 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn attach_over_ws_runs_shared_flow() {
         let fake = fake_cdp().await;
-        let inner = attach(&fake.ws_url).await.expect("attach over ws");
+        let inner = attach(&fake.ws_url, no_excluded_contexts())
+            .await
+            .expect("attach over ws");
         assert!(
             matches!(inner.engine, Engine::Attached { .. }),
             "ws attach must build the attached engine"
@@ -5845,7 +6101,9 @@ mod tests {
     async fn attach_over_http_resolves_via_json_version() {
         let fake = fake_cdp().await;
         let (base, http) = fake_version_http(fake.ws_url.clone()).await;
-        let inner = attach(&base).await.expect("attach over http");
+        let inner = attach(&base, no_excluded_contexts())
+            .await
+            .expect("attach over http");
         match &inner.engine {
             Engine::Attached { cdp_url } => assert_eq!(
                 cdp_url, &fake.ws_url,
@@ -5877,7 +6135,9 @@ mod tests {
         // ownership rule.
         let canary = std::env::temp_dir().join(format!("gladius-2147483646-canary-{ext_pid}"));
         std::fs::create_dir_all(&canary).expect("plant canary");
-        let inner = attach(&fake.ws_url).await.expect("attach");
+        let inner = attach(&fake.ws_url, no_excluded_contexts())
+            .await
+            .expect("attach");
         assert!(
             matches!(inner.engine, Engine::Attached { .. }),
             "attach must build the attached engine (which owns no profile by construction)"
@@ -5979,7 +6239,7 @@ mod tests {
         for on in ["1", "true", "TRUE", "yes"] {
             std::env::set_var("GLADIUS_HEADED", on);
             assert!(headed_requested(), "must request headed: {on:?}");
-            match launch().await {
+            match launch(no_excluded_contexts()).await {
                 Ok(_) => panic!("headed launch must fail for {on:?}"),
                 Err(e) => assert!(
                     e.contains("headless-only") && e.contains("not supported"),
