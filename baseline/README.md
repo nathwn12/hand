@@ -11,8 +11,8 @@ reproduce, taken from the revisions the specification pins:
 32 tools in total, which is the specification's first-release floor
 ([specification](../docs/SPEC.md), "Initial public surface and lifecycle").
 
-This directory is evidence and a gate, not a product. Nothing here is
-implemented by `hand-mcp` yet, and no claim is made that the product exists.
+This directory captures catalog evidence and provides a compatibility gate. It
+does not by itself prove the implementation's behavior or the complete suite.
 
 ## What is captured
 
