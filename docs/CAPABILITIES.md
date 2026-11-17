@@ -129,14 +129,22 @@ existing target takes precedence over the hidden-launch request.
   |---|---:|---:|
   | warm-ping | 0.071 ms | Gladius 0.115 ms, Puppet 0.093 ms |
   | browser-snapshot | 18.6 ms | Gladius 29.1 ms |
-  | desktop-enumerate | 1.65 ms | Puppet 1.99 ms |
+  | desktop-enumerate | 1.854 ms | Puppet 1.683 ms |
 
-  `desktop-capture` is **not measured**. The 1280×720 fixture proved the native
-  path live (image and source 1280×720, `printwindow`, content check, matching
-  window identity, foreground and cursor unchanged), but the required
-  foreground/cursor stability could not be held for 100 attempts on an active
-  desktop and the fixture refuses to steal focus. Its numeric target remains
-  unverified, and load during these runs was not controlled.
+  Enumerate is one shared measurement: both products ran against the same
+  content-addressed fixture (`sha256:d6a8a05b…`) on the same machine hash, 100
+  attempts, 0 failures each. hand is **10 % slower** than Puppet here, and that
+  is what the receipt says.
+
+  `desktop-capture` is **measured but not claimable**. One run on an active
+  desktop produced 100 attempts at p95 247.3 ms against the 500 ms target, but 37
+  attempts failed the safety precondition (`cursorUnchanged` false, one
+  `foregroundUnchanged` false), so the receipt's verdict is `fail` and the release
+  gate stays blocked. Over the 63 attempts that did hold the precondition, p95 was
+  224.7 ms with a 232.9 ms maximum — under target, but a subset is not a receipt.
+  A clean row needs an idle desktop for the full 100. The run also rejected the
+  binary as an unverified release because it was invoked from its install path;
+  `target\release\hand.exe` is the path the identity check accepts.
 - Windows x64 only; no macOS/Linux desktop support is implied.
 
 ### Scope notes
