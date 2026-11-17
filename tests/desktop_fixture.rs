@@ -1,5 +1,5 @@
 //! Acceptance scenario: the first desktop ACT/VERIFY loop (spec § Acceptance
-//! scenarios 3 and 11, desktop half).
+//! scenario 3, positive half, and scenario 11's private-desktop half).
 //!
 //! One controlled fixture program runs on a PRIVATE Windows desktop that the
 //! desktop engine created for this call. The engine posts a keyboard act and a
@@ -21,7 +21,9 @@
 //!
 //! Not claimed here: that every application accepts posted input (it does not;
 //! the fixture is a cooperating app), that UIA patterns work on a private
-//! desktop, or anything about a joined visible-browser/desktop scenario.
+//! desktop, or anything about a joined visible-browser/desktop scenario. An
+//! ambiguous element selector is refused by the engine's own element resolver
+//! and is not re-proven here; the stale-target half is.
 //!
 //! Prerequisites: an interactive Windows session (the engine refuses to launch
 //! where a private desktop cannot be established) and a `rustc` to compile the
