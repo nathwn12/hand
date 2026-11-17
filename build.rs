@@ -2,7 +2,10 @@
 //!
 //! `hand --version` prints these values, so a deployed `hand.exe` can be
 //! compared against `git rev-parse HEAD` instead of guessed at from its mtime.
-//! A `-dirty` marker means the tree held uncommitted changes at build time.
+//! A `-dirty` marker means a *tracked* file held uncommitted changes at build
+//! time. Untracked files are excluded on purpose: another process's receipts or
+//! scratch would otherwise mark every build dirty, which is a false provenance
+//! claim about code that never entered the binary.
 //!
 //! The rerun set is explicit: a commit moves HEAD without touching any
 //! working-tree mtime, so cargo's default would reuse a stale stamp. The loose
@@ -23,7 +26,7 @@ fn main() {
     println!("cargo:rerun-if-changed=crates");
 
     let sha = git(&["rev-parse", "HEAD"]).unwrap_or_else(|| "unknown".to_string());
-    let dirty = git(&["status", "--porcelain"]).is_some_and(|s| !s.is_empty());
+    let dirty = git(&["status", "--porcelain", "--untracked-files=no"]).is_some_and(|s| !s.is_empty());
 
     println!("cargo:rustc-env=HAND_GIT_SHA={sha}");
     println!("cargo:rustc-env=HAND_GIT_DIRTY={}", u8::from(dirty));
