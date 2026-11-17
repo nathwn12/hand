@@ -59,12 +59,29 @@ const version = execFileSync(installed, ["--version"], { encoding: "utf8" }).tri
 const stamp = version.match(/\(([0-9a-f]{7,40})(-dirty)?[,)]/);
 if (!stamp) fail(`${installed} prints no commit stamp: "${version}"`);
 const [, sha, dirty] = stamp;
-const head = git(["rev-list", "-1", "HEAD", "--", ...BUILD_INPUTS]);
-if (!(head.startsWith(sha) || sha.startsWith(head.slice(0, sha.length)))) {
-  fail(`installed ${sha}, last build-input commit ${head.slice(0, 12)} — rebuild and install before trusting a live probe`);
+const head = git(["rev-parse", "HEAD"]);
+const sameCommit = head.startsWith(sha) || sha.startsWith(head.slice(0, sha.length));
+if (!sameCommit) {
+  // The stamp records HEAD at build time. That is fine as long as the binary's
+  // inputs have not moved since: no build-input file may differ in between.
+  let ancestor = true;
+  try {
+    git(["merge-base", "--is-ancestor", sha, "HEAD"]);
+  } catch {
+    ancestor = false;
+  }
+  if (!ancestor) {
+    fail(`installed ${sha} is not in this branch's history, HEAD ${head.slice(0, 12)} — rebuild and install`);
+  }
+  const changed = git(["diff", "--name-only", `${sha}..HEAD`, "--", ...BUILD_INPUTS]);
+  if (changed) {
+    fail(`installed ${sha} predates build-input changes: ${changed.split("\n").slice(0, 3).join(", ")} — rebuild and install`);
+  }
 }
 if (dirty) fail(`installed build came from a dirty tree (${sha}-dirty)`);
-console.log(`PASS install bytes: ${installed} is ${sha.slice(0, 12)}, the last commit that can change it`);
+console.log(
+  `PASS install bytes: ${installed} is ${sha.slice(0, 12)}${sameCommit ? ", HEAD" : ", with no build input changed since"}`,
+);
 
 // 3: the loaded process, proven by image path and start time.
 if (flag("--loaded")) {
