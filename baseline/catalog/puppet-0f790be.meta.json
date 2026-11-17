@@ -1,0 +1,136 @@
+{
+  "args": [],
+  "capturedAtLocal": "Wed Nov 18 2026 03:58:33 GMT+0800 (Philippine Standard Time)",
+  "capturedAtUtc": "2026-11-17T19:58:33.241Z",
+  "catalog": {
+    "canonicalHash": "sha256:e417d1025863d2ccb799ecf324284dd62e94aedb8c1831c75aea29ff6f1217b2",
+    "duplicateNames": [],
+    "legacyVsModernResultDiff": [
+      "resultType"
+    ],
+    "schemaHashes": {
+      "cursor": {
+        "input": "sha256:99334726611ccf58a148b0814696bfa6fe08c1b2d027e946beccf5a74331c9aa",
+        "output": "sha256:e37f34231321d44ae2a942dea3cbe7dcced0f97fe8fbe689cd1fd08cc7e48d85"
+      },
+      "diff": {
+        "input": "sha256:eb4c061971587064e8ddd13fdbf0294d535c80ef92041c0cca1a6f740b7700cf",
+        "output": "sha256:425d345154875706ae99080e4978abe2e23ee9b553fb2fe8b91249e542a2e069"
+      },
+      "do": {
+        "input": "sha256:3078e90863418025922de296560d7dd32f81a01f2b5a54a58bfbfe0bd69dfcb9",
+        "output": "sha256:02da92933a44a4aa2889527f768822b1e8593bdae9bc4d33494ca423cda798e1"
+      },
+      "elements": {
+        "input": "sha256:90a47850a03f2b35582bc32948ce8857356586af560d3f2e6edc1270cde4ec76",
+        "output": "sha256:84c4ae44eb67ce585facf319056de27e1403740dec2ce9926c22fbf7f1d5e8bd"
+      },
+      "list_windows": {
+        "input": "sha256:12d99fbba06d93ae69c9209afa46161789b6d8b722a47aa53e8dd791cd6d82ba",
+        "output": "sha256:4b50c43eee0b6030b3b28fb4ac2b0c2a998a1c192c0937dd3a7536ddbcb0f487"
+      },
+      "screenshot": {
+        "input": "sha256:b53d995e3a4b97949930677b4b6cf6cc66bfe23482d8f634888df634ee774f9e",
+        "output": "sha256:29a2533234c3c38ea1bea0d070038b398879e32b1afb4f4bf2ce3937ef4eb2cf"
+      },
+      "window": {
+        "input": "sha256:452ef028fc85067625ed0c7691c293cb5041364da0ad7e95d54630327844231f",
+        "output": "sha256:24d01197c3c8ed560790288d7810d56cff5dc6ac13c7370abb38fe26e137de3f"
+      }
+    },
+    "toolCount": 7,
+    "toolNames": [
+      "screenshot",
+      "diff",
+      "list_windows",
+      "window",
+      "do",
+      "cursor",
+      "elements"
+    ]
+  },
+  "command": "Q:\\PROJECTS\\PERSONAL\\puppet\\target\\release\\puppet.exe",
+  "cwd": "Q:\\PROJECTS\\PERSONAL\\hand-mcp\\baseline",
+  "executable": {
+    "bytes": 2460672,
+    "path": "Q:\\PROJECTS\\PERSONAL\\puppet\\target\\release\\puppet.exe",
+    "sha256": "sha256:ff935556b0f0d7175d514005b431fa4ce6db5aaf61d0866da103ec91ed61e212"
+  },
+  "files": {
+    "discover.json": {
+      "bytes": 5961,
+      "canonical": "sha256:48da7e9b3c4a497220cabf9c88a9cd10ee0dada68951c52de01e3cf73b601a64",
+      "path": "catalog\\puppet-0f790be.discover.json",
+      "sha256": "sha256:5dc80f8b928e801cd977f830f4527858daa01522ab69b83a5e88d077e003cde8"
+    },
+    "initialize.json": {
+      "bytes": 5885,
+      "canonical": "sha256:ca657d5ad07df66b17a9158b7beb4f29bb165aed065bdf75b7118504708ed91a",
+      "path": "catalog\\puppet-0f790be.initialize.json",
+      "sha256": "sha256:5197fa81fd44e37b3efbc414cb6c0b9262b0348c9275905fe8f6b17c52326a4f"
+    },
+    "ping.json": {
+      "bytes": 3,
+      "canonical": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "path": "catalog\\puppet-0f790be.ping.json",
+      "sha256": "sha256:ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    "tools.json": {
+      "bytes": 46258,
+      "canonical": "sha256:e417d1025863d2ccb799ecf324284dd62e94aedb8c1831c75aea29ff6f1217b2",
+      "path": "catalog\\puppet-0f790be.tools.json",
+      "sha256": "sha256:b273250e524dc7bc650b6da91dc131e8b304176705376f84726dde692cbd16c8"
+    },
+    "tools.modern.json": {
+      "bytes": 46286,
+      "canonical": "sha256:29fb977390f295e0411f19004d144850503fa567bd8158aa53036f4b192c96f1",
+      "path": "catalog\\puppet-0f790be.tools.modern.json",
+      "sha256": "sha256:3876774f07df8872bc5b7118fa45993e5b480750221e5495aeb5494297ea09e7"
+    },
+    "transcript.jsonl": {
+      "bytes": 67654,
+      "path": "catalog\\puppet-0f790be.transcript.jsonl",
+      "sha256": "sha256:4b1e499435c2e5b6dc451c73fe65de6039e4e984e0767211d1d99d4fe97cbde2"
+    }
+  },
+  "label": "Puppet 8.0.0 pinned at 0f790be (binary built from 6334393, src identical)",
+  "node": "v26.13.1",
+  "platform": "win32 x64",
+  "requests": {
+    "modernProtocol": "2026-07-28",
+    "protocol": "2025-11-25",
+    "timingsMs": {
+      "discoverMs": 0.219,
+      "initializeMs": 6.888,
+      "pingMs": 0.666,
+      "toolsListModernMs": 0.214,
+      "toolsListMs": 0.302
+    }
+  },
+  "server": {
+    "exit": {
+      "code": 0,
+      "signal": null
+    },
+    "initialize": {
+      "capabilities": {
+        "tools": {
+          "listChanged": false
+        }
+      },
+      "protocolVersion": "2025-11-25",
+      "serverInfo": {
+        "name": "puppet",
+        "version": "8.0.0"
+      }
+    },
+    "stderr": ""
+  },
+  "unsolicitedFrames": [],
+  "version": {
+    "command": "Q:\\PROJECTS\\PERSONAL\\puppet\\target\\release\\puppet.exe --version",
+    "status": 0,
+    "stderr": "",
+    "stdout": "puppet 8.0.0 (6334393c8e670be7f9c06678267a375f4c22b699)"
+  }
+}

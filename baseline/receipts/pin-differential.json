@@ -1,0 +1,105 @@
+{
+  "$comment": "How the committed catalogue is known to be the pinned revisions' catalogue. Three independent facts per source: (1) the binary that produced the committed capture stamps the commit it was built from, and that commit's build inputs are byte-identical to the pin; (2) a fresh release build made from `git archive <pin>` emits a canonically identical tools/list result; (3) the archive and both binaries are hashed. Read-only: no source repository was modified.",
+  "capturedAtUtc": "2026-11-18T00:00:00Z",
+  "method": [
+    "git -C <repo> diff --stat <binary-stamp-commit> <pin> -- src Cargo.toml Cargo.lock build.rs  (expect empty: identical build inputs)",
+    "git -C <repo> archive --format=tar -o <tar> <pin>  (read-only export; no worktree, no index change)",
+    "tar -xf <tar> -C <dir>; cargo build --release --locked --offline  (pinned toolchain from rust-toolchain.toml)",
+    "node baseline/scripts/capture-mcp-catalog.mjs --cmd <pin-build>/target/release/<exe> --out <temp>",
+    "node baseline/scripts/capture-mcp-catalog.mjs --cmd <repo>/target/release/<exe> --out baseline/catalog/<name>",
+    "compare: tools/list canonical hash of the pin build vs the installed binary"
+  ],
+  "sources": {
+    "gladius": {
+      "repo": "Q:\\PROJECTS\\PERSONAL\\gladius",
+      "pin": "59c6d77",
+      "pinSubject": "docs(gladius): link the enabled issue tracker",
+      "version": "0.8.0",
+      "archive": {
+        "tar": "baseline/_work/gladius-59c6d77.tar (deleted after the build; hash is the identity)",
+        "sha256": "sha256:5b85600b36ccd5d99e7e675bc84e85b9a2ca2f1f84176b62e8c0eaac46846e31",
+        "gitVersion": "2.56.0.windows.4",
+        "reproducedByteIdentical": true
+      },
+      "sourceIdentity": {
+        "binaryStampCommit": "d801b173aca81532209e2aed27669606214a503d",
+        "command": "git diff --stat d801b173aca81532209e2aed27669606214a503d 59c6d77 -- src Cargo.toml Cargo.lock build.rs",
+        "output": "",
+        "reading": "the installed binary's build inputs are byte-identical to the pin"
+      },
+      "pinVsHead": {
+        "command": "git diff --stat 59c6d77 HEAD -- src Cargo.toml Cargo.lock build.rs tests",
+        "output": " tests/claims.rs | 4 ++--",
+        "reading": "no src/, manifest, lockfile or build.rs change since the pin; only a test's claim text moved"
+      },
+      "build": {
+        "command": "cargo build --release --locked --offline",
+        "toolchain": "1.88.0 (rust-toolchain.toml)",
+        "durationMn": 1.4,
+        "binarySha256": "sha256:f83d1a2c85d0d1fb073d7cfa4def5d0e93632d85f886da0bdc04d505d8551ee7",
+        "versionStamp": "gladius 0.8.0 (unknown-dirty)",
+        "versionStampNote": "build.rs reads git from the extracted directory, which sits inside this (uncommitted) repo; the stamp is meaningless for an archive build and is not used as identity"
+      },
+      "installedBinary": {
+        "path": "Q:\\PROJECTS\\PERSONAL\\gladius\\target\\release\\gladius.exe",
+        "sha256": "sha256:3dffc6f512c263b409baddd29481c4662a9f438f318ac189e8eee344d5c5dd7e",
+        "versionStamp": "gladius 0.8.0 (d801b173aca81532209e2aed27669606214a503d)"
+      },
+      "catalog": {
+        "toolCount": 25,
+        "canonicalHashPinBuild": "sha256:bfbe2ee91fa50238c6d83b602cdb7d3e21654f273a6c5e6f37bd2adf21bee275",
+        "canonicalHashInstalled": "sha256:bfbe2ee91fa50238c6d83b602cdb7d3e21654f273a6c5e6f37bd2adf21bee275",
+        "identical": true
+      }
+    },
+    "puppet": {
+      "repo": "Q:\\PROJECTS\\PERSONAL\\puppet",
+      "pin": "0f790be",
+      "pinSubject": "docs(puppet): align README and release guidance",
+      "version": "8.0.0",
+      "archive": {
+        "tar": "baseline/_work/puppet-0f790be.tar (deleted after the build; hash is the identity)",
+        "sha256": "sha256:e89446ee785174aab5af3306113b75e02cc57cec040cb8cd872de4c3ef3f2ff7",
+        "gitVersion": "2.56.0.windows.4",
+        "reproducedByteIdentical": true
+      },
+      "sourceIdentity": {
+        "binaryStampCommit": "6334393c8e670be7f9c06678267a375f4c22b699",
+        "command": "git diff --stat 6334393c8e670be7f9c06678267a375f4c22b699 0f790be -- src Cargo.toml Cargo.lock build.rs",
+        "output": "",
+        "reading": "the installed binary's build inputs are byte-identical to the pin"
+      },
+      "pinVsHead": {
+        "command": "git diff --stat 0f790be HEAD -- src Cargo.toml Cargo.lock build.rs tests",
+        "output": "",
+        "reading": "no source change of any kind since the pin"
+      },
+      "build": {
+        "command": "cargo build --release --locked --offline",
+        "toolchain": "1.87.0 (rust-toolchain.toml)",
+        "durationMn": 0.8,
+        "binarySha256": "sha256:5147f0c93618b17942eae3d56b9adb1f1a99a2ccca16f1c5940fe420d69db96e",
+        "versionStamp": "puppet 8.0.0 (unknown-dirty)",
+        "versionStampNote": "build.rs reads git from the extracted directory, which sits inside this (uncommitted) repo; the stamp is meaningless for an archive build and is not used as identity"
+      },
+      "installedBinary": {
+        "path": "Q:\\PROJECTS\\PERSONAL\\puppet\\target\\release\\puppet.exe",
+        "sha256": "sha256:ff935556b0f0d7175d514005b431fa4ce6db5aaf61d0866da103ec91ed61e212",
+        "versionStamp": "puppet 8.0.0 (6334393c8e670be7f9c06678267a375f4c22b699)"
+      },
+      "catalog": {
+        "toolCount": 7,
+        "canonicalHashPinBuild": "sha256:e417d1025863d2ccb799ecf324284dd62e94aedb8c1831c75aea29ff6f1217b2",
+        "canonicalHashInstalled": "sha256:e417d1025863d2ccb799ecf324284dd62e94aedb8c1831c75aea29ff6f1217b2",
+        "identical": true
+      }
+    }
+  },
+  "limits": [
+    "A catalogue is not a behaviour guarantee: the tool schemas, descriptions and annotations are pinned, not the handlers. Runtime semantics, typed error codes, deadlines and safety behaviour are covered by each project's own tests, not by this baseline.",
+    "No tool was called during capture. initialize, notifications/initialized, ping, tools/list (legacy and 2026-07-28 `_meta`) and server/discover are the only methods sent, so no browser was launched and no desktop was touched.",
+    "Only tools/list is captured. prompts/list, resources/list and logging are not advertised by either server's capabilities and were not probed.",
+    "The pin-built binary reports `unknown-dirty` because build.rs runs git inside a directory of this uncommitted repo; identity rests on the archive hash and the two build-input diffs, not on that stamp.",
+    "The archive hash was reproduced byte-identically by re-running `git archive` on this machine (git 2.56.0.windows.4). A different git version may write a different pax header, so the hash identifies the tree as exported here, not a universal constant."
+  ]
+}

@@ -1,0 +1,3531 @@
+{
+  "$comment": "Derived baseline for hand-mcp. Tools are the pinned legacy catalogues with the documented browser_/desktop_ prefix; no schema, description, annotation or ordering was changed. Regenerate with: node baseline/scripts/build-hand-catalog.mjs",
+  "blockers": [],
+  "counts": {
+    "browser": 25,
+    "desktop": 7,
+    "total": 32
+  },
+  "notes": [],
+  "provenance": {
+    "generator": "baseline/scripts/build-hand-catalog.mjs",
+    "migration": "one-to-one name mapping only: browser_<legacy> / desktop_<legacy>; inputSchema, outputSchema, annotations, title and description are carried over unchanged",
+    "sources": {
+      "gladius": {
+        "canonicalHash": "sha256:bfbe2ee91fa50238c6d83b602cdb7d3e21654f273a6c5e6f37bd2adf21bee275",
+        "capture": {
+          "archiveSha256": "sha256:5b85600b36ccd5d99e7e675bc84e85b9a2ca2f1f84176b62e8c0eaac46846e31",
+          "capturedExecutableSha256": "sha256:3dffc6f512c263b409baddd29481c4662a9f438f318ac189e8eee344d5c5dd7e",
+          "expectCatalogCanonicalHash": "sha256:bfbe2ee91fa50238c6d83b602cdb7d3e21654f273a6c5e6f37bd2adf21bee275",
+          "meta": "catalog/gladius-59c6d77.meta.json",
+          "tools": "catalog/gladius-59c6d77.tools.json",
+          "transcript": "catalog/gladius-59c6d77.transcript.jsonl"
+        },
+        "capturedFrom": "Q:\\PROJECTS\\PERSONAL\\gladius\\target\\release\\gladius.exe",
+        "domain": "browser",
+        "duplicates": [],
+        "executableSha256": "sha256:3dffc6f512c263b409baddd29481c4662a9f438f318ac189e8eee344d5c5dd7e",
+        "names": [
+          "navigate",
+          "snapshot",
+          "screenshot",
+          "click",
+          "type",
+          "evaluate",
+          "wait_for",
+          "targets",
+          "dialog",
+          "history",
+          "network",
+          "cdp",
+          "console",
+          "upload",
+          "fetch_text",
+          "hover",
+          "select",
+          "key",
+          "viewport",
+          "tabs",
+          "storage",
+          "assert_layout",
+          "layout",
+          "visual",
+          "close"
+        ],
+        "pin": "59c6d77",
+        "pinSubject": "docs(gladius): link the enabled issue tracker",
+        "protocolVersion": "2025-11-25",
+        "repo": "Q:\\PROJECTS\\PERSONAL\\gladius",
+        "reportedVersion": "gladius 0.8.0 (d801b173aca81532209e2aed27669606214a503d)",
+        "server": {
+          "backend": "chromium",
+          "caps": "render",
+          "count": 25,
+          "gated": {},
+          "name": "gladius",
+          "version": "0.8.0"
+        },
+        "specPrefix": "browser_",
+        "toolCount": 25,
+        "version": "0.8.0"
+      },
+      "puppet": {
+        "canonicalHash": "sha256:e417d1025863d2ccb799ecf324284dd62e94aedb8c1831c75aea29ff6f1217b2",
+        "capture": {
+          "archiveSha256": "sha256:e89446ee785174aab5af3306113b75e02cc57cec040cb8cd872de4c3ef3f2ff7",
+          "capturedExecutableSha256": "sha256:ff935556b0f0d7175d514005b431fa4ce6db5aaf61d0866da103ec91ed61e212",
+          "expectCatalogCanonicalHash": "sha256:e417d1025863d2ccb799ecf324284dd62e94aedb8c1831c75aea29ff6f1217b2",
+          "meta": "catalog/puppet-0f790be.meta.json",
+          "tools": "catalog/puppet-0f790be.tools.json",
+          "transcript": "catalog/puppet-0f790be.transcript.jsonl"
+        },
+        "capturedFrom": "Q:\\PROJECTS\\PERSONAL\\puppet\\target\\release\\puppet.exe",
+        "domain": "desktop",
+        "duplicates": [],
+        "executableSha256": "sha256:ff935556b0f0d7175d514005b431fa4ce6db5aaf61d0866da103ec91ed61e212",
+        "names": [
+          "screenshot",
+          "diff",
+          "list_windows",
+          "window",
+          "do",
+          "cursor",
+          "elements"
+        ],
+        "pin": "0f790be",
+        "pinSubject": "docs(puppet): align README and release guidance",
+        "protocolVersion": "2025-11-25",
+        "repo": "Q:\\PROJECTS\\PERSONAL\\puppet",
+        "reportedVersion": "puppet 8.0.0 (6334393c8e670be7f9c06678267a375f4c22b699)",
+        "server": {
+          "name": "puppet",
+          "version": "8.0.0"
+        },
+        "specPrefix": "desktop_",
+        "toolCount": 7,
+        "version": "8.0.0"
+      }
+    }
+  },
+  "spec": "docs/SPEC.md: the 32-tool floor is in 'Initial public surface and lifecycle'; tools beyond it are additions, not violations.",
+  "tools": [
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "Navigate the active page to a URL",
+      "domain": "browser",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "url": {
+            "format": "uri",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "type": "object"
+      },
+      "legacyName": "navigate",
+      "name": "browser_navigate",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "warning": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "title"
+        ],
+        "type": "object"
+      },
+      "schemaHash": {
+        "input": "sha256:ac03174c20bf54e89e4f6bc8179f6ff9361ec8d90a8c7f10a6d020093c35e9fd",
+        "output": "sha256:7afe51eadb3f43198a6d3dc77300bc50e226d22ec46c7b2065780e47a06589a9"
+      },
+      "source": "gladius",
+      "title": "Navigate"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Snapshot: one line per node with a stable ref (@eN, unique per snapshot), role/name/value, plus page text. Default is the real Accessibility tree (shadow + same-process frames; hidden/ignored subtrees excluded). mode:\"legacy\" keeps the old DOM heuristic (the only path that stamps an attribute into the page); mode:\"text\" is text-only. frame=<CDP frameId> from targets scopes the snapshot to that iframe (same-process first; OOPIF is a follow-up). AX refs resolve by backend node id, so a shadow ref is actionable exactly like a light-DOM ref. Paging: pass the snapshotId from the offset:0 render with offset>0 (required; paging slices that render and never re-renders).",
+      "domain": "browser",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "frame": {
+            "type": "string"
+          },
+          "mode": {
+            "enum": [
+              "ax",
+              "legacy",
+              "text"
+            ],
+            "type": "string"
+          },
+          "offset": {
+            "default": 0,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "snapshotId": {
+            "description": "required when offset > 0: the id returned by the offset:0 render",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "legacyName": "snapshot",
+      "name": "browser_snapshot",
+      "outputSchema": {
+        "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "url",
+              "title",
+              "truncated",
+              "nodes",
+              "snapshotId",
+              "totalLines",
+              "nextOffset"
+            ]
+          },
+          {
+            "required": [
+              "mode",
+              "text"
+            ]
+          }
+        ],
+        "properties": {
+          "mode": {
+            "type": "string"
+          },
+          "nextOffset": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "nodes": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "disabled": {
+                  "type": "boolean"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "ref": {
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "tag": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "ref",
+                "role",
+                "name",
+                "tag",
+                "disabled",
+                "value"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "offset": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "snapshotId": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "totalLines": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "schemaHash": {
+        "input": "sha256:151fefc14d20a6b19851dc227a4d9dd22925124d57d0b1aa2e245213d77e7fff",
+        "output": "sha256:2ed2c3748043a2aa2fe17cd34bab19625086894f1d6c453b0144cc014327e8f8"
+      },
+      "source": "gladius",
+      "title": "Snapshot"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "PNG screenshot of the active page (unavailable with GLADIUS_BACKEND_CAPS=dom-only: no rendering pipeline). Optional path: an ABSOLUTE filesystem path the decoded PNG is also written to (missing parent directories are created; a failed write is a typed error, never a silent success). There is no allowlisted screenshot root: only absolute paths are accepted, and a relative path is rejected. When path is absent the reply shape is unchanged. deterministic:true pins the capture: device metrics fixed (current viewport, or width/height; deviceScaleFactor 1, mobile false) and restored afterwards, prefers-reduced-motion:reduce while the capture runs, cleared back to the engine/host default afterwards (a host that asks for reduced motion reports reduce again, so the guarantee is unchanged-from-baseline; reducedMotionEmulated reports whether the emulation was applied at all, and the freeze stylesheet is what stops CSS animation), a temporary style element freezing animation/transition/caret-color/scrollbars, applied by a walk that reaches the main document, every same-process descendant frame and every OPEN shadow root, and that pauses WAAPI animations, SVG SMIL timelines and media playback (each pinned to its start, because a pause at a wall-clock position is not reproducible); a realm the walk cannot reach is named in freeze.skipped, then `document.fonts.status === 'loaded'` plus every `FontFace` reaching `loaded` or `error` (a face still loading at the budget is counted in `fontsPending` and named in `settleTimeouts`), every img complete and two animation-frame ticks before Page.captureScreenshot({format:png, fromSurface:true, captureBeyondViewport for full page}). The reply then carries viewport, deviceScaleFactor, url, byte length, a cheap content checksum, reducedMotionEmulated, settled, settleTimeouts, fontsPending, freezeMode and freeze. deterministic pins the capture so two captures of the same page in the same engine produce the same PNG bytes; the scope of the freeze is the main document, same-process frames, open shadow roots, CSS animation, WAAPI, SMIL and media (see freeze). Canvas, WebGL, video frames and cross-process iframes are sampled, not frozen. Everything rides CDP: no OS cursor, no OS keyboard, no window, no foreground tab.",
+      "domain": "browser",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "deterministic": {
+            "type": "boolean"
+          },
+          "fullPage": {
+            "type": "boolean"
+          },
+          "height": {
+            "type": "integer"
+          },
+          "path": {
+            "type": "string"
+          },
+          "width": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "legacyName": "screenshot",
+      "name": "browser_screenshot",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "bytes": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "checksum": {
+            "type": "string"
+          },
+          "deterministic": {
+            "type": "boolean"
+          },
+          "deviceScaleFactor": {
+            "type": "number"
+          },
+          "fontsPending": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "freeze": {
+            "type": "object"
+          },
+          "freezeMode": {
+            "type": "string"
+          },
+          "mimeType": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "reducedMotionEmulated": {
+            "type": "boolean"
+          },
+          "settleTimeouts": {
+            "type": "array"
+          },
+          "settled": {
+            "type": "boolean"
+          },
+          "size": {
+            "properties": {
+              "height": {
+                "type": "integer"
+              },
+              "width": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "width",
+              "height"
+            ],
+            "type": "object"
+          },
+          "url": {
+            "type": "string"
+          },
+          "viewport": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "mimeType",
+          "bytes"
+        ],
+        "type": "object"
+      },
+      "schemaHash": {
+        "input": "sha256:b4235e3c722351e9ca197968b1263133016024ead279d5fa7d75c8078ae26afa",
+        "output": "sha256:cdf44a305ceefa369d682978d707d6059f730e2054b9762b2c9021020b067ff5"
+      },
+      "source": "gladius",
+      "title": "Screenshot"
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "Click an element by CSS selector (first match) or AX ref (@eN from snapshot; exact). The click is exactly two CDP events at the element's exact float box centre: mousePressed then mouseReleased - no mouseMoved, no hover, no movement loop, no interpolation. hoverFirst:true sends ONE mouseMoved at that same point first, for pages whose handlers read hover state; the default is false. frame=<CDP frameId> from targets scopes to that iframe (same-process CSS selectors; refs are main-frame only - with frame= use a CSS selector; OOPIF without a mapped target is a typed error, never a main-frame click)",
+      "domain": "browser",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "element": {
+            "type": "string"
+          },
+          "frame": {
+            "type": "string"
+          },
+          "hoverFirst": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "element"
+        ],
+        "type": "object"
+      },
+      "legacyName": "click",
+      "name": "browser_click",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dialog": {
+            "type": "object"
+          },
+          "note": {
+            "type": "string"
+          },
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "type": "object"
+      },
+      "schemaHash": {
+        "input": "sha256:d9c46ddb92269df76000545b4ee73fe0b28820ebef3bcbc24480caf9fde0be3b",
+        "output": "sha256:5402bffe867b3c93ec51014da4f3401e04f95e560c0e695e13e53b4125c11c6b"
+      },
+      "source": "gladius",
+      "title": "Click"
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "Type text into an element by CSS selector (first match) or AX ref (@eN from snapshot; exact). frame=<CDP frameId> from targets scopes to that iframe (same-process CSS selectors; refs are main-frame only - with frame= use a CSS selector; OOPIF without a mapped target is a typed error, never a main-frame type)",
+      "domain": "browser",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "element": {
+            "type": "string"
+          },
+          "frame": {
+            "type": "string"
+          },
+          "submit": {
+            "type": "boolean"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "element",
+          "text"
+        ],
+        "type": "object"
+      },
+      "legacyName": "type",
+      "name": "browser_type",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "note": {
+            "type": "string"
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "valueLength": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "type": "object"
+      },
+      "schemaHash": {
+        "input": "sha256:165f10e18427fdfaefd99ac7f82709b479123ad23846df7406074b22e089fefe",
+        "output": "sha256:ebd3e080287144eaca631b0662d1d85531fdd8820c5a87eab2d6c73401cbb0dd"
+      },
+      "source": "gladius",
+      "title": "Type"
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "Evaluate a JS expression in the page, await promises. Optional realm routing: target=<CDP targetId> evaluates in that target's realm (page, dedicated/shared worker, service worker); frame=<CDP frameId> evaluates in that iframe's realm (isolated world, works cross-origin). Without either, the active page's main frame. target and frame are mutually exclusive.",
+      "domain": "browser",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "expression": {
+            "type": "string"
+          },
+          "frame": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "expression"
+        ],
+        "type": "object"
+      },
+      "legacyName": "evaluate",
+      "name": "browser_evaluate",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dialog": {
+            "type": "object"
+          },
+          "note": {
+            "type": "string"
+          },
+          "value": {}
+        },
+        "required": [
+          "value"
+        ],
+        "type": "object"
+      },
+      "schemaHash": {
+        "input": "sha256:a2ee4a7c29931db191701d2bd741628bfa020d0110f6761bb04e5afcd6195d4b",
+        "output": "sha256:a1bea6d33ad9d7c49df5b1af70829e410f0128c136f21ecf26736d421f1166e9"
+      },
+      "source": "gladius",
+      "title": "Evaluate"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Wait for a selector/text, a JS expression condition, a delay, or network idle (max 15s). networkIdle:true waits for a quiet-network window of idleMs (default 500); a page that never goes idle returns the typed timeout. expression: polls the active page until the JS evaluates truthy (backoff cadence inside ms); expiry is the typed timeout.",
+      "domain": "browser",
+      "inputSchema": {
+        "additionalProperties": false,
+        "minProperties": 1,
+        "properties": {
+          "expression": {
+            "type": "string"
+          },
+          "idleMs": {
+            "type": "integer"
+          },
+          "ms": {
+            "type": "integer"
+          },
+          "networkIdle": {
+            "type": "boolean"
+          },
+          "selector": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "legacyName": "wait_for",
+      "name": "browser_wait_for",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "type": "object"
+      },
+      "schemaHash": {
+        "input": "sha256:6855bbc24ed324cc7b164f6330d2516a1203587deefcd9c7e674907a426370b4",
+        "output": "sha256:4528a3c79c4aaee242a31e586366657f8e9a3f11cc8d2cb040d9bf61ab1bbb63"
+      },
+      "source": "gladius",
+      "title": "Wait For"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "description": "List every CDP target with its stable id (pages, workers of all kinds) plus the active page's frame tree (main frame + nested iframes, each with its frameId), or make a page target current. action list (default)|select; select needs target=<targetId> (page targets only; worker realms are reached via evaluate target=).",
+      "domain": "browser",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "list",
+              "select"
+            ],
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "legacyName": "targets",
+      "name": "browser_targets",
+      "outputSchema": {
+        "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "targets"
+            ]
+          },
+          {
+            "required": [
+              "tabs"
+            ]
+          }
+        ],
+        "properties": {
+          "frames": {
+            "type": "array"
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "tabs": {
+            "type": "array"
+          },
+          "targets": {
+            "type": "array"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "schemaHash": {
+        "input": "sha256:025a1aeb98b86530a9430a66aa5c30e2ace0fc4b3b4fe209888faf9f163c5dd6",
+        "output": "sha256:4deca09060001141ff263f67a61500e2c372deb62c80c83697d095adbce31112"
+      },
+      "source": "gladius",
+      "title": "Targets"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "description": "JS-dialog policy and record. The reader auto-handles every alert/confirm/prompt/beforeunload with the policy (default accept) so a session never deadlocks; the dialog's own text is recorded. action get (default: last dialog + current policy)|policy (set default: needs accept bool, optional promptText for prompt dialogs).",
+      "domain": "browser",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "accept": {
+            "type": "boolean"
+          },
+          "action": {
+            "enum": [
+              "get",
+              "policy"
+            ],
+            "type": "string"
+          },
+          "promptText": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "legacyName": "dialog",
+      "name": "browser_dialog",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "dialog": {},
+          "policy": {
+            "additionalProperties": false,
+            "properties": {
+              "accept": {
+                "type": "boolean"
+              },
+              "promptText": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "accept"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "policy"
+        ],
+        "type": "object"
+      },
+      "schemaHash": {
+        "input": "sha256:7ca8820915023b5ee827d700d5c942d859a4a7ebf2093f2252f27e1dffe202b8",
+        "output": "sha256:d0c730531ecfaf5552b81f88fb789c642a3e4b785fdded75897e8b16f2920d15"
+      },
+      "source": "gladius",
+      "title": "Dialog"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "Navigation history on the active page: back|forward step one entry, reload replays the current one. Returns the live url+title after the load settle; a step past the boundary is a typed error, never a silent no-op.",
+      "domain": "browser",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "back",
+              "forward",
+              "reload"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "type": "object"
+      },
+      "legacyName": "history",
+      "name": "browser_history",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "title": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ok",
+          "url",
+          "title"
+        ],
+        "type": "object"
+      },
+      "schemaHash": {
+        "input": "sha256:25a7b81ea433fe28a84fd797151f656c2c559ce52abaef0ad5171aca3c6c0585",
+        "output": "sha256:add084c1c449d495425627983c2f26fdb07055243da68fa8a12a79fde08a8312"
+      },
+      "source": "gladius",
+      "title": "History"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "description": "Observable network: captured requests/responses (method, url, status, resource type, timing) since the Network domain was first enabled, cap 500. action get (default)|drain|clear; filter is a plain substring matched against the url; limit caps returned (default 100).",
+      "domain": "browser",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "get",
+              "drain",
+              "clear"
+            ],
+            "type": "string"
+          },
+          "filter": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "legacyName": "network",
+      "name": "browser_network",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "cap": {
+            "type": "integer"
+          },
+          "cleared": {
+            "type": "integer"
+          },
+          "count": {
+            "type": "integer"
+          },
+          "entries": {
+            "type": "array"
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "cap"
+        ],
+        "type": "object"
+      },
+      "schemaHash": {
+        "input": "sha256:6a7c2f55d2ac43b40ea708f7c09444cebad6f1f63e8e16e8d4881e461773f585",
+        "output": "sha256:3a713cd510364703cb6e8852a3a1879c09d44616dbac600916114dc71d003f08"
+      },
+      "source": "gladius",
+      "title": "Network"
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "Raw CDP escape hatch: send any protocol method with params on the browser-level connection or on one named session. Returns the raw CDP result; a CDP error reply is a tool error (isError), never a protocol error.",
+      "domain": "browser",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "method": {
+            "type": "string"
+          },
+          "params": {
+            "type": "object"
+          },
+          "session": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "method"
+        ],
+        "type": "object"
+      },
+      "legacyName": "cdp",
+      "name": "browser_cdp",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "result": {}
+        },
+        "required": [
+          "result"
+        ],
+        "type": "object"
+      },
+      "schemaHash": {
+        "input": "sha256:684ee6ba929e8466ff216639aee2452325640f6270151313462603f2e8219027",
+        "output": "sha256:0fc23b3e46107654526a647daa16a371937803c5534e0c1b509a64897ff080d8"
+      },
+      "source": "gladius",
+      "title": "CDP"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "description": "Console capture: buffered console messages + uncaught exceptions, each {type,text,url,line,ts}. Ring buffer, cap 200. action get (default)|drain|clear; limit caps returned (default 100).",
+      "domain": "browser",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "get",
+              "drain",
+              "clear"
+            ],
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "legacyName": "console",
+      "name": "browser_console",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "cap": {
+            "type": "integer"
+          },
+          "cleared": {
+            "type": "integer"
+          },
+          "count": {
+            "type": "integer"
+          },
+          "messages": {
+            "type": "array"
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "cap"
+        ],
+        "type": "object"
+      },
+      "schemaHash": {
+        "input": "sha256:d448698bc4a13faa83a2ca8d44ed1232f31c3ef9afc5ca3005846321717354e8",
+        "output": "sha256:d5b89e0ef11d649ea5fa0b028abda71ee7cd31e9bc39545ce2ce71a0c0ec5620"
+      },
+      "source": "gladius",
+      "title": "Console"
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "description": "Set files on an <input type=file> by CSS selector (first match) or AX ref (@eN from snapshot; exact). paths[] must exist locally. frame=<CDP frameId> from targets scopes to that iframe (same-process CSS selectors; refs are main-frame only - with frame= use a CSS selector; OOPIF without a mapped target is a typed error, never a main-frame upload)",
+      "domain": "browser",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "element": {
+            "type": "string"
+          },
+          "frame": {
+            "type": "string"
+          },
+          "paths": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "element",
+          "paths"
+        ],
+        "type": "object"
+      },
+      "legacyName": "upload",
+      "name": "browser_upload",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "files": {
+            "type": "integer"
+          },
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok",
+          "files"
+        ],
+        "type": "object"
+      },
+      "schemaHash": {
+        "input": "sha256:81f5031879fd69c37c67c06388c7137476353157cbda7f20f62315f571e98256",
+        "output": "sha256:d480e2380e72cb589980474dbe72365c1b0d6d8d99813dc33a13a568a39e42a0"
+      },
+      "source": "gladius",
+      "title": "Upload"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true,
+        "readOnlyHint": true
+      },
+      "description": "Fast plain-HTTP GET with no browser; HTML stripped to text",
+      "domain": "browser",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "type": "object"
+      },
+      "legacyName": "fetch_text",
+      "name": "browser_fetch_text",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "chars": {
+            "type": "integer"
+          },
+          "text": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "url",
+          "chars"
+        ],
+        "type": "object"
+      },
+      "schemaHash": {
+        "input": "sha256:70a0ee4ad267a54f0f15e23c0f816a1f1920eacbeb10283a06dca6c593c3ca2d",
+        "output": "sha256:7820ec3140f948d1e53d760ada41fd6452b692c4d812f1b81c49f499c489e65e"
+      },
+      "source": "gladius",
+      "title": "Fetch Text"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "Hover over an element by CSS selector (first match) or AX ref (@eN from snapshot; exact). frame=<CDP frameId> from targets scopes to that iframe (same-process CSS selectors; refs are main-frame only - with frame= use a CSS selector; OOPIF without a mapped target is a typed error, never a main-frame hover)",
+      "domain": "browser",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "element": {
+            "type": "string"
+          },
+          "frame": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "element"
+        ],
+        "type": "object"
+      },
+      "legacyName": "hover",
+      "name": "browser_hover",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "type": "object"
+      },
+      "schemaHash": {
+        "input": "sha256:15be951f597f669ad48c3f9961bd91c97637b33cc9cd40dcddd22804b29186df",
+        "output": "sha256:4528a3c79c4aaee242a31e586366657f8e9a3f11cc8d2cb040d9bf61ab1bbb63"
+      },
+      "source": "gladius",
+      "title": "Hover"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "description": "Choose a <select> option by value (preferred) or visible text; element is a CSS selector or AX ref (@eN). frame=<CDP frameId> from targets scopes to that iframe (same-process CSS selectors; refs are main-frame only - with frame= use a CSS selector; OOPIF without a mapped target is a typed error, never a main-frame select)",
+      "domain": "browser",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "element": {
+            "type": "string"
+          },
+          "frame": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "element"
+        ],
+        "type": "object"
+      },
+      "legacyName": "select",
+      "name": "browser_select",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "type": "object"
+      },
+      "schemaHash": {
+        "input": "sha256:9dbc7cb1735a57b133cdd733d6e8a16b542f50a0125f36d037807f8e9b4eda43",
+        "output": "sha256:4528a3c79c4aaee242a31e586366657f8e9a3f11cc8d2cb040d9bf61ab1bbb63"
+      },
+      "source": "gladius",
+      "title": "Select"
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "Press a named key (Enter, Tab, Escape, Backspace, ArrowDown, ...) on the focused element. Combos with '+' (Ctrl+A, Shift+Tab, Alt+F4, Meta+C; case-insensitive modifiers, last token is the base key) hold modifiers (Alt=1/Ctrl=2/Meta=4/Shift=8); with Ctrl/Meta/Alt held the base dispatches as rawKeyDown with no text (Ctrl+A never inserts text)",
+      "domain": "browser",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "key"
+        ],
+        "type": "object"
+      },
+      "legacyName": "key",
+      "name": "browser_key",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "type": "object"
+      },
+      "schemaHash": {
+        "input": "sha256:71b7b4e2e3db1026349e712236f9d3231abdec149243becc4ac6fd1f85f6f08d",
+        "output": "sha256:4528a3c79c4aaee242a31e586366657f8e9a3f11cc8d2cb040d9bf61ab1bbb63"
+      },
+      "source": "gladius",
+      "title": "Key"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "description": "Set the page viewport in CSS pixels (Emulation.setDeviceMetricsOverride) and return the applied metrics plus a live read-back of window.innerWidth/innerHeight/devicePixelRatio, so an override the engine ignored cannot read as success. reset:true clears the override and restores the engine default (width/height are then ignored). The override is replayed on every new tab.",
+      "domain": "browser",
+      "inputSchema": {
+        "additionalProperties": false,
+        "oneOf": [
+          {
+            "properties": {
+              "reset": {
+                "const": true
+              }
+            },
+            "required": [
+              "reset"
+            ]
+          },
+          {
+            "properties": {
+              "reset": {
+                "const": false
+              }
+            },
+            "required": [
+              "reset",
+              "width",
+              "height"
+            ]
+          },
+          {
+            "not": {
+              "required": [
+                "reset"
+              ]
+            },
+            "required": [
+              "width",
+              "height"
+            ]
+          }
+        ],
+        "properties": {
+          "deviceScaleFactor": {
+            "type": "number"
+          },
+          "height": {
+            "type": "integer"
+          },
+          "mobile": {
+            "type": "boolean"
+          },
+          "reset": {
+            "type": "boolean"
+          },
+          "width": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "legacyName": "viewport",
+      "name": "browser_viewport",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "applied": {},
+          "matched": {
+            "type": "boolean"
+          },
+          "note": {
+            "type": "string"
+          },
+          "readback": {
+            "type": "object"
+          },
+          "reset": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "readback"
+        ],
+        "type": "object"
+      },
+      "schemaHash": {
+        "input": "sha256:2111239d3091ad7617adfbcd606c46f97a8231a8b95a377ecd1525f7076d6f56",
+        "output": "sha256:4ce0c943cf4e69fd83289292216c5cfb49fdcef0667cd6e958819d91ed8acc59"
+      },
+      "source": "gladius",
+      "title": "Viewport"
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "List, open, close, or select browser tabs (pages)",
+      "domain": "browser",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "list",
+              "new",
+              "select",
+              "close"
+            ],
+            "type": "string"
+          },
+          "index": {
+            "type": "integer"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "type": "object"
+      },
+      "legacyName": "tabs",
+      "name": "browser_tabs",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "tabs": {
+            "type": "array"
+          }
+        },
+        "required": [
+          "tabs",
+          "ok"
+        ],
+        "type": "object"
+      },
+      "schemaHash": {
+        "input": "sha256:f43e977e03b8b4e7852c462d90749bd962deaf5cad1f9bf377390122791b8b86",
+        "output": "sha256:58f1a68da86733841ea57c38e965aae4af20377ae9f8d1506b1a70b107e71fea"
+      },
+      "source": "gladius",
+      "title": "Tabs"
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "description": "Cookies + Web Storage in one call. action get|set|clear|save|load (default get); scope cookies|localStorage|sessionStorage|all (default all). save/load persist a versioned JSON file (replies carry counts/bytes/origin only, never values); load enforces an origin match unless force:true. allSites:true widens cookie get to every site and cookie clear to the whole profile (clear with allSites on an attached engine needs confirm:true). redact:true masks get values. sessionStorage is tab-scoped (clears with the tab) while localStorage persists.",
+      "domain": "browser",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "allSites": {
+            "type": "boolean"
+          },
+          "confirm": {
+            "type": "boolean"
+          },
+          "cookies": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "force": {
+            "type": "boolean"
+          },
+          "items": {
+            "type": "object"
+          },
+          "overwrite": {
+            "type": "boolean"
+          },
+          "path": {
+            "type": "string"
+          },
+          "redact": {
+            "type": "boolean"
+          },
+          "scope": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "legacyName": "storage",
+      "name": "browser_storage",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "applied": {
+            "type": "object"
+          },
+          "bytes": {
+            "type": "integer"
+          },
+          "cleared": {
+            "type": "object"
+          },
+          "cookies": {
+            "type": "array"
+          },
+          "counts": {
+            "type": "object"
+          },
+          "failed": {
+            "type": "array"
+          },
+          "fileOrigin": {
+            "type": "string"
+          },
+          "localStorage": {
+            "type": "object"
+          },
+          "note": {
+            "type": "string"
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "origin": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "redacted": {
+            "type": "boolean"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "sessionStorage": {
+            "type": "object"
+          },
+          "set": {
+            "type": "object"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ok",
+          "action"
+        ],
+        "type": "object"
+      },
+      "schemaHash": {
+        "input": "sha256:e5df4f8659239d31a94ef511424753a7a29e5f770bbc5f3e2c4c169069b49e28",
+        "output": "sha256:b7c577f880a4f56bc287e1e205976e5f134d706037e2e60bf015afcbff575933"
+      },
+      "source": "gladius",
+      "title": "Storage"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "Prove geometry without pixels: one call, one or many targets (ref @eN and/or CSS selector, string or array), several checks. Checks: exists (default true; false asserts absence), visible (a real box, not display:none/visibility:hidden/collapse, opacity>0), stableFrames (N animation frames, identical bbox), box {x,y,w,h,tolerance} in VIEWPORT CSS px from DOM.getBoxModel, hitTarget (elementFromPoint at the exact centre is the target or a descendant - the same guard click uses), computed (subset of getComputedStyle, string-exact), noOverflow (scrollWidth/Height <= clientWidth/Height + tolerance), inViewport (whole box inside the visual viewport). Returns per-check {target, check, pass, expected, actual, delta} plus an overall pass. deterministic:true measures under the same freeze a deterministic screenshot uses (animation:none, WAAPI/SMIL/media held, frames and open shadow roots walked) and echoes freezeApplied:true - the ONLY way to compare geometry with a deterministic capture, because that capture measures the animation-off state. screenshotOnFail:true adds one deterministic capture's path/bytes/checksum. Values are engine measurements (DOM.getBoxModel + Runtime.evaluate), never guesses. Headless + CDP only: no OS cursor, no OS keyboard, no window, no foreground tab.",
+      "domain": "browser",
+      "inputSchema": {
+        "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "ref"
+            ]
+          },
+          {
+            "required": [
+              "selector"
+            ]
+          }
+        ],
+        "properties": {
+          "checks": {
+            "additionalProperties": false,
+            "properties": {
+              "box": {
+                "additionalProperties": false,
+                "properties": {
+                  "h": {
+                    "type": "number"
+                  },
+                  "tolerance": {
+                    "type": "number"
+                  },
+                  "w": {
+                    "type": "number"
+                  },
+                  "x": {
+                    "type": "number"
+                  },
+                  "y": {
+                    "type": "number"
+                  }
+                },
+                "type": "object"
+              },
+              "computed": {
+                "type": "object"
+              },
+              "exists": {
+                "type": "boolean"
+              },
+              "hitTarget": {
+                "type": "boolean"
+              },
+              "inViewport": {
+                "type": "boolean"
+              },
+              "noOverflow": {
+                "oneOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "tolerance": {
+                        "type": "number"
+                      }
+                    },
+                    "type": "object"
+                  }
+                ]
+              },
+              "stableFrames": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "visible": {
+                "type": "boolean"
+              }
+            },
+            "type": "object"
+          },
+          "deterministic": {
+            "type": "boolean"
+          },
+          "ref": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            ]
+          },
+          "screenshotOnFail": {
+            "type": "boolean"
+          },
+          "screenshotPath": {
+            "type": "string"
+          },
+          "selector": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "legacyName": "assert_layout",
+      "name": "browser_assert_layout",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "checks": {
+            "type": "array"
+          },
+          "freezeApplied": {
+            "type": "boolean"
+          },
+          "pass": {
+            "type": "boolean"
+          },
+          "screenshot": {
+            "type": "object"
+          },
+          "targets": {
+            "type": "array"
+          }
+        },
+        "required": [
+          "pass",
+          "checks",
+          "targets"
+        ],
+        "type": "object"
+      },
+      "schemaHash": {
+        "input": "sha256:24b51f727270e1edd009144b6b37eb98be76ff4b3a53348008d08b57ea734a1c",
+        "output": "sha256:e0c1220eb212e694cd1b75a5c5dc26ff71e70df986882861eb021cbdd5296df1"
+      },
+      "source": "gladius",
+      "title": "Assert Layout"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      },
+      "description": "The where-is-it-actually primitive: every match of a selector or ref list with its viewport rect, page-coordinate box (DOM.getBoxModel), content quad count, scroll size (scrollWidth/Height vs clientWidth/Height), computed display/visibility/opacity, a z-order hint (paint order, z-index, position, stacking-context flag) and every detected overlapping pair with its intersection rect and area (includeOverlaps default true). Main frame; read-only; engine measurements only. Headless + CDP only: no OS input, no window.",
+      "domain": "browser",
+      "inputSchema": {
+        "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "ref"
+            ]
+          },
+          {
+            "required": [
+              "selector"
+            ]
+          }
+        ],
+        "properties": {
+          "includeOverlaps": {
+            "type": "boolean"
+          },
+          "ref": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            ]
+          },
+          "selector": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "legacyName": "layout",
+      "name": "browser_layout",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "elements": {
+            "type": "array"
+          },
+          "overlaps": {
+            "type": "array"
+          },
+          "requested": {
+            "type": "integer"
+          },
+          "viewport": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "elements",
+          "overlaps",
+          "viewport"
+        ],
+        "type": "object"
+      },
+      "schemaHash": {
+        "input": "sha256:f8ae086f0dceb3cfaec97047f2a302a103cfbe481cc3d7de9be0329863981d95",
+        "output": "sha256:030657b033a9e7cd08715aee5f5ee934f1d2616b7a1f574b51ffa00c2d76273c"
+      },
+      "source": "gladius",
+      "title": "Layout"
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "description": "Deterministic visual-regression baselines under GLADIUS_VISUAL_DIR (default %LOCALAPPDATA%/gladius/visual on Windows, never the caller's cwd), names sanitised to [A-Za-z0-9._-]. The store is capped at 500 baselines and 500 .diff.png by-products (GLADIUS_VISUAL_CAP overrides both): a save at the cap is a typed refusal naming `visual delete` and GLADIUS_VISUAL_CAP, never a silent eviction, while overwriting a stored baseline is always allowed; .diff.png files are the only by-products aged out automatically (oldest first) and `list` reports dir, count, cap and diffCount. action save captures a deterministic PNG named <name> plus <name>.meta.json (browser, viewport, deviceScaleFactor, url, checksum, createdAt). compare captures the same deterministic shot and diffs it against the baseline in a scratch headless target created with background:true (the engine decodes both PNGs onto a canvas - no new runtime dependency), returning two separate verdicts plus the numbers: pixelsIdentical (checksum == baselineChecksum, a fact about the bytes, never a judgement) and passWithinTolerance (the whole predicate: no size mismatch, diffPixels/maxDiffPixels, ratio/maxDiffRatio, ignoredPixels when allowIgnoredAA is off, and environment.match when requireEnvironmentMatch is on). pass is an ALIAS of passWithinTolerance, always equal to it, kept for 0.7.x clients; it means 'the diff is within the requested tolerance', never 'the images are the same'. Also returned: diffPixels, totalPixels, ratio, bbox, maxChannelDelta, baselinePath, diffPath and environment {match, known, unknownAxes, baseline, current}; the environment compares browser major AND full version, viewport, deviceScaleFactor, platform, user agent, colour scheme, forced colours, contrast and reduced-motion preferences, the installed-font fingerprint and the scrollbar width - all read live - and any mismatch adds a baseline_environment_mismatch warning (not a failure unless requireEnvironmentMatch:true), while an axis a 0.7.x sidecar does not record is named in unknownAxes and reported as baseline_environment_unknown_axes, never as a silent match. Anti-aliasing is subtracted by a deterministic rule - a candidate whose 3x3 luminance neighbourhood has >=32 levels of contrast in BOTH images is suppressed when its 4-connected component is no larger than minDiffCluster (default 2) - and that subtraction does NOT pass by default: allowIgnoredAA:true is the explicit opt-in that re-admits it, and the warning always names the count and the flag. The threshold is never raised for tolerance. antialias (default true) and includeAA (default false) are inverses. threshold is a per-channel fraction of the 0-255 range (default 0.1), maxDiffPixels/maxDiffRatio set the pass bar (default 0/0), maskRects skip regions and are metered (maskRectsApplied echoes the clipped rects, maskedPixels counts their union, maskCoverageRatio is that over totalPixels, a rect that clips away is named mask_rect_dropped and coverage over 10% warns mask_coverage); update:true rewrites the baseline and its sidecar; list and delete manage them. compare opens and closes one scratch target on the connected engine, always created with background:true so it never activates (on an external attach that is a real extra tab for a moment); an engine that refuses a background target is refused with a typed scratch_background_unsupported error, never retried in the foreground. Headless + CDP only: no OS input, no window.",
+      "domain": "browser",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "save",
+              "compare",
+              "list",
+              "delete"
+            ],
+            "type": "string"
+          },
+          "allowIgnoredAA": {
+            "type": "boolean"
+          },
+          "antialias": {
+            "type": "boolean"
+          },
+          "fullPage": {
+            "type": "boolean"
+          },
+          "includeAA": {
+            "type": "boolean"
+          },
+          "maskRects": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "h": {
+                  "type": "number"
+                },
+                "w": {
+                  "type": "number"
+                },
+                "x": {
+                  "type": "number"
+                },
+                "y": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "x",
+                "y",
+                "w",
+                "h"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "maxDiffPixels": {
+            "type": "integer"
+          },
+          "maxDiffRatio": {
+            "type": "number"
+          },
+          "minDiffCluster": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "requireEnvironmentMatch": {
+            "type": "boolean"
+          },
+          "threshold": {
+            "type": "number"
+          },
+          "update": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "type": "object"
+      },
+      "legacyName": "visual",
+      "name": "browser_visual",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "antialias": {
+            "type": "boolean"
+          },
+          "baselineChecksum": {
+            "type": "string"
+          },
+          "baselinePath": {
+            "type": "string"
+          },
+          "baselines": {
+            "type": "array"
+          },
+          "bbox": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "bytes": {
+            "type": "integer"
+          },
+          "cap": {
+            "type": "integer"
+          },
+          "checksum": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer"
+          },
+          "deleted": {
+            "type": "array"
+          },
+          "diffCount": {
+            "type": "integer"
+          },
+          "diffPath": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "diffPixels": {
+            "type": "integer"
+          },
+          "dir": {
+            "type": "string"
+          },
+          "environment": {
+            "type": "object"
+          },
+          "fullPage": {
+            "type": "boolean"
+          },
+          "ignoredClusters": {
+            "type": "integer"
+          },
+          "ignoredPixels": {
+            "type": "integer"
+          },
+          "maskCoverageRatio": {
+            "type": "number"
+          },
+          "maskRectsApplied": {
+            "type": "array"
+          },
+          "maskedPixels": {
+            "type": "integer"
+          },
+          "maxChannelDelta": {
+            "type": "integer"
+          },
+          "maxDiffPixels": {
+            "type": "integer"
+          },
+          "maxDiffRatio": {
+            "type": "number"
+          },
+          "metaPath": {
+            "type": "string"
+          },
+          "minDiffCluster": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "pass": {
+            "type": "boolean"
+          },
+          "passWithinTolerance": {
+            "type": "boolean"
+          },
+          "path": {
+            "type": "string"
+          },
+          "pixelsIdentical": {
+            "type": "boolean"
+          },
+          "ratio": {
+            "type": "number"
+          },
+          "scratchBackground": {
+            "type": "boolean"
+          },
+          "settleTimeouts": {
+            "type": "array"
+          },
+          "settled": {
+            "type": "boolean"
+          },
+          "size": {
+            "type": "object"
+          },
+          "sizeMismatch": {
+            "type": "boolean"
+          },
+          "threshold": {
+            "type": "number"
+          },
+          "totalPixels": {
+            "type": "integer"
+          },
+          "updated": {
+            "type": "boolean"
+          },
+          "url": {
+            "type": "string"
+          },
+          "viewport": {
+            "type": "object"
+          },
+          "warning": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "action"
+        ],
+        "type": "object"
+      },
+      "schemaHash": {
+        "input": "sha256:5c1460080cefc84efa2b6373d570ffe5a363f625aad72754cf13e3ef440c813a",
+        "output": "sha256:5b90342aac3efad4580607ef4f6ae155c8b3ccb5fb425a46099ff87ea9535d74"
+      },
+      "source": "gladius",
+      "title": "Visual Baselines"
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      },
+      "description": "Shut down the browser (owned process tree) or detach from an attached external engine (GLADIUS_CDP_URL; engine left running)",
+      "domain": "browser",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "legacyName": "close",
+      "name": "browser_close",
+      "outputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "type": "object"
+      },
+      "schemaHash": {
+        "input": "sha256:99334726611ccf58a148b0814696bfa6fe08c1b2d027e946beccf5a74331c9aa",
+        "output": "sha256:4528a3c79c4aaee242a31e586366657f8e9a3f11cc8d2cb040d9bf61ab1bbb63"
+      },
+      "source": "gladius",
+      "title": "Close"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true,
+        "title": "Screenshot"
+      },
+      "description": "Capture the whole virtual desktop (display=-1), one monitor, a window (window=<selector> or target={...}) or a region, without activating the window: no cursor movement, no focus change.\nReturns {ok, image{w,h,format,quality}, source{x,y,w,h}, scale, monitors, cursor{x,y}, formula, capture{...}, elements?}. source is SCREEN pixels; the returned image maps back with screen_x = source.x + round((img_x + 0.5) * source.w / image.w), the same for y - formula carries that verbatim, and scale is the long-edge clamp that produced the image.\nfmt defaults to png (lossless); jpeg needs an explicit fmt:\"jpeg\", and quality 1..100 applies to jpeg only. A minimized window returns window_minimized; a refused frame returns capture_unavailable. The blank-frame detector is full-frame only (max channel < 8), never partial or stale: capture.blank_check reports the measured max_channel and its verdict. capture.moved_during_capture flags a window that moved while it was captured, so the frame may mix two positions. elements:true adds the structured element block, whose elements_window names the hwnd it enumerated. For an illegible control, re-request the same window with a tight region and max_px:null (full-resolution crop).\nwarnings[{code,field,requested,applied}] appears only when the server altered a request: quality_clamped (outside 1..100) and quality_ignored (quality sent with png).\\nforegroundUnchanged/cursorUnchanged report the measured before/after invariant; the pointer is never in the pixels - neither capture backend composites it; `cursor{x,y}` is a position report.",
+      "domain": "desktop",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "allow_crop_fallback": {
+            "default": false,
+            "type": "boolean"
+          },
+          "display": {
+            "default": -1,
+            "type": "integer"
+          },
+          "elements": {
+            "default": false,
+            "type": "boolean"
+          },
+          "fmt": {
+            "default": "png",
+            "enum": [
+              "png",
+              "jpeg",
+              "jpg"
+            ],
+            "type": "string"
+          },
+          "grid": {
+            "default": false,
+            "type": "boolean"
+          },
+          "max_px": {
+            "anyOf": [
+              {
+                "maximum": 8192,
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 1280
+          },
+          "out": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "quality": {
+            "default": 80,
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "region": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "maxItems": 4,
+                "minItems": 4,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "target": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "appId": {
+                    "type": "string"
+                  },
+                  "className": {
+                    "type": "string"
+                  },
+                  "exe": {
+                    "type": "string"
+                  },
+                  "hwnd": {
+                    "type": "integer"
+                  },
+                  "pid": {
+                    "type": "integer"
+                  },
+                  "titleContains": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "window": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "type": "object"
+      },
+      "legacyName": "screenshot",
+      "name": "desktop_screenshot",
+      "outputSchema": {
+        "additionalProperties": true,
+        "properties": {
+          "capture": {
+            "type": "object"
+          },
+          "cursor": {
+            "type": "object"
+          },
+          "cursorUnchanged": {
+            "type": "boolean"
+          },
+          "foregroundUnchanged": {
+            "type": "boolean"
+          },
+          "formula": {
+            "type": "string"
+          },
+          "image": {
+            "type": "object"
+          },
+          "monitors": {
+            "type": "object"
+          },
+          "scale": {
+            "type": "number"
+          },
+          "source": {
+            "type": "object"
+          },
+          "warnings": {
+            "type": "array"
+          },
+          "window": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "image",
+          "source",
+          "scale",
+          "monitors",
+          "cursor",
+          "capture",
+          "formula"
+        ],
+        "type": "object"
+      },
+      "schemaHash": {
+        "input": "sha256:b53d995e3a4b97949930677b4b6cf6cc66bfe23482d8f634888df634ee774f9e",
+        "output": "sha256:29a2533234c3c38ea1bea0d070038b398879e32b1afb4f4bf2ce3937ef4eb2cf"
+      },
+      "source": "puppet",
+      "title": "Screenshot"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true,
+        "title": "Diff"
+      },
+      "description": "Pixel diff: which pixels moved between captures. base/next is {path:\"<png>\"} or a capture target ({target|window,display,region} as in screenshot, native, side-effect-free). Same dimensions or a typed size_mismatch names both. threshold (0-255, default 0) is the only tolerance; max_px (default 1280) clamps the returned image's long edge; out writes it to an absolute path; bbox toggles the union box. mask (native pixels, [[l,t,r,b],...] half-open) excludes regions from changed, total, ratio and bbox and reports masked_px; overlapping rects union, a rect outside the frame is bad_region.\nReturns {changed,total,ratio,bbox,identical,base,next,threshold,masked_px,bbox_space,image?,scale?,base_source?,next_source?,diff_out?}: changed,total,bbox are NATIVE operand pixels (bbox_space:\"native\"); image{w,h,format,quality}+scale describe the returned bytes, absent when none return; box->image: img_x = floor(bbox.x*scale); live operand: screen_x = base_source.x + bbox.x; a {path} operand reports base_source null. A changed diff adds the diff image: red over dimmed grey base. Read-only: no activation or input; errors never raise.",
+      "domain": "desktop",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "base": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "bbox": {
+            "default": true,
+            "type": "boolean"
+          },
+          "mask": {
+            "items": {
+              "items": {
+                "type": "integer"
+              },
+              "maxItems": 4,
+              "minItems": 4,
+              "type": "array"
+            },
+            "type": "array"
+          },
+          "max_px": {
+            "anyOf": [
+              {
+                "maximum": 8192,
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 1280
+          },
+          "next": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "out": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "threshold": {
+            "default": 0,
+            "maximum": 255,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "base",
+          "next"
+        ],
+        "type": "object"
+      },
+      "legacyName": "diff",
+      "name": "desktop_diff",
+      "outputSchema": {
+        "additionalProperties": true,
+        "properties": {
+          "base": {
+            "type": "object"
+          },
+          "base_source": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "bbox": {
+            "anyOf": [
+              {
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "bbox_space": {
+            "type": "string"
+          },
+          "changed": {
+            "type": "integer"
+          },
+          "diff_out": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "identical": {
+            "type": "boolean"
+          },
+          "image": {
+            "type": "object"
+          },
+          "masked_px": {
+            "type": "integer"
+          },
+          "next": {
+            "type": "object"
+          },
+          "next_source": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "ratio": {
+            "type": "number"
+          },
+          "scale": {
+            "type": "number"
+          },
+          "threshold": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          },
+          "warnings": {
+            "type": "array"
+          }
+        },
+        "required": [
+          "ok",
+          "changed",
+          "total",
+          "ratio",
+          "identical",
+          "base",
+          "next"
+        ],
+        "type": "object"
+      },
+      "schemaHash": {
+        "input": "sha256:eb4c061971587064e8ddd13fdbf0294d535c80ef92041c0cca1a6f740b7700cf",
+        "output": "sha256:425d345154875706ae99080e4978abe2e23ee9b553fb2fe8b91249e542a2e069"
+      },
+      "source": "puppet",
+      "title": "Diff"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true,
+        "title": "List Windows"
+      },
+      "description": "List visible top-level windows as JSON:\n[{hwnd,pid,exe,title,class,rect:[l,t,r,b],dwm_rect,client_rect,\nminimized,maximized,foreground,cloaked,visible,dpi}].\nrect=GetWindowRect (compat, includes the invisible border);\ndwm_rect=DWMWA_EXTENDED_FRAME_BOUNDS (mapping truth, else rect with\ndwm_fallback:true); client_rect in screen space. Read-only: no focus\nchange, no window is touched.\nelevated names the target's integrity: true when its process runs\nelevated (input from this unelevated server is UIPI-blocked: refused\nbefore injecting with uipi_blocked, flagged blocked_by_uipi:true),\nfalse when not elevated, null when unreadable (never named elevated).\ninclude_app_ids (default false) adds appId per window from the window's\nAppUserModelID property store (a string, or null when the store/property is\nunavailable). It is opt-in because that read is a per-window COM call.",
+      "domain": "desktop",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "include_app_ids": {
+            "default": false,
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "legacyName": "list_windows",
+      "name": "desktop_list_windows",
+      "outputSchema": {
+        "additionalProperties": true,
+        "properties": {
+          "windows": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "windows"
+        ],
+        "type": "object"
+      },
+      "schemaHash": {
+        "input": "sha256:12d99fbba06d93ae69c9209afa46161789b6d8b722a47aa53e8dd791cd6d82ba",
+        "output": "sha256:4b50c43eee0b6030b3b28fb4ac2b0c2a998a1c192c0937dd3a7536ddbcb0f487"
+      },
+      "source": "puppet",
+      "title": "List Windows"
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Window"
+      },
+      "description": "Move, resize, minimize, restore, close or raise a window by selector, hwnd or target; every verb is no-steal (SWP_NOACTIVATE / SW_SHOWMINNOACTIVE) and never touches the owner's cursor, keyboard or clipboard.\naction=focus and action=maximize are refused with no_foreground_policy: focusing IS taking the foreground and maximize covers a monitor. move needs x,y; resize needs width,height; close posts WM_CLOSE.\nReturns {ok, action, hwnd} plus the verb's fields. An ambiguous or vanished target is typed (ambiguous_target / target_gone) and never falls back to the foreground window. Read-only listing, capture and element walks are list_windows, screenshot and elements.",
+      "domain": "desktop",
+      "inputSchema": {
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "action": {
+                  "const": "move"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "x",
+                "y"
+              ]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "action": {
+                  "const": "resize"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "width",
+                "height"
+              ]
+            }
+          }
+        ],
+        "properties": {
+          "action": {
+            "enum": [
+              "focus",
+              "move",
+              "resize",
+              "minimize",
+              "maximize",
+              "restore",
+              "close",
+              "topmost"
+            ],
+            "type": "string"
+          },
+          "allow_foreground": {
+            "default": false,
+            "type": "boolean"
+          },
+          "height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "hwnd": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "target": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "appId": {
+                    "type": "string"
+                  },
+                  "className": {
+                    "type": "string"
+                  },
+                  "exe": {
+                    "type": "string"
+                  },
+                  "hwnd": {
+                    "type": "integer"
+                  },
+                  "pid": {
+                    "type": "integer"
+                  },
+                  "titleContains": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "x": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "y": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "type": "object"
+      },
+      "legacyName": "window",
+      "name": "desktop_window",
+      "outputSchema": {
+        "additionalProperties": true,
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "candidates": {
+            "type": "array"
+          },
+          "code": {
+            "type": "string"
+          },
+          "cursorUnchanged": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": "string"
+          },
+          "foregroundUnchanged": {
+            "type": "boolean"
+          },
+          "height": {
+            "type": "integer"
+          },
+          "hwnd": {
+            "type": "integer"
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "target_locked": {
+            "type": "integer"
+          },
+          "width": {
+            "type": "integer"
+          },
+          "x": {
+            "type": "integer"
+          },
+          "y": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "type": "object"
+      },
+      "schemaHash": {
+        "input": "sha256:452ef028fc85067625ed0c7691c293cb5041364da0ad7e95d54630327844231f",
+        "output": "sha256:24d01197c3c8ed560790288d7810d56cff5dc6ac13c7370abb38fe26e137de3f"
+      },
+      "source": "puppet",
+      "title": "Window"
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Do"
+      },
+      "description": "BURST tool: one call runs an ordered actions[] batch against one window.\ntarget={hwnd?,pid?,exe?,appId?,titleContains?,className?} (or a selector string) locks ONE top-level window for the whole call and is revalidated before every action; the legacy background selector is an alternative lock and target wins when both are given. Without a target every acting verb is refused before anything is sent (target_required for keys and patterns, no_cursor_policy for pointer acts), and nothing ever falls back to the foreground window.\nDelivery: click/down/up/drag/scroll/type/key/hotkey post window messages to the locked target; click, scroll and invoke with an element prefer the control UIA pattern (Invoke, SelectionItem, Toggle, ExpandCollapse, ScrollPattern), and click falls back to a posted button message at the element centre whose readable state is read before and after; wait, wait_for and clipboard_get deliver nothing. Refused under the policy, with no flag that unlocks them: move is refused with no_cursor_policy (a cursor move is not a window message); focus_window is refused with no_foreground_policy; set_value is refused with background_unavailable (UIA SetValue may focus the control); clipboard_set is refused with no_clipboard_policy (the clipboard is global); and type with an element is refused with background_unavailable.\nCoordinates: x/y under a target are CLIENT-area physical pixels; without a target they are virtual-desktop SCREEN pixels converted with ScreenToClient. Posted coordinates are signed 16-bit: anything outside -32768..32767 is refused with bad_coordinates before a message is posted. move takes x/y or dx/dy, never both.\nEffects: every result carries delivered (uia|posted|none), via and effect. ok is true when the action was delivered and not disproven; a posted click whose readable control state did not change reports ok:false with background_unavailable and effect unchanged; a raw x/y click reports effect unverified.\nStale refs: every element mutation (invoke, set_value, click and type with an element) requires expect_fp, the fp from an elements entry. Without it the call refuses expect_fp_required and the error carries the fresh fp; a mismatch refuses resolution:stale with a stale_ref error naming expected vs found fps. Retry with the returned fp. fp is identity, never state: rect, text and control state do not participate, so a matching fp means the same control, not the same condition; read effect for what the control then did. An ambiguous selector returns candidates {name,role,auto_id,rect,ref,fp} and acts on nothing; an explicit index picks the nth match.\nKeyboard: type posts WM_CHAR per unit; key and hotkey post WM_KEYDOWN/WM_SYSKEYDOWN and hold Shift when the layout requires it. chunk_chars/chunk_ms are accepted for compatibility and perform no pacing. scroll axis v|h selects the wheel; drag is down/move/up at exact points; hover:true is the only way to post a WM_MOUSEMOVE.\nBudget: at most 256 actions and 300 ms of total elapsed time per call; exceeding either is a typed burst_budget_exceeded result naming the limit and the actual value, and the remaining actions do not run. An element wait reports satisfied_by {selector, fp, path} naming the control that satisfied it (null when nothing did) and fp_matched when expect_fp was supplied; a mismatch is a report, never an error. Top-level ok is true only when EVERY action succeeded; a wait_for timeout is never an error. settle_ms is one trailing pause after the last action. focus_guard:true restores the entry foreground window when the call changed it, and focus_before/focus_after are always reported.\ndry_run=true validates exactly like the live call (every policy refusal included) but posts nothing, and invoke under dry_run still reports found|not-found|ambiguous. desktop:\"hidden\" launches the program named by background on a private desktop (background_args are its argv) and returns the burst JSON plus hidden_desktop{...}; the owner's cursor, foreground and focus are never touched.",
+      "domain": "desktop",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "actions": {
+            "items": {
+              "oneOf": [
+                {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "x",
+                        "y"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "dx",
+                        "dy"
+                      ]
+                    }
+                  ],
+                  "properties": {
+                    "dx": {
+                      "type": "integer"
+                    },
+                    "dy": {
+                      "type": "integer"
+                    },
+                    "relative": {
+                      "type": "boolean"
+                    },
+                    "type": {
+                      "const": "move"
+                    },
+                    "x": {
+                      "type": "integer"
+                    },
+                    "y": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "properties": {
+                    "button": {
+                      "type": "string"
+                    },
+                    "count": {
+                      "type": "integer"
+                    },
+                    "element": {
+                      "type": "string"
+                    },
+                    "expect_fp": {
+                      "description": "Required for element mutations as of 8.0.0",
+                      "type": "string"
+                    },
+                    "hover": {
+                      "default": false,
+                      "type": "boolean"
+                    },
+                    "index": {
+                      "type": "integer"
+                    },
+                    "type": {
+                      "const": "click"
+                    },
+                    "x": {
+                      "type": "integer"
+                    },
+                    "y": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "properties": {
+                    "button": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "const": "down"
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "properties": {
+                    "button": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "const": "up"
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "properties": {
+                    "button": {
+                      "type": "string"
+                    },
+                    "from": {
+                      "items": {
+                        "type": "integer"
+                      },
+                      "maxItems": 2,
+                      "minItems": 2,
+                      "type": "array"
+                    },
+                    "to": {
+                      "items": {
+                        "type": "integer"
+                      },
+                      "maxItems": 2,
+                      "minItems": 2,
+                      "type": "array"
+                    },
+                    "type": {
+                      "const": "drag"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "from",
+                    "to"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "properties": {
+                    "amount": {
+                      "type": "integer"
+                    },
+                    "axis": {
+                      "default": "v",
+                      "enum": [
+                        "v",
+                        "h"
+                      ],
+                      "type": "string"
+                    },
+                    "element": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "const": "scroll"
+                    },
+                    "x": {
+                      "type": "integer"
+                    },
+                    "y": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "properties": {
+                    "chunk_chars": {
+                      "type": "integer"
+                    },
+                    "chunk_ms": {
+                      "type": "integer"
+                    },
+                    "element": {
+                      "type": "string"
+                    },
+                    "expect_fp": {
+                      "description": "Required for element mutations as of 8.0.0",
+                      "type": "string"
+                    },
+                    "index": {
+                      "type": "integer"
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "const": "type"
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "properties": {
+                    "gap_ms": {
+                      "maximum": 60000,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "hold_ms": {
+                      "maximum": 60000,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "repeat": {
+                      "maximum": 100,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "type": {
+                      "const": "key"
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "properties": {
+                    "keys": {
+                      "anyOf": [
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "type": {
+                      "const": "hotkey"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "keys"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "properties": {
+                    "ms": {
+                      "type": "integer"
+                    },
+                    "type": {
+                      "const": "wait"
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "properties": {
+                    "color": {
+                      "items": {
+                        "type": "integer"
+                      },
+                      "maxItems": 3,
+                      "minItems": 3,
+                      "type": "array"
+                    },
+                    "element": {
+                      "type": "string"
+                    },
+                    "expect_fp": {
+                      "description": "Reported as fp_matched; never turns the wait into an error",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "enum": [
+                        "window_appear",
+                        "window_disappear",
+                        "pixel",
+                        "stable",
+                        "element"
+                      ],
+                      "type": "string"
+                    },
+                    "poll_ms": {
+                      "type": "integer"
+                    },
+                    "region": {
+                      "items": {
+                        "type": "integer"
+                      },
+                      "maxItems": 4,
+                      "minItems": 4,
+                      "type": "array"
+                    },
+                    "selector": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "default": "appear",
+                      "enum": [
+                        "appear",
+                        "disappear",
+                        "enabled",
+                        "disabled"
+                      ],
+                      "type": "string"
+                    },
+                    "timeout_ms": {
+                      "type": "integer"
+                    },
+                    "tolerance": {
+                      "type": "integer"
+                    },
+                    "type": {
+                      "const": "wait_for"
+                    },
+                    "window": {
+                      "type": "string"
+                    },
+                    "x": {
+                      "type": "integer"
+                    },
+                    "y": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "kind"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "properties": {
+                    "hwnd": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null
+                    },
+                    "title": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null
+                    },
+                    "type": {
+                      "const": "focus_window"
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "properties": {
+                    "element": {
+                      "type": "string"
+                    },
+                    "expect_fp": {
+                      "description": "Required for element mutations as of 8.0.0",
+                      "type": "string"
+                    },
+                    "index": {
+                      "type": "integer"
+                    },
+                    "state": {
+                      "enum": [
+                        "expand",
+                        "collapse"
+                      ],
+                      "type": "string"
+                    },
+                    "type": {
+                      "const": "invoke"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "element"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "properties": {
+                    "element": {
+                      "type": "string"
+                    },
+                    "expect_fp": {
+                      "description": "Required for element mutations as of 8.0.0",
+                      "type": "string"
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "const": "set_value"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "element",
+                    "text"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "properties": {
+                    "text": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "const": "clipboard_set"
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "properties": {
+                    "type": {
+                      "const": "clipboard_get"
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "maxItems": 256,
+            "minItems": 1,
+            "type": "array"
+          },
+          "allow_clipboard": {
+            "default": false,
+            "description": "Retained for schema compatibility and buys nothing: it would permit overwriting the owner's global clipboard, and clipboard_set is refused with no_clipboard_policy before OpenClipboard whatever this is set to. Reads (clipboard_get) never need it, and a refused call touches no clipboard.",
+            "type": "boolean"
+          },
+          "allow_cursor": {
+            "default": false,
+            "type": "boolean"
+          },
+          "allow_foreground": {
+            "default": false,
+            "type": "boolean"
+          },
+          "background": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "background_args": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "desktop": {
+            "anyOf": [
+              {
+                "enum": [
+                  "hidden"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "dry_run": {
+            "default": false,
+            "type": "boolean"
+          },
+          "focus_guard": {
+            "default": false,
+            "type": "boolean"
+          },
+          "settle_ms": {
+            "default": 0,
+            "type": "integer"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "appId": {
+                    "type": "string"
+                  },
+                  "className": {
+                    "type": "string"
+                  },
+                  "exe": {
+                    "type": "string"
+                  },
+                  "hwnd": {
+                    "type": "integer"
+                  },
+                  "pid": {
+                    "type": "integer"
+                  },
+                  "titleContains": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "actions"
+        ],
+        "type": "object"
+      },
+      "legacyName": "do",
+      "name": "desktop_do",
+      "outputSchema": {
+        "additionalProperties": true,
+        "properties": {
+          "cursorUnchanged": {
+            "type": "boolean"
+          },
+          "events": {
+            "type": "integer"
+          },
+          "failed": {
+            "type": "integer"
+          },
+          "focus_after": {
+            "type": "integer"
+          },
+          "focus_before": {
+            "type": "integer"
+          },
+          "foregroundUnchanged": {
+            "type": "boolean"
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "results": {
+            "type": "array"
+          },
+          "sendinput_calls": {
+            "type": "integer"
+          },
+          "sendinput_ms": {
+            "type": "number"
+          },
+          "target_exe": {
+            "type": "string"
+          },
+          "target_locked": {
+            "type": "integer"
+          },
+          "target_pid": {
+            "type": "integer"
+          },
+          "total_ms": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "results",
+          "total_ms",
+          "sendinput_calls",
+          "sendinput_ms",
+          "events",
+          "focus_before",
+          "focus_after"
+        ],
+        "type": "object"
+      },
+      "schemaHash": {
+        "input": "sha256:3078e90863418025922de296560d7dd32f81a01f2b5a54a58bfbfe0bd69dfcb9",
+        "output": "sha256:02da92933a44a4aa2889527f768822b1e8593bdae9bc4d33494ca423cda798e1"
+      },
+      "source": "puppet",
+      "title": "Do"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true,
+        "title": "Cursor"
+      },
+      "description": "Current cursor position + monitor rects as JSON:\n{x, y, screens:[[l,t,r,b],...]}.",
+      "domain": "desktop",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "legacyName": "cursor",
+      "name": "desktop_cursor",
+      "outputSchema": {
+        "additionalProperties": true,
+        "properties": {
+          "screens": {
+            "type": "array"
+          },
+          "x": {
+            "type": "integer"
+          },
+          "y": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "x",
+          "y",
+          "screens"
+        ],
+        "type": "object"
+      },
+      "schemaHash": {
+        "input": "sha256:99334726611ccf58a148b0814696bfa6fe08c1b2d027e946beccf5a74331c9aa",
+        "output": "sha256:e37f34231321d44ae2a942dea3cbe7dcced0f97fe8fbe689cd1fd08cc7e48d85"
+      },
+      "source": "puppet",
+      "title": "Cursor"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true,
+        "title": "Elements"
+      },
+      "description": "List structured UI elements for a window as JSON, zero-pixel (no screenshot, no focus change, no input).\nTarget by selector (title text or hwnd; the same TargetLock as target:). detail=true keeps the raw win and hwnd fields on each entry and adds text (TextPattern document text, capped at 4000 chars) plus text_truncated; the default false returns the compact {ref,role,name,auto_id,rect,offscreen,invokable,path,fp}.\nEach entry carries fp, a stable identity fingerprint (FNV-1a over role/name/auto_id/invokable, 16 hex chars); pass it as expect_fp to invoke, set_value, click and type on an element: a call without one is refused with the fresh fp, and a mismatched one refuses stale_ref instead of acting on the wrong control. fp is identity, never state: rect, text and control state (checked, selected, expanded, range) do not participate, so an fp match means the same control, not the same condition; a state-sensitive action needs a readback (effect), never a fingerprint. offscreen:true marks a control with no area: the rect is kept for shape stability but click refuses it with offscreen_element.\nReturns {backend,truncated,rect_space,elements,uia_available,uia_error,fallback,empty[,empty_reason],depth_capped,depth_limit}; rect_space is screen. max_depth (1..32, default 8) bounds the UIA walk; offset pages past the 200-entry cap and next_offset carries the next page or null. When UIA is unavailable the Win32 child enumeration serves the entries.",
+      "domain": "desktop",
+      "inputSchema": {
+        "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "title"
+            ]
+          },
+          {
+            "required": [
+              "hwnd"
+            ]
+          },
+          {
+            "required": [
+              "target"
+            ]
+          }
+        ],
+        "properties": {
+          "detail": {
+            "default": false,
+            "type": "boolean"
+          },
+          "hwnd": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "max_depth": {
+            "default": 8,
+            "maximum": 32,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "offset": {
+            "default": 0,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "appId": {
+                    "type": "string"
+                  },
+                  "className": {
+                    "type": "string"
+                  },
+                  "exe": {
+                    "type": "string"
+                  },
+                  "hwnd": {
+                    "type": "integer"
+                  },
+                  "pid": {
+                    "type": "integer"
+                  },
+                  "titleContains": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "type": "object"
+      },
+      "legacyName": "elements",
+      "name": "desktop_elements",
+      "outputSchema": {
+        "additionalProperties": true,
+        "properties": {
+          "backend": {
+            "type": "string"
+          },
+          "cursorUnchanged": {
+            "type": "boolean"
+          },
+          "depth_capped": {
+            "type": "boolean"
+          },
+          "depth_limit": {
+            "type": "integer"
+          },
+          "elements": {
+            "type": "array"
+          },
+          "empty": {
+            "type": "boolean"
+          },
+          "empty_reason": {
+            "type": "string"
+          },
+          "fallback": {},
+          "foregroundUnchanged": {
+            "type": "boolean"
+          },
+          "rect_space": {
+            "type": "string"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "uia_available": {
+            "type": "boolean"
+          },
+          "uia_error": {}
+        },
+        "required": [
+          "backend",
+          "truncated",
+          "rect_space",
+          "elements",
+          "uia_available",
+          "empty",
+          "depth_capped",
+          "depth_limit"
+        ],
+        "type": "object"
+      },
+      "schemaHash": {
+        "input": "sha256:90a47850a03f2b35582bc32948ce8857356586af560d3f2e6edc1270cde4ec76",
+        "output": "sha256:84c4ae44eb67ce585facf319056de27e1403740dec2ce9926c22fbf7f1d5e8bd"
+      },
+      "source": "puppet",
+      "title": "Elements"
+    }
+  ]
+}
