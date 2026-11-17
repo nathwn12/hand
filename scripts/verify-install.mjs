@@ -51,17 +51,20 @@ if (!existsSync(installed)) fail(`no binary at ${installed}`);
 
 const git = (args) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
 
+/** The commits that can change the binary. A docs-only HEAD must not force a reinstall. */
+const BUILD_INPUTS = ["src", "crates", "build.rs", "Cargo.toml", "Cargo.lock"];
+
 // 1+2: the bytes on disk say which commit they are.
 const version = execFileSync(installed, ["--version"], { encoding: "utf8" }).trim();
 const stamp = version.match(/\(([0-9a-f]{7,40})(-dirty)?[,)]/);
 if (!stamp) fail(`${installed} prints no commit stamp: "${version}"`);
 const [, sha, dirty] = stamp;
-const head = git(["rev-parse", "HEAD"]);
+const head = git(["rev-list", "-1", "HEAD", "--", ...BUILD_INPUTS]);
 if (!(head.startsWith(sha) || sha.startsWith(head.slice(0, sha.length)))) {
-  fail(`installed ${sha}, HEAD ${head.slice(0, 12)} — rebuild and reinstall before trusting a live probe`);
+  fail(`installed ${sha}, last build-input commit ${head.slice(0, 12)} — rebuild and install before trusting a live probe`);
 }
 if (dirty) fail(`installed build came from a dirty tree (${sha}-dirty)`);
-console.log(`PASS install bytes: ${installed} is ${sha.slice(0, 12)}, same commit as HEAD`);
+console.log(`PASS install bytes: ${installed} is ${sha.slice(0, 12)}, the last commit that can change it`);
 
 // 3: the loaded process, proven by image path and start time.
 if (flag("--loaded")) {
