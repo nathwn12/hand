@@ -94,6 +94,12 @@ function printReport(report) {
   for (const entry of report.metadataDrift.slice(0, 10)) {
     console.log(`             ${entry.tool} ${entry.kind}`);
   }
+  if (report.declaredAdditions?.length) {
+    console.log(`  declared   ${report.declaredAdditions.length} output-schema addition(s) allowed by DECLARED_OUTPUT_ADDITIONS:`);
+    for (const entry of report.declaredAdditions) {
+      console.log(`             ${entry.tool} += ${entry.properties.join(", ")}`);
+    }
+  }
   for (const warning of report.warnings) console.log(`  WARN       ${warning}`);
 }
 

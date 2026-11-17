@@ -164,6 +164,15 @@ so an attached or capability-restricted engine is described as it really is.
    - Puppet's fixture self-test floor is 15 files instead of 20 because the
      library crate carries no integration `tests/` tree; its scans still cover
      every file present.
+9. **Five browser tools add one output property, `resolved`.** `click`, `type`,
+   `hover`, `select` and `upload` return `{selector, ref, role, name}` when the
+   element argument used one of the accessibility forms, so the caller can see
+   which element answered. The property is additive; every other field, the input
+   schemas and all 32 legacy bodies are unchanged. `baseline/scripts/lib/catalog.mjs`
+   holds it as a declared list (`DECLARED_OUTPUT_ADDITIONS`) and strips exactly
+   those properties before the deep comparison, so any other schema drift still
+   fails. Removing one entry from that list turns `compare-catalog` red —
+   verified, not assumed.
 
 ## Not preserved / not claimed
 

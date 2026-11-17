@@ -28,6 +28,34 @@ export const PREFIX = { browser: "browser_", desktop: "desktop_" };
 /** Metadata keys compared as "documentation" rather than as contract. */
 const METADATA_KEYS = ["title", "description"];
 
+/**
+ * Output-schema properties hand adds on purpose, per tool. Everything else must
+ * stay byte-comparable to the legacy body: a new field cannot ship unnoticed, and
+ * a declared one still has to match its own promise (the property is removed from
+ * the candidate before the deep comparison, together with its `required` entry).
+ *
+ * Justify each entry in docs/COMPATIBILITY.md under "Intentional differences".
+ */
+const DECLARED_OUTPUT_ADDITIONS = {
+  browser_click: ["resolved"],
+  browser_hover: ["resolved"],
+  browser_select: ["resolved"],
+  browser_type: ["resolved"],
+  browser_upload: ["resolved"],
+};
+
+/** Remove declared additions from a candidate schema so the rest must match exactly. */
+function withoutDeclaredProperties(schema, names) {
+  if (!schema || typeof schema !== "object" || names.length === 0) return schema;
+  const clone = JSON.parse(JSON.stringify(schema));
+  if (clone.properties) for (const name of names) delete clone.properties[name];
+  if (Array.isArray(clone.required)) {
+    clone.required = clone.required.filter((key) => !names.includes(key));
+    if (clone.required.length === 0) delete clone.required;
+  }
+  return clone;
+}
+
 /** The contract projection of one tool. Absent means absent, not undefined. */
 export function project(tool) {
   const out = { name: tool.name };
@@ -173,6 +201,7 @@ export function compareCatalogs({ baseline, candidate, profile = "hand", strictM
     missing: [],
     extra: [],
     schemaMismatches: [],
+    declaredAdditions: [],
     metadataDrift: [],
     warnings: [],
   };
@@ -204,12 +233,16 @@ export function compareCatalogs({ baseline, candidate, profile = "hand", strictM
       }
     }
     for (const key of ["inputSchema", "outputSchema", "annotations"]) {
-      if (!deepEqual(baseTool[key], candTool[key])) {
+      const declared = key === "outputSchema" && profile === "hand" ? (DECLARED_OUTPUT_ADDITIONS[name] ?? []) : [];
+      const candidate = declared.length ? withoutDeclaredProperties(candTool[key], declared) : candTool[key];
+      if (!deepEqual(baseTool[key], candidate)) {
         report.schemaMismatches.push({
           tool: name,
           kind: key,
-          diffs: diffOf(baseTool[key], candTool[key]),
+          diffs: diffOf(baseTool[key], candidate),
         });
+      } else if (declared.length) {
+        report.declaredAdditions.push({ tool: name, properties: declared });
       }
     }
     for (const key of METADATA_KEYS) {
