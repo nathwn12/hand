@@ -1,0 +1,74 @@
+{
+  "schema": "hand-mcp.benchmark.build-receipt/v1",
+  "ok": true,
+  "product": "hand",
+  "profile": "release",
+  "source": {
+    "root": "Q:\\PROJECTS\\PERSONAL\\hand-mcp",
+    "gitHead": "eb75149a90f84d28d413f45f6d95c36602088637",
+    "branch": "work/hand-mcp",
+    "dirty": true,
+    "statusSha256": "sha256:bb048f3e09cdfddefd3293cc3855239a7d574914aaff6e04b75c58b3474a6733",
+    "trackedDiffSha256": "sha256:22bf40b5add0ef43de700012690d2b6f2d0da8fb314c1d5a6b78e2a0b847c03f"
+  },
+  "command": {
+    "program": "cargo",
+    "args": [
+      "build",
+      "--release",
+      "--locked",
+      "--manifest-path",
+      "Q:\\PROJECTS\\PERSONAL\\hand-mcp\\Cargo.toml",
+      "--bin",
+      "hand-mcp",
+      "--target-dir",
+      "C:\\Users\\nathan\\AppData\\Local\\Temp\\opencode\\hand-release-target2"
+    ],
+    "cwd": "Q:\\PROJECTS\\PERSONAL\\hand-mcp",
+    "startedAtUtc": "2026-11-17T21:14:44.174Z",
+    "finishedAtUtc": "2026-11-17T21:16:19.286Z",
+    "durationMs": 95111,
+    "exitCode": 0,
+    "stdoutBytes": 0,
+    "stderrBytes": 7221,
+    "stdoutSha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stderrSha256": "sha256:bed39e816ba4a454f1ba80fef44ee26305fc1cbbe3c1a22abdbe98eaa2a9ebc2",
+    "stdoutTail": "",
+    "stderrTail": "   Compiling proc-macro2 v1.0.107\n   Compiling unicode-ident v1.0.27\n   Compiling quote v1.0.47\n   Compiling windows-link v0.2.1\n   Compiling cfg-if v1.0.5\n   Compiling getrandom v0.4.3\n   Compiling find-msvc-tools v0.1.15\n   Compiling shlex v2.0.1\n   Compiling smallvec v1.16.5\n   Compiling stable_deref_trait v1.2.1\n   Compiling fs_extra v1.3.0\n   Compiling dunce v1.0.5\n   Compiling bytes v1.12.1\n   Compiling parking_lot_core v0.9.12\n   Compiling itoa v1.0.19\n   Compiling windows-sys v0.61.2\n   Compiling pin-project-lite v0.2.17\n   Compiling zeroize v1.9.2\n   Compiling scopeguard v1.2.0\n   Compiling aws-lc-rs v1.19.0\n   Compiling once_cell v1.21.4\n   Compiling futures-core v0.3.34\n   Compiling lock_api v0.4.14\n   Compiling rustls-pki-types v1.16.0\n   Compiling litemap v0.8.3\n   Compiling writeable v0.6.4\n   Compiling utf_types v1.0.0\n   Compiling untrusted v0.9.0\n   Compiling icu_properties_data v2.4.0\n   Compiling httparse v1.10.1\n   Compiling rustls v0.23.46\n   Compiling jobserver v0.1.35\n   Compiling icu_normalizer_data v2.4.0\n   Compiling futures-task v0.3.34\n   Compiling slab v0.4.12\n   Compiling subtle v2.6.1\n   Compiling parking_lot v0.12.5\n   Compiling utf8_iter v1.1.0\n   Compiling typenum v1.20.1\n   Compiling cc v1.11.2\n   Compiling futures-sink v0.3.34\n   Compiling http v1.5.0\n   Compiling percent-encoding v2.3.2\n   Compiling rand_core v0.10.1\n   Compiling windows-result v0.4.1\n   Compiling windows-strings v0.5.1\n   Compiling cpufeatures v0.3.1\n   Compiling try-lock v0.2.5\n   Compiling tower-service v0.3.3\n   Compiling simd-adler32 v0.3.10\n   Compiling libc v0.2.191\n   Compiling want v0.3.2\n   Compiling tracing-core v0.1.36\n   Compiling adler2 v2.0.1\n   Compiling atomic-waker v1.1.2\n   Compiling syn v3.0.10\n   Compiling syn v2.0.119\n   Compiling const-oid v0.10.3\n   Compiling serde_core v1.0.229\n   Compiling log v0.4.35\n   Compiling thiserror v2.0.21\n   Compiling crc32fast v1.5.5\n   Compiling zmij v1.0.23\n   Compiling base64 v0.23.1\n   Compiling bitflags v2.13.2\n   Compiling hybrid-array v0.4.15\n   Compiling tracing v0.1.44\n   Compiling chacha20 v0.10.2\n   Compiling http-body v1.1.0\n   Compiling form_urlencoded v1.2.2\n   Compiling sync_wrapper v1.0.2\n   Compiling cmake v0.1.58\n   Compiling futures-channel v0.3.34\n   Compiling hashbrown v0.17.1\n   Compiling ipnet v2.12.2\n   Compiling serde_json v1.0.154\n   Compiling tower-layer v0.3.3\n   Compiling equivalent v1.0.3\n   Compiling rand v0.10.4\n   Compiling crypto-common v0.2.2\n   Compiling block-buffer v0.12.1\n   Compiling miniz_oxide v0.9.1\n   Compiling windows-threading v0.2.1\n   Compiling memchr v2.8.3\n   Compiling foldhash v0.2.0\n   Compiling indexmap v2.14.2\n   Compiling data-encoding v2.11.1\n   Compiling http-body-util v0.1.5\n   Compiling miniz_oxide v0.8.9\n   Compiling fdeflate v0.3.7\n   Compiling flate2 v1.1.11\n   Compiling aws-lc-sys v0.47.0\n   Compiling digest v0.11.3\n   Compiling sha1 v0.11.0\n   Compiling fastrand v2.5.0\n   Compiling png v0.18.1\n   Compiling jpeg-encoder v0.7.1\n   Compiling windows-implement v0.60.2\n   Compiling windows-interface v0.59.3\n   Compiling synstructure v0.14.0\n   Compiling windows-core v0.62.2\n   Compiling zerofrom-derive v0.1.8\n   Compiling yoke-derive v0.8.4\n   Compiling zerovec-derive v0.11.7\n   Compiling displaydoc v0.2.7\n   Compiling tokio-macros v2.7.2\n   Compiling futures-macro v0.3.34\n   Compiling zerofrom v0.1.8\n   Compiling yoke v0.8.4\n   Compiling thiserror-impl v2.0.21\n   Compiling windows-collections v0.3.2\n   Compiling windows-future v0.3.2\n   Compiling windows-numerics v0.3.1\n   Compiling zerovec v0.11.9\n   Compiling socket2 v0.6.5\n   Compiling mio v1.2.5\n   Compiling zerotrie v0.2.5\n   Compiling futures-util v0.3.34\n   Compiling tinystr v0.8.5\n   Compiling tokio v1.54.1\n   Compiling icu_locale_core v2.4.0\n   Compiling potential_utf v0.1.6\n   Compiling icu_collections v2.4.0\n   Compiling schannel v0.1.30\n   Compiling windows v0.62.2\n   Compiling icu_provider v2.4.0\n   Compiling rustls-native-certs v0.8.5\n   Compiling icu_properties v2.4.0\n   Compiling icu_normalizer v2.4.0\n   Compiling tempfile v3.27.0\n   Compiling idna_adapter v1.2.2\n   Compiling idna v1.1.0\n   Compiling url v2.5.8\n   Compiling hyper v1.12.0\n   Compiling tower v0.5.3\n   Compiling hyper-util v0.1.21\n   Compiling tower-http v0.6.11\n   Compiling desktop-engine v0.1.0 (Q:\\PROJECTS\\PERSONAL\\hand-mcp\\crates\\desktop-engine)\nwarning: unused imports: `DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2`, `PROCESS_PER_MONITOR_DPI_AWARE`, `SetProcessDpiAwarenessContext`, and `SetProcessDpiAwareness`\n  --> crates\\desktop-engine\\src\\lib.rs:46:22\n   |\n46 |     GetDpiForWindow, SetProcessDpiAwareness, SetProcessDpiAwarenessContext,\n   |                      ^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n47 |     DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, PROCESS_PER_MONITOR_DPI_AWARE,\n   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n   |\n   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default\n\nwarning: value assigned to `posted` is never read\n    --> crates\\desktop-engine\\src\\burst.rs:3800:41\n     |\n3771 |                         posted += 1;\n     |                         ----------- `posted` is overwritten here before the previous value is read\n...\n3800 |                                         posted += 1;\n     |                                         ^^^^^^^^^^^ this value is reassigned later and never used\n     |\n     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default\n\nwarning: value assigned to `posted` is never read\n    --> crates\\desktop-engine\\src\\burst.rs:4001:37\n     |\n4001 |                                     posted += 1;\n     |                                     ^^^^^^^^^^^ this value is reassigned later and never used\n...\n4014 |                         posted += 1;\n     |                         ----------- `posted` is overwritten here before the previous value is read\n\n   Compiling rustls-webpki v0.103.17\n   Compiling tokio-rustls v0.26.6\n   Compiling rustls-platform-verifier v0.7.1\n   Compiling tungstenite v0.30.0\n   Compiling hyper-rustls v0.27.10\n   Compiling reqwest v0.13.5\n   Compiling tokio-tungstenite v0.30.0\nwarning: `desktop-engine` (lib) generated 3 warnings (run `cargo fix --lib -p desktop-engine` to apply 1 suggestion)\n   Compiling browser-engine v0.1.0 (Q:\\PROJECTS\\PERSONAL\\hand-mcp\\crates\\browser-engine)\nwarning: use of deprecated method `std::sync::atomic::Atomic::<u32>::fetch_update`: renamed to `try_update` for consistency\n   --> crates\\browser-engine\\src\\capture.rs:481:10\n    |\n481 |         .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))\n    |          ^^^^^^^^^^^^\n    |\n    = note: `#[warn(deprecated)]` on by default\nhelp: replace the use of the deprecated method\n    |\n481 -         .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))\n481 +         .try_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))\n    |\n\nwarning: `browser-engine` (lib) generated 1 warning (run `cargo fix --lib -p browser-engine` to apply 1 suggestion)\n   Compiling hand-mcp v0.1.0 (Q:\\PROJECTS\\PERSONAL\\hand-mcp)\n    Finished `release` profile [optimized] target(s) in 1m 35s\n"
+  },
+  "toolchain": {
+    "cargo": {
+      "status": 0,
+      "stdout": "cargo 1.100.0 (3acc79c0c 2026-11-05)",
+      "stderr": ""
+    },
+    "rustc": {
+      "status": 0,
+      "stdout": "rustc 1.100.0 (0ef1bc386 2026-11-09)\nbinary: rustc\ncommit-hash: 0ef1bc386059596dada8fb65b50425aab2ea637a\ncommit-date: 2026-11-09\nhost: x86_64-pc-windows-msvc\nrelease: 1.100.0\nLLVM version: 23.1.5",
+      "stderr": ""
+    },
+    "host": "x86_64-pc-windows-msvc",
+    "target": "x86_64-pc-windows-msvc"
+  },
+  "output": {
+    "path": "Q:\\PROJECTS\\PERSONAL\\hand-mcp\\benchmarks\\receipts\\builds\\artifacts\\hand-eb75149a-20261117T212206145Z-relocated-release.exe",
+    "bytes": 13237248,
+    "sha256": "sha256:70ec9f9f5721ff95454fe5126915f074a8d4bc206ee793340efba2974964e36b",
+    "modifiedAtUtc": "2026-11-17T21:16:19.198Z",
+    "buildPath": "C:\\Users\\nathan\\AppData\\Local\\Temp\\opencode\\hand-release-target2\\release\\hand-mcp.exe",
+    "durable": true
+  },
+  "version": {
+    "status": 0,
+    "stdout": "hand-mcp 0.1.0 (gladius 59c6d77, puppet 0f790be; x86_64)",
+    "stderr": ""
+  },
+  "generatedAtUtc": "2026-11-17T21:16:19.593Z",
+  "relocation": {
+    "fromReceipt": "hand-eb75149a-20261117T211619594Z-release.json",
+    "fromReceiptSha256": "sha256:29ddf36e5824112bf1c82d67b4f8864b5161c168e2dd4527dc623aa2a0e6321e",
+    "fromArtifact": "C:\\Users\\nathan\\AppData\\Local\\Temp\\opencode\\hand-release-target2\\release\\hand-mcp.exe",
+    "fromArtifactSha256": "sha256:70ec9f9f5721ff95454fe5126915f074a8d4bc206ee793340efba2974964e36b",
+    "atUtc": "2026-11-17T21:22:06.168Z"
+  }
+}

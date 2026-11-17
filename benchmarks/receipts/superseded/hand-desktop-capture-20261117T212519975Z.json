@@ -1,0 +1,1359 @@
+{
+  "schema": "hand-mcp.benchmark.receipt/v1",
+  "driverVersion": "1.0.0",
+  "generatedAtUtc": "2026-11-17T21:25:19.972Z",
+  "testOnly": false,
+  "evidence": "measured against the resolved product binary on this machine",
+  "product": {
+    "id": "hand",
+    "label": "hand",
+    "command": "Q:\\PROJECTS\\PERSONAL\\hand-mcp\\benchmarks\\receipts\\builds\\artifacts\\hand-eb75149a-20261117T212206145Z-relocated-release.exe",
+    "args": [],
+    "cwd": "Q:\\PROJECTS\\PERSONAL\\hand-mcp",
+    "source": "explicit --command",
+    "testFixture": false,
+    "resolved": true,
+    "executable": {
+      "path": "Q:\\PROJECTS\\PERSONAL\\hand-mcp\\benchmarks\\receipts\\builds\\artifacts\\hand-eb75149a-20261117T212206145Z-relocated-release.exe",
+      "bytes": 13237248,
+      "sha256": "sha256:70ec9f9f5721ff95454fe5126915f074a8d4bc206ee793340efba2974964e36b"
+    },
+    "version": {
+      "status": 0,
+      "stdout": "hand-mcp 0.1.0 (gladius 59c6d77, puppet 0f790be; x86_64)",
+      "stderr": ""
+    },
+    "entrypoint": null,
+    "releaseIdentity": {
+      "claimed": "unknown",
+      "verified": false,
+      "basis": "binary-path-heuristic",
+      "reason": "the executable path is not a compiler-profile or signed-build attestation; release identity is unverified"
+    }
+  },
+  "scenario": {
+    "id": "desktop-capture",
+    "title": "controlled 1280x720 window capture at native resolution",
+    "domain": "desktop",
+    "specTargetP95Ms": 500,
+    "tool": "desktop_screenshot",
+    "method": null,
+    "params": {
+      "target": {
+        "titleContains": "hand-bench-desktop-1280x720-16548"
+      },
+      "fmt": "png",
+      "max_px": 8192,
+      "allow_crop_fallback": false
+    },
+    "paramsHash": "sha256:97d49ee020f9752da2f038646edbc392774f3754f038e6d4114da9c13330ec37"
+  },
+  "protocol": {
+    "warmup": 10,
+    "measured": 100,
+    "sequential": true,
+    "timeoutMs": 60000,
+    "framing": "newline-delimited JSON-RPC",
+    "latencyBasis": "stdin write to complete response frame; validation happens after the measurement"
+  },
+  "fingerprint": {
+    "machine": {
+      "hostname": "NECESSE",
+      "platform": "win32",
+      "release": "10.0.26300",
+      "version": "Windows 11 Pro",
+      "arch": "x64",
+      "cpu": {
+        "model": "AMD Ryzen 7 5800X 8-Core Processor",
+        "logicalCores": 16,
+        "speedMHz": 4392
+      },
+      "memoryTotalBytes": 34276126720,
+      "display": {
+        "width": 2560,
+        "height": 1440,
+        "dpi": 96,
+        "scaleFactor": 1
+      },
+      "displayProbe": {
+        "ok": true
+      },
+      "node": {
+        "version": "v26.13.1",
+        "arch": "x64",
+        "execPath": "C:\\Users\\nathan\\scoop\\apps\\nodejs-lts\\current\\node.exe"
+      },
+      "hash": "sha256:993049499f61bbe0fe2f531d589535b0ae7e89934300b1cf01c6669a49ae22a7"
+    },
+    "browser": null,
+    "fixture": null,
+    "desktopTarget": {
+      "matcher": {
+        "titleContains": "hand-bench-desktop-1280x720-16548"
+      },
+      "identity": {
+        "title": "hand-bench-desktop-1280x720-16548",
+        "exe": "hand-desktop-fixture.exe",
+        "class": "WindowsForms10.Window.8.app.0.34f5582_r6_ad1",
+        "clientRect": [
+          100,
+          100,
+          1380,
+          820
+        ],
+        "rect": [
+          100,
+          100,
+          1380,
+          820
+        ],
+        "dpi": 96,
+        "minimized": false
+      },
+      "hwnd": 722906,
+      "hash": "sha256:8fe7df7b63f772a33c7e98f765d077a3f8ecd6e742881d81320d54b0dba6ed4f"
+    }
+  },
+  "samples": {
+    "warmup": {
+      "attempts": [
+        {
+          "index": 1,
+          "ok": false,
+          "elapsedMs": 231.895,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 2,
+          "ok": false,
+          "elapsedMs": 221.039,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 3,
+          "ok": false,
+          "elapsedMs": 213.178,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 4,
+          "ok": false,
+          "elapsedMs": 214.648,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 5,
+          "ok": false,
+          "elapsedMs": 214.932,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 6,
+          "ok": false,
+          "elapsedMs": 220.23,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 7,
+          "ok": false,
+          "elapsedMs": 221.013,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 8,
+          "ok": false,
+          "elapsedMs": 214.358,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 9,
+          "ok": false,
+          "elapsedMs": 214.619,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 10,
+          "ok": false,
+          "elapsedMs": 214.846,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        }
+      ],
+      "failures": 10
+    },
+    "measured": {
+      "attempts": [
+        {
+          "index": 1,
+          "ok": false,
+          "elapsedMs": 224.793,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 2,
+          "ok": false,
+          "elapsedMs": 214.789,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 3,
+          "ok": false,
+          "elapsedMs": 219.829,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 4,
+          "ok": false,
+          "elapsedMs": 221.688,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 5,
+          "ok": false,
+          "elapsedMs": 234.693,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 6,
+          "ok": false,
+          "elapsedMs": 224.129,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 7,
+          "ok": false,
+          "elapsedMs": 235.553,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 8,
+          "ok": false,
+          "elapsedMs": 213.759,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 9,
+          "ok": false,
+          "elapsedMs": 222.543,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 10,
+          "ok": false,
+          "elapsedMs": 220.778,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 11,
+          "ok": false,
+          "elapsedMs": 216.042,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 12,
+          "ok": false,
+          "elapsedMs": 214.51,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 13,
+          "ok": false,
+          "elapsedMs": 210.164,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 14,
+          "ok": false,
+          "elapsedMs": 224.408,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 15,
+          "ok": false,
+          "elapsedMs": 215.563,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 16,
+          "ok": false,
+          "elapsedMs": 216.561,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 17,
+          "ok": false,
+          "elapsedMs": 212.426,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 18,
+          "ok": false,
+          "elapsedMs": 210.017,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 19,
+          "ok": false,
+          "elapsedMs": 220.533,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 20,
+          "ok": false,
+          "elapsedMs": 216.437,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 21,
+          "ok": false,
+          "elapsedMs": 214.162,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 22,
+          "ok": false,
+          "elapsedMs": 214.935,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 23,
+          "ok": false,
+          "elapsedMs": 224.418,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 24,
+          "ok": false,
+          "elapsedMs": 219.651,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 25,
+          "ok": false,
+          "elapsedMs": 215.867,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 26,
+          "ok": false,
+          "elapsedMs": 214.235,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 27,
+          "ok": false,
+          "elapsedMs": 219.771,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 28,
+          "ok": false,
+          "elapsedMs": 221.366,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 29,
+          "ok": false,
+          "elapsedMs": 212.975,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 30,
+          "ok": false,
+          "elapsedMs": 215.282,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 31,
+          "ok": false,
+          "elapsedMs": 221.823,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 32,
+          "ok": false,
+          "elapsedMs": 220.636,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 33,
+          "ok": false,
+          "elapsedMs": 228.074,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 34,
+          "ok": false,
+          "elapsedMs": 217.54,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 35,
+          "ok": false,
+          "elapsedMs": 226.995,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 36,
+          "ok": false,
+          "elapsedMs": 216.016,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 37,
+          "ok": false,
+          "elapsedMs": 219.754,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 38,
+          "ok": false,
+          "elapsedMs": 228.974,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 39,
+          "ok": false,
+          "elapsedMs": 215.285,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 40,
+          "ok": false,
+          "elapsedMs": 219.901,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 41,
+          "ok": false,
+          "elapsedMs": 226.181,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 42,
+          "ok": false,
+          "elapsedMs": 219.572,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 43,
+          "ok": false,
+          "elapsedMs": 237.68,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 44,
+          "ok": false,
+          "elapsedMs": 226.204,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 45,
+          "ok": false,
+          "elapsedMs": 216.83,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 46,
+          "ok": false,
+          "elapsedMs": 237.851,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 47,
+          "ok": false,
+          "elapsedMs": 220.433,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 48,
+          "ok": false,
+          "elapsedMs": 215.076,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 49,
+          "ok": false,
+          "elapsedMs": 220.394,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 50,
+          "ok": false,
+          "elapsedMs": 219.027,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 51,
+          "ok": false,
+          "elapsedMs": 225.262,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 52,
+          "ok": false,
+          "elapsedMs": 221.274,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 53,
+          "ok": false,
+          "elapsedMs": 214.41,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 54,
+          "ok": false,
+          "elapsedMs": 224.545,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 55,
+          "ok": false,
+          "elapsedMs": 240.529,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 56,
+          "ok": false,
+          "elapsedMs": 219.793,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 57,
+          "ok": false,
+          "elapsedMs": 236.828,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 58,
+          "ok": false,
+          "elapsedMs": 232.556,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 59,
+          "ok": false,
+          "elapsedMs": 225.654,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 60,
+          "ok": false,
+          "elapsedMs": 243.243,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 61,
+          "ok": false,
+          "elapsedMs": 227.144,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 62,
+          "ok": false,
+          "elapsedMs": 208.393,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 63,
+          "ok": false,
+          "elapsedMs": 224.906,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 64,
+          "ok": false,
+          "elapsedMs": 231.507,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 65,
+          "ok": false,
+          "elapsedMs": 213.015,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 66,
+          "ok": false,
+          "elapsedMs": 221.849,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 67,
+          "ok": false,
+          "elapsedMs": 229.297,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 68,
+          "ok": false,
+          "elapsedMs": 228.198,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 69,
+          "ok": false,
+          "elapsedMs": 217.588,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 70,
+          "ok": false,
+          "elapsedMs": 223.565,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 71,
+          "ok": false,
+          "elapsedMs": 294.775,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 72,
+          "ok": false,
+          "elapsedMs": 287.217,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 73,
+          "ok": false,
+          "elapsedMs": 258.483,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 74,
+          "ok": false,
+          "elapsedMs": 252.938,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 75,
+          "ok": false,
+          "elapsedMs": 275.659,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 76,
+          "ok": false,
+          "elapsedMs": 268.122,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 77,
+          "ok": false,
+          "elapsedMs": 271.906,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 78,
+          "ok": false,
+          "elapsedMs": 358.05,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 79,
+          "ok": false,
+          "elapsedMs": 250.278,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 80,
+          "ok": false,
+          "elapsedMs": 232.878,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 81,
+          "ok": false,
+          "elapsedMs": 226.019,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 82,
+          "ok": false,
+          "elapsedMs": 233.47,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 83,
+          "ok": false,
+          "elapsedMs": 389.745,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 84,
+          "ok": false,
+          "elapsedMs": 381.364,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 85,
+          "ok": false,
+          "elapsedMs": 332.916,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 86,
+          "ok": false,
+          "elapsedMs": 308.301,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 87,
+          "ok": false,
+          "elapsedMs": 344.856,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 88,
+          "ok": false,
+          "elapsedMs": 352.824,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 89,
+          "ok": false,
+          "elapsedMs": 377.497,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 90,
+          "ok": false,
+          "elapsedMs": 401.246,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 91,
+          "ok": false,
+          "elapsedMs": 338.328,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 92,
+          "ok": false,
+          "elapsedMs": 338.73,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 93,
+          "ok": false,
+          "elapsedMs": 384.114,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 94,
+          "ok": false,
+          "elapsedMs": 392.746,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 95,
+          "ok": false,
+          "elapsedMs": 396.905,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 96,
+          "ok": false,
+          "elapsedMs": 382.375,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 97,
+          "ok": false,
+          "elapsedMs": 379.596,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 98,
+          "ok": false,
+          "elapsedMs": 316.614,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 99,
+          "ok": false,
+          "elapsedMs": 573.855,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        },
+        {
+          "index": 100,
+          "ok": false,
+          "elapsedMs": 436.956,
+          "dispatched": true,
+          "outputIncomplete": false,
+          "unsafeEvidence": true,
+          "error": "unsafe-evidence: capture stale flag is true; required false"
+        }
+      ],
+      "failures": 100
+    }
+  },
+  "setup": {
+    "ok": true,
+    "steps": [
+      {
+        "name": "resolve controlled fixture window",
+        "tool": "desktop_list_windows",
+        "params": {},
+        "ok": true,
+        "elapsedMs": 2.936,
+        "error": null,
+        "detail": {
+          "hwnd": 722906,
+          "title": "hand-bench-desktop-1280x720-16548",
+          "windows": 21
+        }
+      },
+      {
+        "name": "verify native 1280x720 capture geometry",
+        "tool": "desktop_screenshot",
+        "params": {
+          "target": {
+            "titleContains": "hand-bench-desktop-1280x720-16548"
+          },
+          "fmt": "png",
+          "max_px": 8192,
+          "allow_crop_fallback": false
+        },
+        "ok": true,
+        "elapsedMs": 70.931,
+        "error": null,
+        "detail": {
+          "image": {
+            "w": 1280,
+            "h": 720
+          },
+          "source": {
+            "w": 1280,
+            "h": 720
+          },
+          "scale": 1,
+          "hwnd": 722906,
+          "pid": 19432,
+          "title": "hand-bench-desktop-1280x720-16548",
+          "exe": "hand-desktop-fixture.exe",
+          "backend": "printwindow",
+          "blank": {
+            "verdict": "content",
+            "max_channel": 255,
+            "threshold": 8
+          },
+          "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+          "foregroundUnchanged": true,
+          "cursorUnchanged": true
+        }
+      }
+    ],
+    "failure": null,
+    "controlledTarget": {
+      "identity": {
+        "title": "hand-bench-desktop-1280x720-16548",
+        "exe": "hand-desktop-fixture.exe",
+        "class": "WindowsForms10.Window.8.app.0.34f5582_r6_ad1",
+        "clientRect": [
+          100,
+          100,
+          1380,
+          820
+        ],
+        "rect": [
+          100,
+          100,
+          1380,
+          820
+        ],
+        "dpi": 96,
+        "minimized": false
+      },
+      "hwnd": 722906,
+      "hash": "sha256:8fe7df7b63f772a33c7e98f765d077a3f8ecd6e742881d81320d54b0dba6ed4f"
+    }
+  },
+  "coldStart": {
+    "ok": true,
+    "spawnToInitializeMs": 16.68,
+    "initializeRoundTripMs": 10.937,
+    "error": null
+  },
+  "catalog": {
+    "toolCount": 32,
+    "sha256": "sha256:1f34239f939b30a2f276afad61a801d3772405b9779a938942ad79d6f86ac61e",
+    "names": [
+      "browser_navigate",
+      "browser_snapshot",
+      "browser_screenshot",
+      "browser_click",
+      "browser_type",
+      "browser_evaluate",
+      "browser_wait_for",
+      "browser_targets",
+      "browser_dialog",
+      "browser_history",
+      "browser_network",
+      "browser_cdp",
+      "browser_console",
+      "browser_upload",
+      "browser_fetch_text",
+      "browser_hover",
+      "browser_select",
+      "browser_key",
+      "browser_viewport",
+      "browser_tabs",
+      "browser_storage",
+      "browser_assert_layout",
+      "browser_layout",
+      "browser_visual",
+      "browser_close",
+      "desktop_screenshot",
+      "desktop_diff",
+      "desktop_list_windows",
+      "desktop_window",
+      "desktop_do",
+      "desktop_cursor",
+      "desktop_elements"
+    ]
+  },
+  "load": {
+    "sampling": "whole-machine os.cpus() idle/total delta across the run; free memory at start/end; no per-request sampling",
+    "cpuBusyPercent": 43.35,
+    "freeMemoryBytesStart": 17321250816,
+    "freeMemoryBytesEnd": 16020783104,
+    "sequential": true,
+    "maxConcurrentRequests": 1,
+    "unrelatedLoad": "not externally audited; concurrent work on this machine would appear in cpuBusyPercent. The driver issues one request at a time."
+  },
+  "stats": {
+    "attempted": 100,
+    "observed": 100,
+    "passed": 0,
+    "failed": 100,
+    "percentileMethod": "nearest-rank",
+    "percentileBase": {
+      "observed": 100,
+      "attempted": 100
+    },
+    "minMs": 208.393,
+    "p50Ms": 224.793,
+    "p95Ms": 389.745,
+    "maxMs": 573.855,
+    "meanMs": 255.644,
+    "sumMs": 25564.442
+  },
+  "phases": [
+    {
+      "name": "cold server start (spawn to initialize reply)",
+      "kind": "setup",
+      "elapsedMs": 16.68,
+      "notThresholded": true
+    },
+    {
+      "name": "initialize round trip",
+      "kind": "setup",
+      "elapsedMs": 10.937,
+      "notThresholded": true
+    },
+    {
+      "name": "setup: resolve controlled fixture window",
+      "kind": "setup",
+      "elapsedMs": 2.936,
+      "ok": true,
+      "notThresholded": true,
+      "note": null
+    },
+    {
+      "name": "setup: verify native 1280x720 capture geometry",
+      "kind": "setup",
+      "elapsedMs": 70.931,
+      "ok": true,
+      "notThresholded": true,
+      "note": null
+    },
+    {
+      "name": "warm samples",
+      "kind": "warmup",
+      "attempts": 10,
+      "failures": 10,
+      "notThresholded": true
+    },
+    {
+      "name": "measured controlled 1280x720 window capture at native resolution",
+      "kind": "measured",
+      "attempts": 100,
+      "failures": 100,
+      "targetP95Ms": 500,
+      "p50Ms": 224.793,
+      "p95Ms": 389.745,
+      "maxMs": 573.855
+    }
+  ],
+  "process": {
+    "exited": {
+      "code": 0,
+      "signal": null,
+      "atMs": 27960.0768
+    },
+    "requestsCompleted": 114,
+    "protocolViolations": {
+      "count": 0,
+      "samples": []
+    },
+    "unsolicitedFrames": 0,
+    "notifications": 0,
+    "stderr": {
+      "bytes": 84,
+      "truncated": false,
+      "tail": "[hand] engine hand-mcp 0.1.0 (gladius 59c6d77, puppet 0f790be) platform windows-x64\n"
+    }
+  },
+  "verdict": {
+    "status": "fail",
+    "targetP95Ms": 500,
+    "failures": 100,
+    "reasons": [
+      "100 of 100 measured attempts failed",
+      "binary path claims unknown, not a release build; measurement may stand but release is blocked"
+    ],
+    "releaseBlocked": true,
+    "releaseIdentity": {
+      "claimed": "unknown",
+      "verified": false,
+      "basis": "binary-path-heuristic",
+      "reason": "the executable path is not a compiler-profile or signed-build attestation; release identity is unverified"
+    },
+    "releaseIdentityUnverified": true,
+    "warnings": [
+      "release identity is unverified (binary-path-heuristic): the executable path is not a compiler-profile or signed-build attestation; release identity is unverified",
+      "10 of 10 warmup attempts failed; warmups are outside the 100 measured samples and do not by themselves fail the gate, but the failures are listed in samples.warmup"
+    ],
+    "warmupAttempts": 10,
+    "warmupFailures": 10
+  }
+}

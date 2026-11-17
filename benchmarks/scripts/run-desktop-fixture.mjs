@@ -1,0 +1,357 @@
+#!/usr/bin/env node
+// Controlled 1280x720 desktop fixture launcher and benchmark coordinator.
+//
+// Safety gate before any measurement: the fixture is shown with WS_EX_NOACTIVATE
+// and ShowWithoutActivation, and independent before/after samples of
+// GetForegroundWindow and GetCursorPos must match. If they move, the launcher
+// stops, terminates the fixture, reports unsupported and never runs a scenario.
+//
+// On success it runs desktop-enumerate and desktop-capture for hand and Puppet
+// against the fixture title, then terminates the fixture, confirms its window is
+// gone and checks the foreground/cursor again.
+
+import { spawn, spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { access, mkdir, readFile, readdir, rm, stat } from "node:fs/promises";
+import { join, resolve } from "node:path";
+
+const REPO_ROOT = resolve(import.meta.dirname, "..", "..");
+const BENCH = join(REPO_ROOT, "benchmarks", "scripts", "bench.mjs");
+const FIXTURE_SOURCE = join(REPO_ROOT, "benchmarks", "fixtures", "desktop-fixture", "hand-desktop-fixture.cs");
+const STATE_SCRIPT = join(REPO_ROOT, "benchmarks", "fixtures", "win-state.ps1");
+const CACHE_DIR = join(REPO_ROOT, "benchmarks", ".cache", "desktop-fixture");
+const FIXTURE_EXE = join(CACHE_DIR, "hand-desktop-fixture.exe");
+const RECEIPTS = join(REPO_ROOT, "benchmarks", "receipts");
+const ARTIFACTS = join(REPO_ROOT, "benchmarks", "receipts", "builds", "artifacts");
+
+function parse(argv) {
+  const options = {
+    startupOnly: false,
+    title: null,
+    handBinary: null,
+    out: RECEIPTS,
+    product: null,
+    scenario: null,
+  };
+  const errors = [];
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === "--startup-only") options.startupOnly = true;
+    else if (arg === "--title") options.title = argv[++index];
+    else if (arg === "--hand-binary") options.handBinary = argv[++index];
+    else if (arg === "--out") options.out = argv[++index];
+    else if (arg === "--product") options.product = argv[++index];
+    else if (arg === "--scenario") options.scenario = argv[++index];
+    else errors.push(`unknown argument: ${arg}`);
+  }
+  if (!options.title) options.title = `hand-bench-desktop-1280x720-${process.pid}`;
+  return { options, errors };
+}
+
+async function exists(path) {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function findCsc() {
+  const roots = [
+    "C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319",
+    "C:\\Windows\\Microsoft.NET\\Framework\\v4.0.30319",
+  ];
+  for (const root of roots) {
+    const path = join(root, "csc.exe");
+    if (existsSync(path)) return { path, root };
+  }
+  return null;
+}
+
+async function compileFixture() {
+  await mkdir(CACHE_DIR, { recursive: true });
+  let needBuild = true;
+  if (await exists(FIXTURE_EXE)) {
+    const [sourceInfo, exeInfo] = await Promise.all([stat(FIXTURE_SOURCE), stat(FIXTURE_EXE)]);
+    needBuild = sourceInfo.mtimeMs > exeInfo.mtimeMs;
+  }
+  if (!needBuild) return { ok: true, exe: FIXTURE_EXE, compiled: false };
+  const csc = findCsc();
+  if (!csc) return { ok: false, reason: "no .NET Framework csc.exe is available to compile the fixture" };
+  const result = spawnSync(
+    csc.path,
+    [
+      "/nologo",
+      "/target:winexe",
+      "/platform:x64",
+      "/optimize+",
+      `/out:${FIXTURE_EXE}`,
+      `/r:${join(csc.root, "System.Windows.Forms.dll")}`,
+      `/r:${join(csc.root, "System.Drawing.dll")}`,
+      FIXTURE_SOURCE,
+    ],
+    { encoding: "utf8", windowsHide: true, timeout: 60_000 },
+  );
+  if (result.status !== 0) {
+    return {
+      ok: false,
+      reason: `fixture compilation failed: ${(result.stderr || result.stdout || "").trim().slice(0, 2000)}`,
+    };
+  }
+  return { ok: true, exe: FIXTURE_EXE, compiled: true };
+}
+
+function readState(hwnd = 0) {
+  const result = spawnSync(
+    "powershell.exe",
+    ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", STATE_SCRIPT, "-Hwnd", String(hwnd)],
+    { encoding: "utf8", windowsHide: true, timeout: 30_000 },
+  );
+  if (result.status !== 0) throw new Error(`window-state probe failed: ${(result.stderr || result.stdout).trim()}`);
+  return JSON.parse(result.stdout);
+}
+
+function samePointer(a, b) {
+  return a.foreground === b.foreground && a.cursorX === b.cursorX && a.cursorY === b.cursorY;
+}
+
+async function waitForReady(path, timeoutMs = 20_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      return JSON.parse(await readFile(path, "utf8"));
+    } catch {
+      await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+    }
+  }
+  return null;
+}
+
+async function waitExit(child, timeoutMs) {
+  if (child.exitCode !== null) return true;
+  return new Promise((resolveWait) => {
+    const timer = setTimeout(() => resolveWait(false), timeoutMs);
+    child.once("exit", () => {
+      clearTimeout(timer);
+      resolveWait(true);
+    });
+  });
+}
+
+async function terminateFixture(child) {
+  if (child.exitCode !== null) return true;
+  child.kill();
+  if (await waitExit(child, 5_000)) return true;
+  spawnSync("taskkill", ["/PID", String(child.pid), "/T", "/F"], { windowsHide: true, timeout: 15_000 });
+  return waitExit(child, 5_000);
+}
+
+async function findHandBinary(explicit) {
+  if (explicit) return resolve(explicit);
+  const names = (await readdir(ARTIFACTS)).filter((name) => name.toLowerCase().endsWith(".exe")).sort();
+  if (names.length === 0) return null;
+  return join(ARTIFACTS, names[names.length - 1]);
+}
+
+function runBench(args) {
+  return spawnSync(process.execPath, [BENCH, ...args], {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+    windowsHide: true,
+    timeout: 300_000,
+    maxBuffer: 32 * 1024 * 1024,
+  });
+}
+
+async function main() {
+  const { options, errors } = parse(process.argv.slice(2));
+  if (errors.length) {
+    process.stderr.write(`${errors.join("\n")}\n`);
+    return 3;
+  }
+  const compiled = await compileFixture();
+  if (!compiled.ok) {
+    process.stdout.write(`${JSON.stringify({ status: "unsupported", reason: compiled.reason })}\n`);
+    return 2;
+  }
+
+  const readyPath = join(CACHE_DIR, `ready-${process.pid}.json`);
+  await rm(readyPath, { force: true });
+  const beforeFirst = readState(0);
+  await new Promise((resolveWait) => setTimeout(resolveWait, 1_000));
+  const before = readState(0);
+  if (!samePointer(beforeFirst, before)) {
+    process.stdout.write(
+      `${JSON.stringify(
+        {
+          status: "unsupported",
+          reason: "desktop foreground/cursor moved before the fixture was shown; not showing it while the desktop is active",
+          safety: { beforeFirst, before },
+          results: [],
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    return 2;
+  }
+  const child = spawn(compiled.exe, [readyPath, options.title], {
+    windowsHide: true,
+    stdio: "ignore",
+  });
+
+  let fixture = null;
+  const results = [];
+  let safety = { before, afterShow: null, afterMeasurements: null, afterClose: null };
+  let status = "measured";
+  let reason = null;
+  try {
+    fixture = await waitForReady(readyPath);
+    if (!fixture) {
+      status = "unsupported";
+      reason = "fixture did not write its ready record within 20 s";
+      return 2;
+    }
+    if (fixture.pid !== child.pid) {
+      status = "unsupported";
+      reason = `fixture pid ${fixture.pid} does not match the spawned pid ${child.pid}`;
+      return 2;
+    }
+    const rectWidth = fixture.rect?.[2] - fixture.rect?.[0];
+    const rectHeight = fixture.rect?.[3] - fixture.rect?.[1];
+    const clientWidth = fixture.clientRect?.[2] - fixture.clientRect?.[0];
+    const clientHeight = fixture.clientRect?.[3] - fixture.clientRect?.[1];
+    if (rectWidth !== 1280 || rectHeight !== 720 || clientWidth !== 1280 || clientHeight !== 720) {
+      status = "unsupported";
+      reason = `fixture geometry is window ${rectWidth}x${rectHeight}, client ${clientWidth}x${clientHeight}; required 1280x720`;
+      return 2;
+    }
+
+    await new Promise((resolveWait) => setTimeout(resolveWait, 400));
+    safety.afterShow = readState(fixture.hwnd);
+    const fixtureOwnStill =
+      fixture.foregroundBeforeShow === fixture.foregroundAfterShow &&
+      fixture.cursorBeforeShow[0] === fixture.cursorAfterShow[0] &&
+      fixture.cursorBeforeShow[1] === fixture.cursorAfterShow[1];
+    if (!samePointer(before, safety.afterShow) || !fixtureOwnStill) {
+      status = "unsupported";
+      reason = "showing the fixture changed the foreground window or cursor position";
+      return 2;
+    }
+
+    if (options.startupOnly) {
+      status = "safe";
+      return 0;
+    }
+
+    const handBinary = await findHandBinary(options.handBinary);
+    if (!handBinary) {
+      status = "unsupported";
+      reason = "no durable hand release artifact found under benchmarks/receipts/builds/artifacts";
+      return 2;
+    }
+
+    const scenarios = [
+      { product: "hand", scenario: "desktop-enumerate", command: handBinary },
+      { product: "puppet", scenario: "desktop-enumerate", command: null },
+      { product: "hand", scenario: "desktop-capture", command: handBinary },
+      { product: "puppet", scenario: "desktop-capture", command: null },
+    ].filter(
+      (entry) =>
+        (!options.product || entry.product === options.product) &&
+        (!options.scenario || entry.scenario === options.scenario),
+    );
+    if (scenarios.length === 0) {
+      status = "unsupported";
+      reason = "no scenario matched --product/--scenario";
+      return 2;
+    }
+    for (const entry of scenarios) {
+      const args = [
+        "--product",
+        entry.product,
+        "--scenario",
+        entry.scenario,
+        "--desktop-title-contains",
+        options.title,
+        "--out",
+        resolve(options.out),
+      ];
+      if (entry.command) args.push("--command", entry.command);
+      const stateBeforeRun = readState(fixture.hwnd);
+      const run = runBench(args);
+      const stateAfterRun = readState(fixture.hwnd);
+      const result = {
+        product: entry.product,
+        scenario: entry.scenario,
+        exitCode: run.status,
+        stateBeforeRun,
+        stateAfterRun,
+        stdoutTail: (run.stdout ?? "").trim().split(/\r?\n/).slice(-4).join("\n"),
+        stderrTail: (run.stderr ?? "").trim().split(/\r?\n/).slice(-4).join("\n"),
+      };
+      results.push(result);
+      const state = stateAfterRun;
+      if (!samePointer(before, state)) {
+        status = "safety-failed";
+        reason = `${entry.product}/${entry.scenario} changed the foreground window or cursor position`;
+        break;
+      }
+      if (!state.isWindow || !state.visible) {
+        status = "safety-failed";
+        reason = `fixture window was not visible after ${entry.product}/${entry.scenario}`;
+        break;
+      }
+    }
+    safety.afterMeasurements = readState(fixture.hwnd);
+    if (results.some((result) => result.exitCode !== 0) && status === "measured") {
+      status = "measured-with-failures";
+    }
+    return status === "measured" ? 0 : 1;
+  } finally {
+    const terminated = await terminateFixture(child);
+    await new Promise((resolveWait) => setTimeout(resolveWait, 200));
+    let finalState = null;
+    try {
+      finalState = readState(fixture?.hwnd ?? 0);
+    } catch {
+      finalState = null;
+    }
+    safety.afterClose = finalState;
+    if (!terminated) {
+      status = "unsupported";
+      reason = "fixture process could not be terminated";
+    } else if (finalState?.isWindow) {
+      status = "unsupported";
+      reason = "fixture window still exists after termination";
+    } else if (!samePointer(before, finalState ?? { foreground: -1, cursorX: -1, cursorY: -1 })) {
+      status = "safety-failed";
+      reason = "foreground window or cursor changed after fixture shutdown";
+    }
+    await rm(readyPath, { force: true });
+    process.stdout.write(
+      `${JSON.stringify(
+        {
+          status,
+          reason,
+          fixture,
+          safety,
+          results,
+          terminated,
+          windowAfterClose: finalState?.isWindow ?? null,
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    process.exitCode = status === "measured" ? 0 : status === "safe" ? 0 : status === "measured-with-failures" ? 1 : 2;
+  }
+}
+
+main().then((code) => {
+  if (process.exitCode === undefined) process.exitCode = typeof code === "number" ? code : 4;
+}).catch((error) => {
+  process.stderr.write(`desktop fixture error: ${error?.stack ?? error}\n`);
+  process.exitCode = 4;
+});

@@ -105,10 +105,23 @@ existing target takes precedence over the hidden-launch request.
 - Hard-kill reap/job-object behavior inside hand: inherited from the engine,
   not re-tested.
 - Crash isolation between domains: none (one process by design).
-- Performance gate: not measured by this slice. The repository carries a
-  `fixtures/` 100-control page and a benchmark harness from the parallel baseline
-  work, but no measurement is recorded here. The specification's numeric targets
-  remain unverified.
+- Performance gate: partially measured. `benchmarks/` binds each receipt to a
+  fingerprinted fixture, a fingerprinted browser and a reproduced local release
+  build, and the comparison gate rejects debug or unverifiable builds.
+  Measured on this machine (release binaries, 10 warmups + 100 attempts):
+
+  | Scenario | hand p95 | baseline p95 |
+  |---|---:|---:|
+  | warm-ping | 0.11 ms | Gladius 0.12 ms, Puppet 0.09 ms |
+  | browser-snapshot | 21.7 ms | Gladius 29.1 ms |
+  | desktop-enumerate | 2.36 ms | Puppet 1.99 ms |
+
+  `desktop-capture` is **not measured**. The 1280×720 fixture proved the native
+  path live (image and source 1280×720, `printwindow`, content check, matching
+  window identity, foreground and cursor unchanged), but the required
+  foreground/cursor stability could not be held for 100 attempts on an active
+  desktop and the fixture refuses to steal focus. Its numeric target remains
+  unverified, and load during these runs was not controlled.
 - Windows x64 only; no macOS/Linux desktop support is implied.
 
 ### Scope notes

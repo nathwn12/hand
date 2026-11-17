@@ -1,0 +1,106 @@
+{
+  "schema": "hand-mcp.benchmark.receipt/v1",
+  "driverVersion": "1.0.0",
+  "generatedAtUtc": "2026-11-17T20:16:00.167Z",
+  "testOnly": false,
+  "evidence": "measured against the resolved product binary on this machine",
+  "product": {
+    "id": "hand",
+    "label": "hand",
+    "command": "Q:\\PROJECTS\\PERSONAL\\hand-mcp\\target\\debug\\hand-mcp.exe",
+    "args": [],
+    "cwd": "Q:\\PROJECTS\\PERSONAL\\hand-mcp",
+    "source": "known build path",
+    "testFixture": false,
+    "resolved": true,
+    "executable": {
+      "path": "Q:\\PROJECTS\\PERSONAL\\hand-mcp\\target\\debug\\hand-mcp.exe",
+      "bytes": 16045056,
+      "sha256": "sha256:257a51cadb45ccdb9248b191125538760a29d0fa0408d35923be2886521a166d"
+    },
+    "version": {
+      "status": 0,
+      "stdout": "hand-mcp 0.1.0 (gladius 59c6d77, puppet 0f790be; x86_64)",
+      "stderr": ""
+    },
+    "entrypoint": null
+  },
+  "scenario": {
+    "id": "desktop-enumerate",
+    "title": "desktop window enumeration including the controlled fixture",
+    "domain": "desktop",
+    "specTargetP95Ms": 250
+  },
+  "protocol": {
+    "warmup": 10,
+    "measured": 100,
+    "sequential": true,
+    "timeoutMs": 60000,
+    "framing": "newline-delimited JSON-RPC"
+  },
+  "fingerprint": {
+    "machine": {
+      "hostname": "NECESSE",
+      "platform": "win32",
+      "release": "10.0.26300",
+      "version": "Windows 11 Pro",
+      "arch": "x64",
+      "cpu": {
+        "model": "AMD Ryzen 7 5800X 8-Core Processor",
+        "logicalCores": 16,
+        "speedMHz": 4392
+      },
+      "memoryTotalBytes": 34276126720,
+      "display": {
+        "width": 2560,
+        "height": 1440,
+        "dpi": 96,
+        "scaleFactor": 1
+      },
+      "displayProbe": {
+        "ok": true
+      },
+      "node": {
+        "version": "v26.13.1",
+        "arch": "x64",
+        "execPath": "C:\\Users\\nathan\\scoop\\apps\\nodejs-lts\\current\\node.exe"
+      },
+      "hash": "sha256:993049499f61bbe0fe2f531d589535b0ae7e89934300b1cf01c6669a49ae22a7"
+    },
+    "browser": null,
+    "fixture": null,
+    "desktopTarget": null
+  },
+  "samples": {
+    "warmup": {
+      "attempts": [],
+      "failures": 0
+    },
+    "measured": {
+      "attempts": [],
+      "failures": 0
+    }
+  },
+  "setup": null,
+  "coldStart": null,
+  "catalog": null,
+  "load": null,
+  "stats": null,
+  "phases": null,
+  "process": null,
+  "verdict": {
+    "status": "unsupported",
+    "targetP95Ms": 250,
+    "failures": 0,
+    "reasons": [
+      "no controlled desktop fixture target configured; pass --desktop-target or --desktop-title-contains. The driver never creates, resizes or launches a desktop window"
+    ],
+    "releaseBlocked": true
+  },
+  "reason": "no controlled desktop fixture target configured; pass --desktop-target or --desktop-title-contains. The driver never creates, resizes or launches a desktop window",
+  "unsupported": {
+    "stage": "scenario-plan",
+    "reason": "no controlled desktop fixture target configured; pass --desktop-target or --desktop-title-contains. The driver never creates, resizes or launches a desktop window",
+    "tried": null
+  }
+}

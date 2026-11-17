@@ -1,0 +1,59 @@
+{
+  "schema": "hand-mcp.benchmark.build-receipt/v1",
+  "ok": false,
+  "product": "hand",
+  "profile": "release",
+  "source": {
+    "root": "Q:\\PROJECTS\\PERSONAL\\hand-mcp",
+    "gitHead": "eb75149a90f84d28d413f45f6d95c36602088637",
+    "branch": "work/hand-mcp",
+    "dirty": true,
+    "statusSha256": "sha256:bb048f3e09cdfddefd3293cc3855239a7d574914aaff6e04b75c58b3474a6733",
+    "trackedDiffSha256": "sha256:86696edf9eae43a112f6f1c1bf79183be189eeff92a1018374ac05bef6915ea2"
+  },
+  "command": {
+    "program": "cargo",
+    "args": [
+      "build",
+      "--release",
+      "--locked",
+      "--manifest-path",
+      "Q:\\PROJECTS\\PERSONAL\\hand-mcp\\Cargo.toml",
+      "--bin",
+      "hand-mcp",
+      "--target-dir",
+      "C:\\Users\\nathan\\AppData\\Local\\Temp\\opencode\\hand-release-target2"
+    ],
+    "cwd": "Q:\\PROJECTS\\PERSONAL\\hand-mcp",
+    "startedAtUtc": "2026-11-17T21:21:15.918Z",
+    "finishedAtUtc": "2026-11-17T21:21:37.716Z",
+    "durationMs": 21797,
+    "exitCode": 101,
+    "stdoutBytes": 0,
+    "stderrBytes": 3888,
+    "stdoutSha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stderrSha256": "sha256:1b9172ae44960b5ed166a8f72bd5100d004ff90f178a7e222626b52e67051c5c",
+    "stdoutTail": "",
+    "stderrTail": "warning: unused imports: `DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2`, `PROCESS_PER_MONITOR_DPI_AWARE`, `SetProcessDpiAwarenessContext`, and `SetProcessDpiAwareness`\n  --> crates\\desktop-engine\\src\\lib.rs:46:22\n   |\n46 |     GetDpiForWindow, SetProcessDpiAwareness, SetProcessDpiAwarenessContext,\n   |                      ^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n47 |     DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, PROCESS_PER_MONITOR_DPI_AWARE,\n   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n   |\n   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default\n\nwarning: value assigned to `posted` is never read\n    --> crates\\desktop-engine\\src\\burst.rs:3800:41\n     |\n3771 |                         posted += 1;\n     |                         ----------- `posted` is overwritten here before the previous value is read\n...\n3800 |                                         posted += 1;\n     |                                         ^^^^^^^^^^^ this value is reassigned later and never used\n     |\n     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default\n\nwarning: value assigned to `posted` is never read\n    --> crates\\desktop-engine\\src\\burst.rs:4001:37\n     |\n4001 |                                     posted += 1;\n     |                                     ^^^^^^^^^^^ this value is reassigned later and never used\n...\n4014 |                         posted += 1;\n     |                         ----------- `posted` is overwritten here before the previous value is read\n\nwarning: `desktop-engine` (lib) generated 3 warnings (run `cargo fix --lib -p desktop-engine` to apply 1 suggestion)\n   Compiling browser-engine v0.1.0 (Q:\\PROJECTS\\PERSONAL\\hand-mcp\\crates\\browser-engine)\nwarning: use of deprecated method `std::sync::atomic::Atomic::<u32>::fetch_update`: renamed to `try_update` for consistency\n   --> crates\\browser-engine\\src\\capture.rs:481:10\n    |\n481 |         .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))\n    |          ^^^^^^^^^^^^\n    |\n    = note: `#[warn(deprecated)]` on by default\nhelp: replace the use of the deprecated method\n    |\n481 -         .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))\n481 +         .try_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))\n    |\n\nwarning: function `keep_creating` is never used\n    --> crates\\browser-engine\\src\\contexts.rs:2129:4\n     |\n2129 | fn keep_creating(st: &mut State, entry: Entry) {\n     |    ^^^^^^^^^^^^^\n     |\n     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default\n\nwarning: function `entry_alive` is never used\n    --> crates\\browser-engine\\src\\contexts.rs:2180:4\n     |\n2180 | fn entry_alive(entry: &Entry, live: bool, generation: u64) -> bool {\n     |    ^^^^^^^^^^^\n\nwarning: `browser-engine` (lib) generated 3 warnings (run `cargo fix --lib -p browser-engine` to apply 1 suggestion)\n   Compiling hand-mcp v0.1.0 (Q:\\PROJECTS\\PERSONAL\\hand-mcp)\nerror[E0061]: this function takes 3 arguments but 2 arguments were supplied\n    --> src\\server.rs:1056:25\n     |\n1056 |                         busy_envelope(\"desktop\", MAX_DESKTOP_CALLS),\n     |                         ^^^^^^^^^^^^^------------------------------ argument #3 of type `usize` is missing\n     |\nnote: function defined here\n    --> src\\server.rs:217:4\n     |\n 217 | fn busy_envelope(domain: &str, limit: usize, available: usize) -> Value {\n     |    ^^^^^^^^^^^^^                             ----------------\nhelp: provide the argument\n     |\n1056 |                         busy_envelope(\"desktop\", MAX_DESKTOP_CALLS, /* usize */),\n     |                                                                   +++++++++++++\n\nFor more information about this error, try `rustc --explain E0061`.\nerror: could not compile `hand-mcp` (bin \"hand-mcp\") due to 1 previous error\n"
+  },
+  "toolchain": {
+    "cargo": {
+      "status": 0,
+      "stdout": "cargo 1.100.0 (3acc79c0c 2026-11-05)",
+      "stderr": ""
+    },
+    "rustc": {
+      "status": 0,
+      "stdout": "rustc 1.100.0 (0ef1bc386 2026-11-09)\nbinary: rustc\ncommit-hash: 0ef1bc386059596dada8fb65b50425aab2ea637a\ncommit-date: 2026-11-09\nhost: x86_64-pc-windows-msvc\nrelease: 1.100.0\nLLVM version: 23.1.5",
+      "stderr": ""
+    },
+    "host": "x86_64-pc-windows-msvc",
+    "target": "x86_64-pc-windows-msvc"
+  },
+  "output": null,
+  "errors": [
+    "cargo exited 101",
+    "source tree changed during the build"
+  ],
+  "generatedAtUtc": "2026-11-17T21:21:37.963Z"
+}

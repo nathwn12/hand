@@ -1,0 +1,1462 @@
+{
+  "schema": "hand-mcp.benchmark.receipt/v1",
+  "driverVersion": "1.0.0",
+  "generatedAtUtc": "2026-11-17T20:42:10.971Z",
+  "testOnly": false,
+  "evidence": "measured against the resolved product binary on this machine",
+  "product": {
+    "id": "hand",
+    "label": "hand",
+    "command": "Q:\\PROJECTS\\PERSONAL\\hand-mcp\\target\\debug\\hand-mcp.exe",
+    "args": [],
+    "cwd": "Q:\\PROJECTS\\PERSONAL\\hand-mcp",
+    "source": "known build path",
+    "testFixture": false,
+    "resolved": true,
+    "executable": {
+      "path": "Q:\\PROJECTS\\PERSONAL\\hand-mcp\\target\\debug\\hand-mcp.exe",
+      "bytes": 16181760,
+      "sha256": "sha256:95f20ad2292b9d8162f12f008c3654b45b46cd4abf425dcfbb2c738903bdaecd"
+    },
+    "version": {
+      "status": 0,
+      "stdout": "hand-mcp 0.1.0 (gladius 59c6d77, puppet 0f790be; x86_64)",
+      "stderr": ""
+    },
+    "entrypoint": null
+  },
+  "scenario": {
+    "id": "browser-snapshot",
+    "title": "warm browser snapshot of the controlled 1280x720 fixture",
+    "domain": "browser",
+    "specTargetP95Ms": 250,
+    "tool": "browser_snapshot",
+    "method": null,
+    "params": {},
+    "paramsHash": "sha256:300321e8d2f34055a7729836a8e53b061d0db5603501adc99fd3ca9eb3608990"
+  },
+  "protocol": {
+    "warmup": 10,
+    "measured": 100,
+    "sequential": true,
+    "timeoutMs": 60000,
+    "framing": "newline-delimited JSON-RPC",
+    "latencyBasis": "stdin write to complete response frame; validation happens after the measurement"
+  },
+  "fingerprint": {
+    "machine": {
+      "hostname": "NECESSE",
+      "platform": "win32",
+      "release": "10.0.26300",
+      "version": "Windows 11 Pro",
+      "arch": "x64",
+      "cpu": {
+        "model": "AMD Ryzen 7 5800X 8-Core Processor",
+        "logicalCores": 16,
+        "speedMHz": 4392
+      },
+      "memoryTotalBytes": 34276126720,
+      "display": {
+        "width": 2560,
+        "height": 1440,
+        "dpi": 96,
+        "scaleFactor": 1
+      },
+      "displayProbe": {
+        "ok": true
+      },
+      "node": {
+        "version": "v26.13.1",
+        "arch": "x64",
+        "execPath": "C:\\Users\\nathan\\scoop\\apps\\nodejs-lts\\current\\node.exe"
+      },
+      "hash": "sha256:993049499f61bbe0fe2f531d589535b0ae7e89934300b1cf01c6669a49ae22a7"
+    },
+    "browser": {
+      "path": "C:\\Users\\nathan\\AppData\\Local\\gladius\\chromium\\155.0.8059.84-5ca590a4\\chrome-headless-shell-win64\\chrome-headless-shell.exe",
+      "bytes": 217146368,
+      "sha256": "sha256:64db9686dab042ba3282f7ab6fef98de266b015fd4d056c30760244425091d39",
+      "role": "chrome-headless-shell",
+      "source": "cache discovery",
+      "version": "155.0.8059.84-5ca590a4",
+      "launch": {
+        "ok": true,
+        "verified": true,
+        "path": "C:\\Users\\nathan\\AppData\\Local\\gladius\\chromium\\155.0.8059.84-5ca590a4\\chrome-headless-shell-win64\\chrome-headless-shell.exe",
+        "sha256": "sha256:64db9686dab042ba3282f7ab6fef98de266b015fd4d056c30760244425091d39",
+        "logLine": "[gladius] backend: chromium C:\\Users\\nathan\\AppData\\Local\\gladius\\chromium\\155.0.8059.84-5ca590a4\\chrome-headless-shell-win64\\chrome-headless-shell.exe (port 58326)"
+      }
+    },
+    "fixture": {
+      "ok": true,
+      "hash": "sha256:5aca09c7d63233029166b7863c0af67786cd11183b8ed630b17652d84ab6efb5",
+      "pin": {
+        "file": "Q:\\PROJECTS\\PERSONAL\\hand-mcp\\fixtures\\SHA256SUMS",
+        "entries": {
+          "index.html": "sha256:2cdb034a3dab47018cf7915246fcf388d25d3b117402531c3573171dd3492d14",
+          "actions.html": "sha256:a907df9e7d6d77269f3c74c66ade1b02843aaeb3934b406e4696be3faf90808f",
+          "manifest.json": "sha256:6c7f9db917043d235a798d9604d5a633db9274d56e1ddfae13dc2b8cb861a189"
+        }
+      },
+      "files": [
+        {
+          "name": "index.html",
+          "path": "Q:\\PROJECTS\\PERSONAL\\hand-mcp\\fixtures\\index.html",
+          "bytes": 16374,
+          "sha256": "sha256:2cdb034a3dab47018cf7915246fcf388d25d3b117402531c3573171dd3492d14"
+        },
+        {
+          "name": "actions.html",
+          "path": "Q:\\PROJECTS\\PERSONAL\\hand-mcp\\fixtures\\actions.html",
+          "bytes": 8494,
+          "sha256": "sha256:a907df9e7d6d77269f3c74c66ade1b02843aaeb3934b406e4696be3faf90808f"
+        },
+        {
+          "name": "manifest.json",
+          "path": "Q:\\PROJECTS\\PERSONAL\\hand-mcp\\fixtures\\manifest.json",
+          "bytes": 2746,
+          "sha256": "sha256:6c7f9db917043d235a798d9604d5a633db9274d56e1ddfae13dc2b8cb861a189"
+        }
+      ],
+      "manifest": {
+        "version": "1.0.0",
+        "manifestVersion": 1,
+        "page": "/index.html",
+        "viewport": {
+          "width": 1280,
+          "height": 720
+        },
+        "deviceScaleFactor": 1,
+        "selector": "[data-hand-control]",
+        "declaredControls": 100,
+        "firstLabel": "Control 001",
+        "lastLabel": "Control 100"
+      },
+      "labels": {
+        "count": 100,
+        "unique": 100,
+        "first": "Control 001",
+        "last": "Control 100",
+        "exact": true
+      },
+      "controlCount": 100,
+      "served": "in-memory bytes from this load; the HTTP server re-reads nothing"
+    },
+    "desktopTarget": null
+  },
+  "samples": {
+    "warmup": {
+      "attempts": [
+        {
+          "index": 1,
+          "ok": true,
+          "elapsedMs": 42.187,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 2,
+          "ok": true,
+          "elapsedMs": 42.698,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 3,
+          "ok": true,
+          "elapsedMs": 57.836,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 4,
+          "ok": true,
+          "elapsedMs": 42.905,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 5,
+          "ok": true,
+          "elapsedMs": 43.376,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 6,
+          "ok": true,
+          "elapsedMs": 43.543,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 7,
+          "ok": true,
+          "elapsedMs": 42.334,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 8,
+          "ok": true,
+          "elapsedMs": 42.718,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 9,
+          "ok": true,
+          "elapsedMs": 50.79,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 10,
+          "ok": true,
+          "elapsedMs": 41.077,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        }
+      ],
+      "failures": 0
+    },
+    "measured": {
+      "attempts": [
+        {
+          "index": 1,
+          "ok": true,
+          "elapsedMs": 40.703,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 2,
+          "ok": true,
+          "elapsedMs": 48.792,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 3,
+          "ok": true,
+          "elapsedMs": 43.162,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 4,
+          "ok": true,
+          "elapsedMs": 59.932,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 5,
+          "ok": true,
+          "elapsedMs": 49.65,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 6,
+          "ok": true,
+          "elapsedMs": 48.474,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 7,
+          "ok": true,
+          "elapsedMs": 47.06,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 8,
+          "ok": true,
+          "elapsedMs": 44.65,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 9,
+          "ok": true,
+          "elapsedMs": 51.647,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 10,
+          "ok": true,
+          "elapsedMs": 47.197,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 11,
+          "ok": true,
+          "elapsedMs": 53.263,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 12,
+          "ok": true,
+          "elapsedMs": 51.384,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 13,
+          "ok": true,
+          "elapsedMs": 46.26,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 14,
+          "ok": true,
+          "elapsedMs": 44.917,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 15,
+          "ok": true,
+          "elapsedMs": 44.097,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 16,
+          "ok": true,
+          "elapsedMs": 52.762,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 17,
+          "ok": true,
+          "elapsedMs": 45.938,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 18,
+          "ok": true,
+          "elapsedMs": 55.684,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 19,
+          "ok": true,
+          "elapsedMs": 48.945,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 20,
+          "ok": true,
+          "elapsedMs": 50.219,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 21,
+          "ok": true,
+          "elapsedMs": 59.397,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 22,
+          "ok": true,
+          "elapsedMs": 45.841,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 23,
+          "ok": true,
+          "elapsedMs": 43.641,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 24,
+          "ok": true,
+          "elapsedMs": 48.157,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 25,
+          "ok": true,
+          "elapsedMs": 52.925,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 26,
+          "ok": true,
+          "elapsedMs": 56.393,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 27,
+          "ok": true,
+          "elapsedMs": 44.84,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 28,
+          "ok": true,
+          "elapsedMs": 50.32,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 29,
+          "ok": true,
+          "elapsedMs": 54.231,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 30,
+          "ok": true,
+          "elapsedMs": 50.02,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 31,
+          "ok": true,
+          "elapsedMs": 47.553,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 32,
+          "ok": true,
+          "elapsedMs": 44.385,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 33,
+          "ok": true,
+          "elapsedMs": 44.179,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 34,
+          "ok": true,
+          "elapsedMs": 59.326,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 35,
+          "ok": true,
+          "elapsedMs": 44.286,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 36,
+          "ok": true,
+          "elapsedMs": 54.054,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 37,
+          "ok": true,
+          "elapsedMs": 44.898,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 38,
+          "ok": true,
+          "elapsedMs": 63.722,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 39,
+          "ok": true,
+          "elapsedMs": 45.663,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 40,
+          "ok": true,
+          "elapsedMs": 47.764,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 41,
+          "ok": true,
+          "elapsedMs": 46.498,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 42,
+          "ok": true,
+          "elapsedMs": 51.629,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 43,
+          "ok": true,
+          "elapsedMs": 53.179,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 44,
+          "ok": true,
+          "elapsedMs": 54.302,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 45,
+          "ok": true,
+          "elapsedMs": 47.152,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 46,
+          "ok": true,
+          "elapsedMs": 44.44,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 47,
+          "ok": true,
+          "elapsedMs": 56.308,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 48,
+          "ok": true,
+          "elapsedMs": 46.656,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 49,
+          "ok": true,
+          "elapsedMs": 52.808,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 50,
+          "ok": true,
+          "elapsedMs": 47.071,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 51,
+          "ok": true,
+          "elapsedMs": 49.383,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 52,
+          "ok": true,
+          "elapsedMs": 50.306,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 53,
+          "ok": true,
+          "elapsedMs": 56.168,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 54,
+          "ok": true,
+          "elapsedMs": 52.494,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 55,
+          "ok": true,
+          "elapsedMs": 44.684,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 56,
+          "ok": true,
+          "elapsedMs": 51.714,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 57,
+          "ok": true,
+          "elapsedMs": 57.255,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 58,
+          "ok": true,
+          "elapsedMs": 46.924,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 59,
+          "ok": true,
+          "elapsedMs": 48.976,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 60,
+          "ok": true,
+          "elapsedMs": 46.504,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 61,
+          "ok": true,
+          "elapsedMs": 57.097,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 62,
+          "ok": true,
+          "elapsedMs": 64.788,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 63,
+          "ok": true,
+          "elapsedMs": 70.905,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 64,
+          "ok": true,
+          "elapsedMs": 65.417,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 65,
+          "ok": true,
+          "elapsedMs": 71.277,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 66,
+          "ok": true,
+          "elapsedMs": 68.13,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 67,
+          "ok": true,
+          "elapsedMs": 57.366,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 68,
+          "ok": true,
+          "elapsedMs": 66.73,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 69,
+          "ok": true,
+          "elapsedMs": 59.968,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 70,
+          "ok": true,
+          "elapsedMs": 59.268,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 71,
+          "ok": true,
+          "elapsedMs": 65.35,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 72,
+          "ok": true,
+          "elapsedMs": 56.493,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 73,
+          "ok": true,
+          "elapsedMs": 52.77,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 74,
+          "ok": true,
+          "elapsedMs": 57.529,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 75,
+          "ok": true,
+          "elapsedMs": 67.058,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 76,
+          "ok": true,
+          "elapsedMs": 60.201,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 77,
+          "ok": true,
+          "elapsedMs": 61.766,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 78,
+          "ok": true,
+          "elapsedMs": 56.052,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 79,
+          "ok": true,
+          "elapsedMs": 59.969,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 80,
+          "ok": true,
+          "elapsedMs": 55.924,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 81,
+          "ok": true,
+          "elapsedMs": 63.709,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 82,
+          "ok": true,
+          "elapsedMs": 60.467,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 83,
+          "ok": true,
+          "elapsedMs": 51.023,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 84,
+          "ok": true,
+          "elapsedMs": 65.108,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 85,
+          "ok": true,
+          "elapsedMs": 56.723,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 86,
+          "ok": true,
+          "elapsedMs": 63.544,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 87,
+          "ok": true,
+          "elapsedMs": 55.755,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 88,
+          "ok": true,
+          "elapsedMs": 58.77,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 89,
+          "ok": true,
+          "elapsedMs": 59.874,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 90,
+          "ok": true,
+          "elapsedMs": 60.67,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 91,
+          "ok": true,
+          "elapsedMs": 67.577,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 92,
+          "ok": true,
+          "elapsedMs": 65.686,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 93,
+          "ok": true,
+          "elapsedMs": 64.088,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 94,
+          "ok": true,
+          "elapsedMs": 53.652,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 95,
+          "ok": true,
+          "elapsedMs": 55.942,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 96,
+          "ok": true,
+          "elapsedMs": 53.737,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 97,
+          "ok": true,
+          "elapsedMs": 61.755,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 98,
+          "ok": true,
+          "elapsedMs": 54.606,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 99,
+          "ok": true,
+          "elapsedMs": 53.862,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        },
+        {
+          "index": 100,
+          "ok": true,
+          "elapsedMs": 54.305,
+          "dispatched": true,
+          "detail": {
+            "controls": 100,
+            "totalLines": 107
+          }
+        }
+      ],
+      "failures": 0
+    }
+  },
+  "setup": {
+    "ok": true,
+    "steps": [
+      {
+        "name": "navigate to controlled fixture",
+        "tool": "browser_navigate",
+        "params": {
+          "url": "http://127.0.0.1:58325/index.html"
+        },
+        "ok": true,
+        "elapsedMs": 642.463,
+        "error": null,
+        "detail": {
+          "url": "http://127.0.0.1:58325/index.html",
+          "title": "hand-mcp benchmark fixture - 100 controls"
+        }
+      },
+      {
+        "name": "set 1280x720 viewport",
+        "tool": "browser_viewport",
+        "params": {
+          "width": 1280,
+          "height": 720,
+          "deviceScaleFactor": 1
+        },
+        "ok": true,
+        "elapsedMs": 1.242,
+        "error": null,
+        "detail": {
+          "readback": {
+            "innerWidth": 1280,
+            "innerHeight": 720,
+            "devicePixelRatio": 1
+          }
+        }
+      },
+      {
+        "name": "readiness snapshot",
+        "tool": "browser_snapshot",
+        "params": {},
+        "ok": true,
+        "elapsedMs": 52.842,
+        "error": null,
+        "detail": {
+          "controls": 100,
+          "totalLines": 107
+        }
+      }
+    ],
+    "failure": null,
+    "controlledTarget": null
+  },
+  "coldStart": {
+    "ok": true,
+    "spawnToInitializeMs": 22.485,
+    "initializeRoundTripMs": 16.013,
+    "error": null
+  },
+  "catalog": {
+    "toolCount": 32,
+    "sha256": "sha256:1f34239f939b30a2f276afad61a801d3772405b9779a938942ad79d6f86ac61e",
+    "names": [
+      "browser_navigate",
+      "browser_snapshot",
+      "browser_screenshot",
+      "browser_click",
+      "browser_type",
+      "browser_evaluate",
+      "browser_wait_for",
+      "browser_targets",
+      "browser_dialog",
+      "browser_history",
+      "browser_network",
+      "browser_cdp",
+      "browser_console",
+      "browser_upload",
+      "browser_fetch_text",
+      "browser_hover",
+      "browser_select",
+      "browser_key",
+      "browser_viewport",
+      "browser_tabs",
+      "browser_storage",
+      "browser_assert_layout",
+      "browser_layout",
+      "browser_visual",
+      "browser_close",
+      "desktop_screenshot",
+      "desktop_diff",
+      "desktop_list_windows",
+      "desktop_window",
+      "desktop_do",
+      "desktop_cursor",
+      "desktop_elements"
+    ]
+  },
+  "load": {
+    "sampling": "whole-machine os.cpus() idle/total delta across the run; free memory at start/end; no per-request sampling",
+    "cpuBusyPercent": 35.81,
+    "freeMemoryBytesStart": 17974837248,
+    "freeMemoryBytesEnd": 17646981120,
+    "sequential": true,
+    "maxConcurrentRequests": 1,
+    "unrelatedLoad": "not externally audited; concurrent work on this machine would appear in cpuBusyPercent. The driver issues one request at a time."
+  },
+  "stats": {
+    "attempted": 100,
+    "observed": 100,
+    "passed": 100,
+    "failed": 0,
+    "percentileMethod": "nearest-rank",
+    "percentileBase": {
+      "observed": 100,
+      "attempted": 100
+    },
+    "minMs": 40.703,
+    "p50Ms": 53.263,
+    "p95Ms": 66.73,
+    "maxMs": 71.277,
+    "meanMs": 53.957,
+    "sumMs": 5395.693
+  },
+  "phases": [
+    {
+      "name": "cold server start (spawn to initialize reply)",
+      "kind": "setup",
+      "elapsedMs": 22.485,
+      "notThresholded": true
+    },
+    {
+      "name": "initialize round trip",
+      "kind": "setup",
+      "elapsedMs": 16.013,
+      "notThresholded": true
+    },
+    {
+      "name": "setup: navigate to controlled fixture",
+      "kind": "setup",
+      "elapsedMs": 642.463,
+      "ok": true,
+      "notThresholded": true,
+      "note": "includes lazy cold browser launch; the thresholded browser number is the warm snapshot set"
+    },
+    {
+      "name": "setup: set 1280x720 viewport",
+      "kind": "setup",
+      "elapsedMs": 1.242,
+      "ok": true,
+      "notThresholded": true,
+      "note": null
+    },
+    {
+      "name": "setup: readiness snapshot",
+      "kind": "setup",
+      "elapsedMs": 52.842,
+      "ok": true,
+      "notThresholded": true,
+      "note": null
+    },
+    {
+      "name": "warm samples",
+      "kind": "warmup",
+      "attempts": 10,
+      "failures": 0,
+      "notThresholded": true
+    },
+    {
+      "name": "measured warm browser snapshot of the controlled 1280x720 fixture",
+      "kind": "measured",
+      "attempts": 100,
+      "failures": 0,
+      "targetP95Ms": 250,
+      "p50Ms": 53.263,
+      "p95Ms": 66.73,
+      "maxMs": 71.277
+    }
+  ],
+  "process": {
+    "exited": {
+      "code": 0,
+      "signal": null,
+      "atMs": 6941.3815
+    },
+    "requestsCompleted": 115,
+    "protocolViolations": {
+      "count": 0,
+      "samples": []
+    },
+    "unsolicitedFrames": 0,
+    "notifications": 0,
+    "stderr": {
+      "bytes": 430,
+      "truncated": false,
+      "tail": "[hand] engine hand-mcp 0.1.0 (gladius 59c6d77, puppet 0f790be) platform windows-x64\n[gladius] backend: chromium C:\\Users\\nathan\\AppData\\Local\\gladius\\chromium\\155.0.8059.84-5ca590a4\\chrome-headless-shell-win64\\chrome-headless-shell.exe (port 58326)\n[gladius] profile: C:\\Users\\nathan\\AppData\\Local\\Temp\\gladius-21768-1794948124142-0\n[gladius] job: browser armed with KILL_ON_JOB_CLOSE\n[gladius] browser ready pid=21192 (chromium)\n"
+    }
+  },
+  "verdict": {
+    "status": "pass",
+    "targetP95Ms": 250,
+    "failures": 0,
+    "reasons": [],
+    "releaseBlocked": false
+  }
+}
