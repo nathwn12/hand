@@ -11,6 +11,7 @@
 // gone and checks the foreground/cursor again.
 
 import { spawn, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { access, mkdir, readFile, readdir, rm, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
@@ -71,12 +72,13 @@ function findCsc() {
 
 async function compileFixture() {
   await mkdir(CACHE_DIR, { recursive: true });
-  let needBuild = true;
-  if (await exists(FIXTURE_EXE)) {
-    const [sourceInfo, exeInfo] = await Promise.all([stat(FIXTURE_SOURCE), stat(FIXTURE_EXE)]);
-    needBuild = sourceInfo.mtimeMs > exeInfo.mtimeMs;
-  }
-  if (!needBuild) return { ok: true, exe: FIXTURE_EXE, compiled: false };
+  // Content-addressed: the fixture binary is named by its source hash and reused,
+  // so hand and Puppet measure the identical bytes. A per-run rebuild would give
+  // every receipt a different target hash and no two products could be compared.
+  const source = await readFile(FIXTURE_SOURCE);
+  const hash = createHash("sha256").update(source).digest("hex").slice(0, 16);
+  const exe = join(CACHE_DIR, `hand-desktop-fixture-${hash}.exe`);
+  if (await exists(exe)) return { ok: true, exe, compiled: false, sourceHash: hash };
   const csc = findCsc();
   if (!csc) return { ok: false, reason: "no .NET Framework csc.exe is available to compile the fixture" };
   const result = spawnSync(
@@ -86,7 +88,7 @@ async function compileFixture() {
       "/target:winexe",
       "/platform:x64",
       "/optimize+",
-      `/out:${FIXTURE_EXE}`,
+      `/out:${exe}`,
       `/r:${join(csc.root, "System.Windows.Forms.dll")}`,
       `/r:${join(csc.root, "System.Drawing.dll")}`,
       FIXTURE_SOURCE,
@@ -99,7 +101,7 @@ async function compileFixture() {
       reason: `fixture compilation failed: ${(result.stderr || result.stdout || "").trim().slice(0, 2000)}`,
     };
   }
-  return { ok: true, exe: FIXTURE_EXE, compiled: true };
+  return { ok: true, exe, compiled: true, sourceHash: hash };
 }
 
 function readState(hwnd = 0) {
