@@ -752,17 +752,35 @@ fn structured_of_text(s: &str) -> Option<Value> {
     }
 }
 
+/// A hidden launch that never happened (`do desktop:"hidden"`): the call had no
+/// target, so no per-action "success" is evidence about the work asked for. A
+/// `wait` needs no window and trivially succeeds, which must not turn a launch
+/// failure into a success (SPEC: a failure cannot masquerade as success).
+fn hidden_launch_failed(sc: &Value) -> bool {
+    sc.get("hidden_desktop")
+        .and_then(|h| h.get("desktop_created"))
+        .and_then(Value::as_bool)
+        == Some(false)
+}
+
 /// `isError` rule shared by every envelope: a payload is a tool error when
 /// its top-level `ok` is false, except a `do` burst, which is a tool error
-/// only when none of its per-action results succeeded (continue-always).
+/// only when none of its per-action results succeeded (continue-always) - or
+/// when its hidden launch never created a target, in which case no action's
+/// success is evidence.
 pub(crate) fn payload_is_err(sc: &Value) -> bool {
     match sc.get("ok") {
-        Some(Value::Bool(false)) => match sc.get("results").and_then(|r| r.as_array()) {
-            Some(results) => !results
-                .iter()
-                .any(|r| r.get("ok") == Some(&Value::Bool(true))),
-            None => true,
-        },
+        Some(Value::Bool(false)) => {
+            if hidden_launch_failed(sc) {
+                return true;
+            }
+            match sc.get("results").and_then(|r| r.as_array()) {
+                Some(results) => !results
+                    .iter()
+                    .any(|r| r.get("ok") == Some(&Value::Bool(true))),
+                None => true,
+            }
+        }
         _ => false,
     }
 }
@@ -778,7 +796,9 @@ fn wrapped_text(s: &str) -> String {
     // resolve errors, cursor read errors) is `isError: true`. `do` is the one
     // exception by contract: its `ok` is false when ANY action failed, but a
     // burst is continue-always, so only a burst where NOTHING succeeded (its
-    // `results` carry no `ok:true`) is a tool error.
+    // `results` carry no `ok:true`) is a tool error - plus a hidden launch that
+    // never created its target, where a target-free action's success is not
+    // evidence (see `hidden_launch_failed`).
     let is_err = payload_is_err(&sc);
     format!(
         "{{\"content\":[{}],\"isError\":{},\"structuredContent\":{}}}",

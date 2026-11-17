@@ -17,6 +17,23 @@
 //! EnumWindows, so the owner's desktop is never enumerated or touched. The
 //! capture also runs on the hidden-desktop thread so the device context
 //! belongs to that desktop.
+//!
+//! Lifecycle cover: the launch is created INSIDE a fresh job object with
+//! `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`, atomically, through the
+//! `PROC_THREAD_ATTRIBUTE_JOB_LIST` creation attribute - so the target is
+//! covered before it can execute one instruction and there is no
+//! create/assign gap a hard kill could slip through. The job does not permit
+//! breakaway, so every process the target spawns stays in it.
+//!
+//! The handle is then handed to the caller's [`Hidden`], which owns it for the
+//! rest of the call; the owner thread keeps no copy and never touches the
+//! handle after the transfer. A server death of ANY kind - including a hard
+//! `TerminateProcess` that runs no destructor and no teardown - closes it from
+//! whichever side holds it, and the OS reaps the launched process and its
+//! descendants. A launch that cannot be covered is refused before anything
+//! starts, or (if the failure is detected after creation) terminated before
+//! this call reports: an owned process outside a kill-on-close job is an
+//! orphan nobody can see, so no uncovered launch is left running.
 
 use std::sync::mpsc;
 use std::thread::JoinHandle;
@@ -31,7 +48,7 @@ use windows_sys::Win32::System::StationsAndDesktops::{
 };
 use windows_sys::Win32::System::Threading::{
     CreateProcessW, GetCurrentThreadId, OpenProcess, TerminateProcess, WaitForSingleObject,
-    PROCESS_INFORMATION, PROCESS_TERMINATE, STARTUPINFOW,
+    EXTENDED_STARTUPINFO_PRESENT, PROCESS_INFORMATION, PROCESS_TERMINATE,
 };
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::IsWindowEnabled;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
@@ -79,6 +96,170 @@ fn unique_desktop_name() -> String {
 
 fn wide(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(std::iter::once(0)).collect()
+}
+
+// ---------------------------------------------------------------- job cover
+
+/// Kernel job-object cover for one hidden launch.
+///
+/// `KILL_ON_JOB_CLOSE` means the OS terminates every process in the job when
+/// its last handle closes. The owner thread creates it, uses it to create the
+/// target inside the job and verify membership, then transfers the only handle
+/// to [`Hidden`] and never touches it again. So it closes on any of: a normal
+/// `teardown()`, the caller dropping `Hidden`, or the server process dying
+/// abruptly - the case no Rust destructor covers.
+///
+/// A job handle is a kernel object, not process state: closing it is the only
+/// thing needed for the reap, which is why this survives `TerminateProcess`.
+mod job {
+    use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle, RawHandle};
+    use windows_sys::Win32::Foundation::{GetLastError, HANDLE};
+    use windows_sys::Win32::System::JobObjects::{
+        CreateJobObjectW, IsProcessInJob, JobObjectExtendedLimitInformation,
+        SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+    };
+    use windows_sys::Win32::System::Threading::{
+        DeleteProcThreadAttributeList, InitializeProcThreadAttributeList,
+        UpdateProcThreadAttribute, LPPROC_THREAD_ATTRIBUTE_LIST, PROC_THREAD_ATTRIBUTE_JOB_LIST,
+        STARTUPINFOEXW, STARTUPINFOW,
+    };
+
+    pub(super) struct Cover(OwnedHandle);
+
+    impl Cover {
+        /// Create the job and arm it. An error here is fatal to the launch: the
+        /// caller refuses to run an owned process it cannot cover.
+        pub(super) fn arm() -> Result<Cover, String> {
+            unsafe {
+                let raw = CreateJobObjectW(std::ptr::null(), std::ptr::null());
+                if raw.is_null() {
+                    return Err(format!(
+                        "CreateJobObjectW failed (GetLastError={})",
+                        GetLastError()
+                    ));
+                }
+                let cover = Cover(OwnedHandle::from_raw_handle(raw as RawHandle));
+                let mut info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+                info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+                let ok = SetInformationJobObject(
+                    raw,
+                    JobObjectExtendedLimitInformation,
+                    &info as *const _ as *const std::ffi::c_void,
+                    std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+                );
+                if ok == 0 {
+                    return Err(format!(
+                        "SetInformationJobObject(KILL_ON_JOB_CLOSE) failed (GetLastError={})",
+                        GetLastError()
+                    ));
+                }
+                Ok(cover)
+            }
+        }
+
+        /// Raw handle for the owner thread, which owns the cover for the whole
+        /// creation-and-verification step. It must not be used after the cover
+        /// is transferred to the caller: the handle value would then belong to
+        /// whoever holds it, and a caller that stopped waiting closes it.
+        pub(super) fn raw(&self) -> HANDLE {
+            self.0.as_raw_handle() as HANDLE
+        }
+    }
+
+    /// `STARTUPINFOEXW` carrying `PROC_THREAD_ATTRIBUTE_JOB_LIST`, so
+    /// `CreateProcessW` puts the new process into the job as part of creation.
+    /// This is the atomic form: there is no interval in which a running process
+    /// exists outside the job, so a hard kill at any instant leaves nothing
+    /// behind, and a launcher stub cannot spawn a descendant that escapes.
+    pub(super) struct StartInfo {
+        si: STARTUPINFOEXW,
+        /// Attribute-list storage; `lpAttributeList` points into it, so it must
+        /// outlive the `CreateProcessW` call.
+        _attrs: Vec<usize>,
+        /// The job-handle array the list refers to. Measured: the list keeps a
+        /// POINTER to this array, so it must (a) outlive `CreateProcessW` and
+        /// (b) never move — a stack array moved into this struct fails with
+        /// ERROR_INVALID_HANDLE (6). Hence the Box.
+        _jobs: Box<[HANDLE; 1]>,
+    }
+
+    impl StartInfo {
+        pub(super) fn new(
+            job: HANDLE,
+            desktop: windows_sys::core::PWSTR,
+        ) -> Result<StartInfo, String> {
+            unsafe {
+                let mut size: usize = 0;
+                InitializeProcThreadAttributeList(std::ptr::null_mut(), 1, 0, &mut size);
+                if size == 0 {
+                    return Err(format!(
+                        "InitializeProcThreadAttributeList(size query) failed (GetLastError={})",
+                        GetLastError()
+                    ));
+                }
+                // The list must be pointer-aligned; a Vec<usize> gives that.
+                let words = size.div_ceil(std::mem::size_of::<usize>());
+                let mut attrs = vec![0usize; words];
+                let list = attrs.as_mut_ptr() as LPPROC_THREAD_ATTRIBUTE_LIST;
+                if InitializeProcThreadAttributeList(list, 1, 0, &mut size) == 0 {
+                    return Err(format!(
+                        "InitializeProcThreadAttributeList failed (GetLastError={})",
+                        GetLastError()
+                    ));
+                }
+                let handles: Box<[HANDLE; 1]> = Box::new([job]);
+                let ok = UpdateProcThreadAttribute(
+                    list,
+                    0,
+                    PROC_THREAD_ATTRIBUTE_JOB_LIST as usize,
+                    handles.as_ptr() as *const std::ffi::c_void,
+                    std::mem::size_of::<HANDLE>(),
+                    std::ptr::null_mut(),
+                    std::ptr::null(),
+                );
+                if ok == 0 {
+                    DeleteProcThreadAttributeList(list);
+                    return Err(format!(
+                        "UpdateProcThreadAttribute(job list) failed (GetLastError={}); this \
+                         Windows build cannot create a process inside a job",
+                        GetLastError()
+                    ));
+                }
+                let mut si: STARTUPINFOEXW = std::mem::zeroed();
+                si.StartupInfo.cb = std::mem::size_of::<STARTUPINFOEXW>() as u32;
+                si.StartupInfo.lpDesktop = desktop;
+                si.lpAttributeList = list;
+                Ok(StartInfo {
+                    si,
+                    _attrs: attrs,
+                    _jobs: handles,
+                })
+            }
+        }
+
+        pub(super) fn startup(&self) -> &STARTUPINFOW {
+            &self.si.StartupInfo
+        }
+    }
+
+    impl Drop for StartInfo {
+        fn drop(&mut self) {
+            unsafe { DeleteProcThreadAttributeList(self.si.lpAttributeList) };
+        }
+    }
+
+    /// Is `process` really in `job`? Asked after creation so the cover is a
+    /// verified fact for this launch, not an assumption about what the OS did.
+    pub(super) fn contains(job: HANDLE, process: HANDLE) -> Result<bool, String> {
+        let mut in_job: i32 = 0;
+        if unsafe { IsProcessInJob(process, job, &mut in_job) } == 0 {
+            return Err(format!("IsProcessInJob failed (GetLastError={})", unsafe {
+                GetLastError()
+            }));
+        }
+        Ok(in_job != 0)
+    }
 }
 
 // ---------------------------------------------------------------- messages
@@ -136,8 +317,17 @@ pub struct Done {
 
 /// Owner thread + channels. `teardown()` must be called exactly once: it
 /// signals the thread to run capture+teardown and joins it.
+///
+/// `job` is the launch's kill-on-close job handle: the owner used it to create
+/// the target inside the job and verify membership, then transferred it here.
+/// It is the only handle after that, and it closes whenever this value does, so
+/// a hard server kill cannot orphan the target. `hard_kill_cover` is true only
+/// when this request created a process and verified it sits in that job, so a
+/// caller reads a fact rather than an assumption.
 pub struct Hidden {
     pub ready: Ready,
+    pub hard_kill_cover: bool,
+    job: Option<job::Cover>,
     tx_go: mpsc::Sender<()>,
     rx_done: mpsc::Receiver<Done>,
     join: Option<JoinHandle<()>>,
@@ -157,7 +347,33 @@ impl Hidden {
         let limit = crate::deadline::limit(crate::deadline::Family::Capture);
         let done = match self.rx_done.recv_timeout(limit) {
             Ok(d) => d,
-            Err(_) => Done {
+            // A refused setup never reaches capture+teardown: the owner returns
+            // its setup error and drops its sender. That is not a capture
+            // timeout and must not be reported as one - no capture was asked
+            // for, so an "unresponsive UI thread" line would be a fabricated
+            // diagnosis. The setup refusal itself is carried in `Ready.error`.
+            Err(mpsc::RecvTimeoutError::Disconnected) => Done {
+                alive: false,
+                text: None,
+                capture: None,
+                pre_drive_text: None,
+                post_revert_text: None,
+                reverted: false,
+                close_posted: false,
+                process_exited: false,
+                desktop_empty: false,
+                terminated: false,
+                restored_desktop: false,
+                closed_desktop: false,
+                open_after_close_null: false,
+                teardown_proven: false,
+                error: Some(
+                    "the hidden launch ended during setup, so there was no capture and no \
+                     teardown to report; see the setup error for the reason"
+                        .to_string(),
+                ),
+            },
+            Err(mpsc::RecvTimeoutError::Timeout) => Done {
                 alive: false,
                 text: None,
                 capture: None,
@@ -188,6 +404,11 @@ impl Hidden {
             // hang the caller on join; the owner thread finishes on its own.
             let _ = self.join.take();
         }
+        // Final backstop, never earlier: closing the job reaps anything the
+        // graceful path left behind (a windowless descendant, a launcher stub's
+        // successor). It is also what fires on the timeout arm above, and on a
+        // caller that drops `Hidden` without calling teardown at all.
+        drop(self.job.take());
         done
     }
 }
@@ -275,15 +496,44 @@ fn build_command_line(program: &str, args: &[String]) -> Vec<u16> {
 /// Spawn the owner thread and block until setup is complete. `args` is
 /// argv for the launched program (from `background_args`); empty keeps
 /// the historical bare-program launch byte-identical.
+///
+/// Handle ownership is the lifecycle guarantee, and it is sequenced so the
+/// value is never used after it has been given away:
+///
+/// 1. the owner arms the job and keeps the only handle;
+/// 2. the target is created INSIDE that job (creation attribute) while the
+///    owner still holds it, and membership is verified against it;
+/// 3. only then is the handle transferred to this frame, which acknowledges,
+///    and the owner never touches it again.
+///
+/// So at every instant the handle is owned by a live part of the server: a
+/// hard kill closes it from whichever side holds it and reaps the tree, and a
+/// caller that stops waiting cannot make the owner use a closed (possibly
+/// recycled) handle value. A launch that cannot be covered is never allowed to
+/// keep running.
 pub fn spawn(program: &str, args: &[String]) -> Hidden {
     let (tx_ready, rx_ready) = mpsc::channel::<Ready>();
     let (tx_go, rx_go) = mpsc::channel::<()>();
     let (tx_done, rx_done) = mpsc::channel::<Done>();
+    let (tx_cover, rx_cover) = mpsc::channel::<job::Cover>();
+    let (tx_ack, rx_ack) = mpsc::channel::<()>();
     let name = unique_desktop_name();
     let prog = program.to_string();
     let argv: Vec<String> = args.to_vec();
     let nm = name.clone();
-    let join = std::thread::spawn(move || owner(prog, argv, nm, tx_ready, rx_go, tx_done));
+    let join = std::thread::spawn(move || {
+        owner(prog, argv, nm, tx_ready, tx_cover, rx_ack, rx_go, tx_done)
+    });
+    // Hand-off, bounded: the cover is sent only after the target exists inside
+    // it, so a caller that stopped waiting makes the owner terminate the launch
+    // (send fails) or abort on the missing acknowledgement.
+    let job = match rx_cover.recv_timeout(Duration::from_secs(5)) {
+        Ok(c) => {
+            let _ = tx_ack.send(());
+            Some(c)
+        }
+        Err(_) => None,
+    };
     // Worst-case setup is bounded: window discovery (8 s) + text-target
     // readiness (3 s) + title-stem wait (4 s), so 20 s leaves headroom over
     // the sum while still failing fast when the owner thread dies.
@@ -302,8 +552,13 @@ pub fn spawn(program: &str, args: &[String]) -> Hidden {
             error: Some("hidden-desktop setup timed out after 15s".to_string()),
         },
     };
+    // Only a launch that actually created a process under the job reports the
+    // cover: a refused launch keeps its handle but covered nothing.
+    let hard_kill_cover = job.is_some() && ready.created;
     Hidden {
         ready,
+        hard_kill_cover,
+        job,
         tx_go,
         rx_done,
         join: Some(join),
@@ -312,15 +567,79 @@ pub fn spawn(program: &str, args: &[String]) -> Hidden {
 
 // ---------------------------------------------------------------- owner thread
 
+/// One setup failure, in the shape every caller-facing error uses: the reason is
+/// prose (no unregistered error code), and this request owns nothing that keeps
+/// running - either nothing was started, or what was started has already been
+/// terminated by the caller of this helper.
+fn setup_error(name: String, created: bool, set_desktop: bool, error: String) -> Ready {
+    Ready {
+        created,
+        set_desktop,
+        pid: None,
+        hwnd: None,
+        hwnd_class: String::new(),
+        hwnd_title: String::new(),
+        hwnd_pid: 0,
+        on_desktop: false,
+        desktop_name: name,
+        error: Some(error),
+    }
+}
+
+/// Fail-closed cleanup for a launch that was refused after the private desktop
+/// already existed: move the thread off the desktop, close it. No process was
+/// created on this path, so nothing keeps running.
+fn close_desktop(hdesk: HDESK, original: HDESK, set_desktop: bool) {
+    unsafe {
+        if set_desktop {
+            SetThreadDesktop(original);
+        }
+        CloseDesktop(hdesk);
+    }
+}
+
+/// Fail-closed cleanup for a target that must not live: it is a process this
+/// call created, so terminating it is inside ownership. Bounded, then the
+/// handles close and the private desktop goes.
+fn kill_target(pi: &PROCESS_INFORMATION, hdesk: HDESK, original: HDESK, set_desktop: bool) {
+    unsafe {
+        TerminateProcess(pi.hProcess, 1);
+        WaitForSingleObject(pi.hProcess, TEARDOWN_TIMEOUT_MS);
+        CloseHandle(pi.hThread);
+        CloseHandle(pi.hProcess);
+        close_desktop(hdesk, original, set_desktop);
+    }
+}
+
 fn owner(
     program: String,
     args: Vec<String>,
     name: String,
     tx_ready: mpsc::Sender<Ready>,
+    tx_cover: mpsc::Sender<job::Cover>,
+    rx_ack: mpsc::Receiver<()>,
     rx_go: mpsc::Receiver<()>,
     tx_done: mpsc::Sender<Done>,
 ) {
     unsafe {
+        // 1. Hard-kill cover FIRST, and the owner keeps the only handle for
+        // now. No desktop, no process until it is armed.
+        let cover = match job::Cover::arm() {
+            Ok(c) => c,
+            Err(e) => {
+                let _ = tx_ready.send(setup_error(
+                    name,
+                    false,
+                    false,
+                    format!(
+                        "cannot arm a kill-on-close job for desktop=\"hidden\" ({e}); no process \
+                         was started"
+                    ),
+                ));
+                return;
+            }
+        };
+
         let original = GetThreadDesktop(GetCurrentThreadId());
         let name_w = wide(&name);
         let hdesk = CreateDesktopW(
@@ -332,29 +651,36 @@ fn owner(
             std::ptr::null(),
         );
         if hdesk.is_null() {
-            let _ = tx_ready.send(Ready {
-                created: false,
-                set_desktop: false,
-                pid: None,
-                hwnd: None,
-                hwnd_class: String::new(),
-                hwnd_title: String::new(),
-                hwnd_pid: 0,
-                on_desktop: false,
-                desktop_name: name,
-                error: Some(format!(
-                    "CreateDesktopW failed (GetLastError={})",
-                    GetLastError()
-                )),
-            });
+            let _ = tx_ready.send(setup_error(
+                name,
+                false,
+                false,
+                format!("CreateDesktopW failed (GetLastError={})", GetLastError()),
+            ));
             return;
         }
         let set_ok = SetThreadDesktop(hdesk) != 0;
 
-        // Launch the target with its desktop pinned to the hidden one.
-        let mut si: STARTUPINFOW = std::mem::zeroed();
-        si.cb = std::mem::size_of::<STARTUPINFOW>() as u32;
-        si.lpDesktop = name_w.as_ptr() as PWSTR;
+        // 2. Launch the target with its desktop pinned to the hidden one and
+        // its job membership set at creation. The cover handle is used here
+        // while the owner still owns it, so it cannot have been closed by the
+        // caller underneath us.
+        let start = match job::StartInfo::new(cover.raw(), name_w.as_ptr() as PWSTR) {
+            Ok(s) => s,
+            Err(e) => {
+                close_desktop(hdesk, original, set_ok);
+                let _ = tx_ready.send(setup_error(
+                    name,
+                    false,
+                    set_ok,
+                    format!(
+                        "cannot attach the kill-on-close job to the creation call for \
+                         desktop=\"hidden\" ({e}); no process was started"
+                    ),
+                ));
+                return;
+            }
+        };
         let mut cmd = build_command_line(&program, &args);
         let mut pi: PROCESS_INFORMATION = std::mem::zeroed();
         let created = CreateProcessW(
@@ -363,32 +689,67 @@ fn owner(
             std::ptr::null(),
             std::ptr::null(),
             0,
-            0,
+            EXTENDED_STARTUPINFO_PRESENT,
             std::ptr::null(),
             std::ptr::null(),
-            &si,
+            start.startup(),
             &mut pi,
         ) != 0;
         if !created {
             let e = GetLastError();
-            if set_ok {
-                SetThreadDesktop(original);
+            close_desktop(hdesk, original, set_ok);
+            let _ = tx_ready.send(setup_error(
+                name,
+                false,
+                set_ok,
+                format!("CreateProcessW failed for \"{program}\" (GetLastError={e})"),
+            ));
+            return;
+        }
+        // The attribute list is only needed for the creation call.
+        drop(start);
+
+        // 3. Verify the guarantee instead of assuming it: the target must be in
+        // the job the owner is holding. A launch that is not covered is
+        // terminated here rather than left running as an orphan nobody can find.
+        match job::contains(cover.raw(), pi.hProcess) {
+            Ok(true) => {}
+            verified => {
+                let why = match verified {
+                    Ok(_) => "the launched process is not in the kill-on-close job".to_string(),
+                    Err(e) => e,
+                };
+                kill_target(&pi, hdesk, original, set_ok);
+                let _ = tx_ready.send(setup_error(
+                    name,
+                    false,
+                    set_ok,
+                    format!(
+                        "job membership could not be verified ({why}); the launched process was \
+                         terminated"
+                    ),
+                ));
+                return;
             }
-            CloseDesktop(hdesk);
-            let _ = tx_ready.send(Ready {
-                created: false,
-                set_desktop: set_ok,
-                pid: None,
-                hwnd: None,
-                hwnd_class: String::new(),
-                hwnd_title: String::new(),
-                hwnd_pid: 0,
-                on_desktop: false,
-                desktop_name: name,
-                error: Some(format!(
-                    "CreateProcessW failed for \"{program}\" (GetLastError={e})"
-                )),
-            });
+        }
+
+        // 4. Transfer the cover LAST, and never use the handle afterwards. If
+        // the caller stopped waiting (send failed) or never acknowledges, the
+        // target is terminated here instead of continuing without a holder.
+        let handed_over = match tx_cover.send(cover) {
+            Ok(()) => rx_ack.recv_timeout(Duration::from_secs(5)).is_ok(),
+            Err(_) => false,
+        };
+        if !handed_over {
+            kill_target(&pi, hdesk, original, set_ok);
+            let _ = tx_ready.send(setup_error(
+                name,
+                false,
+                set_ok,
+                "the kill-on-close job could not be handed to this call; the launched process was \
+                 terminated"
+                    .to_string(),
+            ));
             return;
         }
 

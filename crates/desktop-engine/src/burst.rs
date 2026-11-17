@@ -2585,6 +2585,10 @@ pub fn do_burst(args: &DoArgs) -> String {
     };
     let mut hidden_owner: Option<crate::hidden::Hidden> = None;
     let mut hidden_created = false;
+    // `desktop:"hidden"` names a private launch only when no explicit target
+    // won the lock; with a target the call is an ordinary target-locked burst
+    // (legacy target-wins) and nothing is launched.
+    let hidden_launch_requested = hidden_mode && target_lock.is_none();
     let mut hidden_set_desktop = false;
     let mut hidden_pid: Option<u32> = None;
     let mut hidden_name = String::new();
@@ -4730,6 +4734,16 @@ pub fn do_burst(args: &DoArgs) -> String {
         hd.insert("requested".to_string(), Value::from("hidden"));
         hd.insert("desktop_name".to_string(), Value::from(hidden_name.clone()));
         hd.insert("desktop_created".to_string(), Value::from(hidden_created));
+        // Lifecycle evidence, not a promise: true means this launch created a
+        // process under a kill-on-close job, verified it was in that job, and
+        // handed the only handle to this request - so a hard server kill reaps
+        // it. A launch that could not be covered is refused before starting
+        // anything, or terminated before this call reports; either way it
+        // arrives here as a setup error with a null launched pid.
+        hd.insert(
+            "hard_kill_cover".to_string(),
+            Value::from(owner.hard_kill_cover),
+        );
         hd.insert(
             "set_thread_desktop".to_string(),
             Value::from(hidden_set_desktop),
@@ -4873,6 +4887,21 @@ pub fn do_burst(args: &DoArgs) -> String {
         hd.insert("foreground_before".to_string(), Value::from(focus_before));
         hd.insert("foreground_after".to_string(), Value::from(fg_end));
         hidden_meta = Some(hd);
+    } else if hidden_launch_requested {
+        // A hidden launch was requested and never reached the spawn (missing or
+        // invalid `background`). Name the request with the same `requested` /
+        // `desktop_created` marker so the refusal is machine-readable and the
+        // envelope verdict (`payload_is_err`) is consistent with `ok:false`;
+        // the reason itself is in `background_error`.
+        let mut hd = Map::new();
+        hd.insert("requested".to_string(), Value::from("hidden"));
+        hd.insert("desktop_name".to_string(), Value::from(""));
+        hd.insert("desktop_created".to_string(), Value::from(false));
+        hd.insert("hard_kill_cover".to_string(), Value::from(false));
+        hd.insert("launched_pid".to_string(), Value::Null);
+        hd.insert("window_hwnd".to_string(), Value::Null);
+        hd.insert("teardown".to_string(), Value::Null);
+        hidden_meta = Some(hd);
     }
     let mut payload = Map::new();
     // Envelope truth: `do` continues past a failed action, so a per-action
@@ -4880,12 +4909,21 @@ pub fn do_burst(args: &DoArgs) -> String {
     // when EVERY action succeeded, `failed` counts the ones that did not,
     // and the tool envelope reports isError only when NOTHING succeeded
     // (see `wrapped_text`). Per-action fields are untouched.
+    //
+    // The one thing that overrides the action count is a hidden launch that was
+    // REQUESTED and never happened. `desktop:"hidden"` alongside an explicit
+    // target never launches anything (target wins, legacy behaviour), so that
+    // call must keep its ordinary verdict. A requested launch with no target is
+    // a failure even when every action was target-free (a `wait` needs no
+    // window), and `payload_is_err` reads the same marker so the envelope is
+    // isError: a launch failure cannot masquerade as success.
     let failed = st
         .results
         .iter()
         .filter(|r| r.get("ok") != Some(&Value::from(true)))
         .count();
-    payload.insert("ok".to_string(), Value::from(failed == 0));
+    let launch_failed = hidden_launch_requested && !hidden_created;
+    payload.insert("ok".to_string(), Value::from(failed == 0 && !launch_failed));
     payload.insert("failed".to_string(), Value::from(failed as i64));
     payload.insert(
         "results".to_string(),
@@ -6797,6 +6835,14 @@ mod tests {
             );
         }
         assert_eq!(payload["sendinput_calls"], Value::from(0));
+        // Target wins over the hidden flag: no launch was requested, so the
+        // call keeps the ordinary target-locked verdict even though every
+        // action succeeded only through the explicit target.
+        assert_eq!(
+            payload["ok"],
+            Value::from(true),
+            "a hidden flag with an explicit target must keep the target-win verdict: {payload}"
+        );
         // The predicate itself: a desktop that was not created grants nothing,
         // and a window on a different desktop never matches the created name.
         assert!(!private_desktop_earned(false, "hidden-x", Some("hidden-x")));

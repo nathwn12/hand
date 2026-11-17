@@ -27,6 +27,8 @@ not to be claimed.
 | Desktop window enumeration | `tests/desktop_live.rs`: real `EnumWindows` rows with hwnd, pid, exe, rects, dpi, flags |
 | Desktop semantic inspection of a background window | same test: `desktop_elements` on a real non-foreground window, backend named, `rect_space: "screen"`, explicit empty/UIA state |
 | Desktop typed missing-target refusal | same test: unknown `titleContains` → tool error containing `target_gone`/`bad_target` |
+| Private-desktop act and effect | `tests/desktop_fixture.rs`: controlled app receives posted input and independently records the resulting state; the tool's unverified delivery verdict is not promoted to proof |
+| Hidden launch cleanup | `tests/hidden_cleanup.rs`: hard server kill reaps the controlled target and child; a failed launch reports `ok:false` and `isError:true` |
 | No foreground takeover or pointer movement | same test + `HAND_LIVE_DESKTOP=1 cargo test --test no_steal live_read_only_target_capture_keeps_foreground` (captured a real GitHub Desktop window, foreground stayed on the terminal) |
 | Desktop no-steal static, wire and gate checks | `tests/no_steal.rs`, 12 tests: banned APIs absent from all three source trees; target on every acting tool; zero `sendinput_calls`; focus refused with and without the flag; dead target typed; clipboard write refused while the burst continues |
 | Browser cancellation | `tests/cancel.rs`: typed `cancelled` immediately, no late second response, engine usable afterwards |
@@ -72,11 +74,7 @@ These are not implemented, not exercised, or not safe to claim from this slice.
 
 ### Desktop additions from the specification
 
-- Launching a selected application on a private desktop; reporting whether
-  containment was verified.
-- Background actuation with a proven state change (UIA patterns / posted
-  messages) through hand. The engine code exists, but this slice tested only
-  read-only desktop behavior.
+- UIA pattern actuation with a proven state change on a private desktop.
 - Verifying `effect` separately from `satisfied` over hand's endpoint.
 - Semantic-tree paging past one page, menus/dialogs/lists navigation evidence.
 - Visual-change waits, window-lifecycle waits, cancellation of a long desktop
@@ -87,6 +85,12 @@ These are not implemented, not exercised, or not safe to claim from this slice.
 - Occlusion/minimized/elevated/secure-desktop reporting beyond what the engine
   already returns (partially visible in `list_windows`, not systematically
   tested).
+
+Hidden launches use a kill-on-close job assigned at process creation. The
+creation-time job attribute requires Windows 10 version 1607 or later and the
+launch fails closed when cover cannot be established. Breakaway is not enabled;
+an independently running external process is not owned or covered. An explicit
+existing target takes precedence over the hidden-launch request.
 
 ### Lifecycle and distribution
 
