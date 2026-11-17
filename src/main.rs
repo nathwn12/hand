@@ -1,7 +1,7 @@
-//! hand-mcp: one Rust MCP server for browser testing and Windows desktop
+//! hand: one Rust MCP server for browser testing and Windows desktop
 //! computer use, integrating the Gladius and Puppet engines in one process.
 //!
-//! `hand-mcp` with no arguments serves MCP over stdio. Diagnostics go to
+//! `hand` with no arguments serves MCP over stdio. Diagnostics go to
 //! stderr; stdout carries protocol frames only.
 
 // No console window: an MCP client spawns this process and owns its pipes.
@@ -26,7 +26,7 @@ fn main() {
         }
         Some("doctor") => doctor(),
         Some(other) => {
-            eprintln!("usage: hand-mcp [mcp|doctor|--version]; unknown subcommand: {other}");
+            eprintln!("usage: hand [mcp|doctor|--version]; unknown subcommand: {other}");
             2
         }
     };
@@ -47,7 +47,7 @@ fn run_server() -> i32 {
     // The browser launch + ws connect chain is deep in a debug profile. Give
     // the runtime a known stack instead of trusting the process default.
     let handle = std::thread::Builder::new()
-        .name("hand-mcp".to_string())
+        .name("hand".to_string())
         .stack_size(8 * 1024 * 1024)
         .spawn(|| {
             let rt = match tokio::runtime::Builder::new_multi_thread()
@@ -135,7 +135,7 @@ fn doctor_report() -> serde_json::Value {
         .count();
     let report = serde_json::json!({
         "name": "hand",
-        "executable": "hand-mcp",
+        "executable": "hand",
         "version": env!("CARGO_PKG_VERSION"),
         "platform": std::env::consts::OS,
         "arch": std::env::consts::ARCH,

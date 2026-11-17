@@ -122,7 +122,7 @@ impl RawSession {
     fn spawn_with_env(env: &[(&str, &str)]) -> Self {
         use std::io::{BufRead, BufReader};
         use std::process::{Command, Stdio};
-        let mut cmd = Command::new(env!("CARGO_BIN_EXE_hand-mcp"));
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_hand"));
         // Same hermetic baseline as the shared harness: inherited developer
         // state never decides what this process does. Explicit `env` wins.
         cmd.env("HAND_TOOL_BUDGET_MS", "90000");
@@ -139,7 +139,7 @@ impl RawSession {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
-            .expect("spawn hand-mcp");
+            .expect("spawn hand");
         let stdin = child.stdin.take().expect("piped stdin");
         let stdout = child.stdout.take().expect("piped stdout");
         let stderr = child.stderr.take().expect("piped stderr");
@@ -220,7 +220,7 @@ impl RawSession {
             }
             if Instant::now() >= deadline {
                 let _ = self.child.kill();
-                panic!("hand-mcp did not exit within {timeout:?} after EOF");
+                panic!("hand did not exit within {timeout:?} after EOF");
             }
             std::thread::sleep(Duration::from_millis(20));
         }

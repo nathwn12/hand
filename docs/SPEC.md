@@ -1,4 +1,4 @@
-# hand-mcp: product specification
+# hand: product specification
 
 Status: specification, with explicit baseline and release gates. No product
 implementation is authorized by this document. This is a proposed contract,
@@ -36,7 +36,7 @@ from a proven effect. Latency should be low enough not to slow that loop.
 
 ## Product identity and distribution
 
-Product name: **hand**; intended npm distribution and executable: **hand-mcp**.
+Product name and executable: **hand**; npm package name: **hand-mcp**.
 The npm registry returned 404 for `hand-mcp` during discovery; this does not
 reserve the name or establish trademark availability. Recheck registry, local
 executable collisions and rights before release. Previously considered
@@ -469,7 +469,7 @@ first-release fixture creation are implementation prerequisites, not results.
 
 Reusable implementation brief, for when implementation is separately authorized:
 
-> Build hand-mcp from this specification as one Rust MCP product, preserving the
+> Build hand from this specification as one Rust MCP product, preserving the
 > namespaced Gladius and Puppet contracts and their safety guarantees. Establish
 > exact baseline inventories and reproducible fixtures first; implement in the
 > specified vertical slices without retiring the existing products. The outside

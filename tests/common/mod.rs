@@ -39,7 +39,7 @@ impl Session {
     /// that deliberately starts an external fixture (`context_wire`) must still
     /// be able to pass its own URL. Inherited values never win.
     pub fn spawn_with_env(env: &[(&str, &str)]) -> Self {
-        let mut cmd = Command::new(env!("CARGO_BIN_EXE_hand-mcp"));
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_hand"));
         // Pin the knobs a suite depends on. Values are hand's documented
         // defaults (90 s budget, render caps, hooks off); an explicit `env`
         // entry below can still opt into a deliberate variant.
@@ -57,7 +57,7 @@ impl Session {
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .spawn()
-            .expect("spawn hand-mcp");
+            .expect("spawn hand");
         let stdin = child.stdin.take().expect("piped stdin");
         let stdout = child.stdout.take().expect("piped stdout");
         let (tx, rx) = mpsc::channel::<String>();
@@ -109,7 +109,7 @@ impl Session {
             }
             if std::time::Instant::now() >= deadline {
                 let _ = self.child.kill();
-                panic!("hand-mcp did not exit within {timeout:?} after EOF");
+                panic!("hand did not exit within {timeout:?} after EOF");
             }
             std::thread::sleep(Duration::from_millis(20));
         }

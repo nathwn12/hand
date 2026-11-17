@@ -1,11 +1,11 @@
 ---
-name: hand-mcp seed
-description: Repo-specific commands, paths and ceremonies for hand-mcp. Load before working in this repo.
+name: hand seed
+description: Exact commands, packages and paths for hand. Load before building, testing or editing this repo.
 ---
 
-# hand-mcp — seed
+# hand - seed
 
-Generated from this repo's manifests. `--check` fails when a declared command or path stops existing, so this file cannot rot silently.
+Generated from this repo's manifests. `seed.mjs --check` fails when a manifest changed since generation, so this file cannot rot silently.
 
 <!-- seed:begin (generated from the manifests; edit outside the markers) -->
 

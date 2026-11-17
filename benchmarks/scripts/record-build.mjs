@@ -7,7 +7,7 @@
 // state and toolchain. compare.mjs re-checks the artifact and source state.
 //
 //   node benchmarks/scripts/record-build.mjs --product hand \
-//     --source-root . --manifest-path Cargo.toml --bin hand-mcp \
+//     --source-root . --manifest-path Cargo.toml --bin hand \
 //     --target-dir C:\scratch\hand-release
 //
 // Build output stays wherever --target-dir points. The receipt is written under

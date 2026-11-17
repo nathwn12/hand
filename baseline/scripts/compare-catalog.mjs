@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Executable compatibility comparison against the pinned baseline.
 //
-//   node baseline/scripts/compare-catalog.mjs --serve Q:\path\to\hand-mcp.exe
+//   node baseline/scripts/compare-catalog.mjs --serve Q:\path\to\hand.exe
 //   node baseline/scripts/compare-catalog.mjs --candidate tools-list.json
 //   node baseline/scripts/compare-catalog.mjs --baseline gladius --serve ...\gladius.exe
 //

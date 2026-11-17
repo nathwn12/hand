@@ -18,7 +18,7 @@ codes and result bodies are compiled in.
 Executable check:
 
 ```powershell
-node baseline/scripts/compare-catalog.mjs --serve target\debug\hand-mcp.exe --baseline hand
+node baseline/scripts/compare-catalog.mjs --serve target\debug\hand.exe --baseline hand
 ```
 
 Observed: `PASS hand baseline: 32 baseline tools vs 33 candidate tools`,

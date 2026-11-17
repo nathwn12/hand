@@ -43,7 +43,7 @@ const DEFAULT_WARMUP = 10;
 const DEFAULT_MEASURED = 100;
 const DEFAULT_TIMEOUT_MS = 60_000;
 
-const HELP = `hand-mcp benchmark driver (opt-in; no release claim without a passing receipt)
+const HELP = `hand benchmark driver (opt-in; no release claim without a passing receipt)
 
 Usage:
   node benchmarks/scripts/bench.mjs --product <hand|gladius|puppet> --scenario <id> [options]
@@ -300,7 +300,7 @@ async function main() {
       args: product.args,
       cwd: product.cwd,
       timeoutMs,
-      clientName: "hand-mcp-benchmark",
+      clientName: "hand-benchmark",
       env:
         scenario.domain === "browser"
           ? { GLADIUS_CHROMIUM: fingerprint.browser.path, GLADIUS_CDP_URL: "" }

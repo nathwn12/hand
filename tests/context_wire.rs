@@ -3,7 +3,7 @@
 //!
 //! Why the wire and not the engine: `tests/browser_contexts.rs` proves the
 //! engine's own `contexts::dispatch`, its typed codes and its CDP mechanics.
-//! This file proves the USER route: the spawned `hand-mcp` binary, one stdio
+//! This file proves the USER route: the spawned `hand` binary, one stdio
 //! MCP connection, the catalog a client sees, and the envelopes it receives,
 //! against a controlled loopback fixture and the owned pinned
 //! `chrome-headless-shell`.

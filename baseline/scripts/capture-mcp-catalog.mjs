@@ -63,7 +63,7 @@ export async function captureCatalog({
     init = await client.request("initialize", {
       protocolVersion: PROTOCOL,
       capabilities: {},
-      clientInfo: { name: "hand-mcp-baseline-capture", version: "1.0.0" },
+      clientInfo: { name: "hand-baseline-capture", version: "1.0.0" },
     });
     timings.initializeMs = init.elapsedMs;
     client.notify("notifications/initialized", {});

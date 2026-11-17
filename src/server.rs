@@ -683,7 +683,7 @@ pub async fn serve() -> Result<(), String> {
     install_payload_free_panic_hook();
     catalog::validate()?;
     eprintln!(
-        "[hand] engine hand-mcp {} (gladius 59c6d77, puppet 0f790be) platform {}",
+        "[hand] engine hand {} (gladius 59c6d77, puppet 0f790be) platform {}",
         env!("CARGO_PKG_VERSION"),
         platform_name()
     );

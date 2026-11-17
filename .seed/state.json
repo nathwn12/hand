@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "repo": "hand-mcp",
-  "skill": ".opencode/skills/hand-mcp-seed/SKILL.md",
+  "repo": "hand",
+  "skill": ".opencode/skills/hand-seed/SKILL.md",
   "manifests": {
-    "Cargo.toml": "7ddc97a34a1ce43b20144de76053133f40b708b6db78df0c5c67b01d08b40dc7"
+    "Cargo.toml": "f8bc094274b37f29a0ded2a17a3a56fb90093a3e2680d335dfa9ee4dab7d6dcb"
   }
 }

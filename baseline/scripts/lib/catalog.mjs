@@ -10,7 +10,7 @@
 
 import { canonicalHash, deepEqual, diffPaths } from "./canonical.mjs";
 
-/** Required for the first release by `hand-mcp-spec.md` (25 + 7 = 32). */
+/** Required for the first release by `hand-spec.md` (25 + 7 = 32). */
 export const SPEC_REQUIRED = {
   browser: [
     "navigate", "snapshot", "evaluate", "console", "network",
@@ -103,7 +103,7 @@ export function buildHandCatalog({ gladius, puppet, provenance }) {
   }
   return {
     $comment:
-      "Derived baseline for hand-mcp. Tools are the pinned legacy catalogues with the documented browser_/desktop_ prefix; no schema, description, annotation or ordering was changed. Regenerate with: node baseline/scripts/build-hand-catalog.mjs",
+      "Derived baseline for hand. Tools are the pinned legacy catalogues with the documented browser_/desktop_ prefix; no schema, description, annotation or ordering was changed. Regenerate with: node baseline/scripts/build-hand-catalog.mjs",
     spec: "docs/SPEC.md: the 32-tool floor is in 'Initial public surface and lifecycle'; tools beyond it are additions, not violations.",
     provenance,
     counts: {

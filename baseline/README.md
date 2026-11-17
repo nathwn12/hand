@@ -1,6 +1,6 @@
-# hand-mcp compatibility baseline
+# hand compatibility baseline
 
-Machine-readable capture of the two tool catalogues that `hand-mcp` must
+Machine-readable capture of the two tool catalogues that `hand` must
 reproduce, taken from the revisions the specification pins:
 
 | Suite | Revision | Version | Tools | Spec prefix |
@@ -69,7 +69,7 @@ node --test baseline/test/
 node baseline/scripts/build-hand-catalog.mjs
 
 # compare a candidate server against the hand baseline
-node baseline/scripts/compare-catalog.mjs --serve Q:\path\to\hand-mcp.exe
+node baseline/scripts/compare-catalog.mjs --serve Q:\path\to\hand.exe
 
 # re-capture check: the pinned binary must still emit the committed catalogue
 node baseline/scripts/compare-catalog.mjs --baseline gladius --pin 59c6d77 --serve Q:\PROJECTS\PERSONAL\gladius\target\release\gladius.exe

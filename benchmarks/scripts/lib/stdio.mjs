@@ -26,7 +26,7 @@ export class BenchClient {
     cwd,
     env = {},
     timeoutMs = DEFAULT_TIMEOUT_MS,
-    clientName = "hand-mcp-bench",
+    clientName = "hand-bench",
   }) {
     if (!command) throw new Error("command is required");
     this.command = command;

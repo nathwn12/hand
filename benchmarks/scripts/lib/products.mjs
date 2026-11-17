@@ -13,8 +13,8 @@ export const PRODUCT_CANDIDATES = {
   hand: {
     env: "HAND_MCP_BIN",
     paths: [
-      join(REPO_ROOT, "target", "release", "hand-mcp.exe"),
-      join(REPO_ROOT, "target", "debug", "hand-mcp.exe"),
+      join(REPO_ROOT, "target", "release", "hand.exe"),
+      join(REPO_ROOT, "target", "debug", "hand.exe"),
     ],
   },
   gladius: {

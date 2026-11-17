@@ -6,9 +6,9 @@ import assert from "node:assert/strict";
 import { buildConfiguration, releaseIdentityFor } from "../scripts/lib/build.mjs";
 
 test("build configuration is a path claim only", () => {
-  assert.equal(buildConfiguration("Q:\\p\\target\\debug\\hand-mcp.exe"), "debug");
-  assert.equal(buildConfiguration("Q:\\p\\target\\release\\hand-mcp.exe"), "release");
-  assert.equal(buildConfiguration("Q:\\p\\hand-mcp.exe"), "unknown");
+  assert.equal(buildConfiguration("Q:\\p\\target\\debug\\hand.exe"), "debug");
+  assert.equal(buildConfiguration("Q:\\p\\target\\release\\hand.exe"), "release");
+  assert.equal(buildConfiguration("Q:\\p\\hand.exe"), "unknown");
   assert.equal(buildConfiguration(null), null);
 });
 

@@ -24,8 +24,8 @@ What that buys an agent:
   server.
 
 - Product: **hand**
-- Executable and future npm package: **hand-mcp**
-- OpenCode connection key: **oc-hand** (not wired yet)
+- Executable: **hand**. Future npm package name: **hand-mcp**
+- OpenCode connection key: **oc-hand**
 - Distribution target: Windows x64
 - Repository: private, local, no remote
 
@@ -73,7 +73,7 @@ missing.
 ## Shape
 
 ```
-hand-mcp.exe            one process, one stdio MCP endpoint
+hand.exe            one process, one stdio MCP endpoint
 ├─ browser_*            25 Gladius tools, headless Chromium over CDP
 │  └─ browser_context   hand's isolated contexts (create/select/eval/cookies/…)
 ├─ desktop_*            7 Puppet tools, Win32 + UI Automation
@@ -88,11 +88,11 @@ its own module tree, locks, deadlines, typed errors and result bodies.
 
 ```powershell
 cargo build --release
-.\target\release\hand-mcp.exe doctor     # no MCP, no browser launch, no state change
-.\target\release\hand-mcp.exe            # MCP over stdio (default: mcp)
+.\target\release\hand.exe doctor     # no MCP, no browser launch, no state change
+.\target\release\hand.exe            # MCP over stdio (default: mcp)
 ```
 
-A client spawns `hand-mcp` and speaks newline-delimited JSON-RPC 2.0 on stdio.
+A client spawns `hand` and speaks newline-delimited JSON-RPC 2.0 on stdio.
 stdout carries protocol frames only; diagnostics go to stderr.
 
 Browser ownership:
@@ -133,7 +133,7 @@ cargo test                                  # hand end-to-end suite
 cargo test -p browser-engine                # vendored Gladius unit tests (69)
 cargo test -p desktop-engine -- --skip live_ # vendored Puppet unit tests (228)
 $env:HAND_LIVE_DESKTOP='1'; cargo test --test no_steal live_read_only_target_capture_keeps_foreground
-node baseline/scripts/compare-catalog.mjs --serve target\debug\hand-mcp.exe --baseline hand
+node baseline/scripts/compare-catalog.mjs --serve target\debug\hand.exe --baseline hand
 ```
 
 The live browser test starts a loopback fixture, drives inspect → act → verify,

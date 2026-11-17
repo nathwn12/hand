@@ -166,12 +166,12 @@ struct Session {
 
 impl Session {
     fn spawn() -> Self {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_hand-mcp"))
+        let mut child = Command::new(env!("CARGO_BIN_EXE_hand"))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .spawn()
-            .expect("spawn the hand-mcp binary");
+            .expect("spawn the hand binary");
         let stdin = child.stdin.take().expect("piped stdin");
         let stdout = child.stdout.take().expect("piped stdout");
         let (tx, rx) = mpsc::channel::<String>();

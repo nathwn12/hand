@@ -150,7 +150,7 @@ signed. Two local routes supply evidence; neither uses a secret:
 
 ```powershell
 node benchmarks/scripts/record-build.mjs --product hand `
-  --source-root . --manifest-path Cargo.toml --bin hand-mcp `
+  --source-root . --manifest-path Cargo.toml --bin hand `
   --target-dir C:\path\to\scratch-target
 ```
 
