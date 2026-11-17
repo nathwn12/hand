@@ -234,6 +234,16 @@ impl FixtureApp {
             "fixture executable must exist: {}",
             exe.display()
         );
+        // A console-subsystem fixture would leave a console window on the
+        // private desktop, competing with the fixture window for discovery.
+        // `windows_subsystem = "windows"` is what prevents that, and a race is
+        // the wrong way to learn it went missing.
+        assert_eq!(
+            pe_subsystem(&exe),
+            Some(2),
+            "the fixture must link as a Windows GUI binary (subsystem 2): a console window on \
+             the private desktop would compete with the fixture window for discovery"
+        );
         FixtureApp {
             journal: dir.join("journal.txt"),
             dir,
@@ -263,6 +273,20 @@ impl Drop for FixtureApp {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.dir);
     }
+}
+
+/// PE optional-header `Subsystem`: 2 = Windows GUI, 3 = console. Read from the
+/// built fixture so the test states the property it depends on instead of
+/// hoping window discovery agrees.
+fn pe_subsystem(exe: &Path) -> Option<u16> {
+    let bytes = std::fs::read(exe).ok()?;
+    let lfanew = u32::from_le_bytes(bytes.get(0x3c..0x40)?.try_into().ok()?) as usize;
+    // PE signature (4) + COFF header (20) = optional header; the Subsystem
+    // field sits at optional-header offset 68 in PE32 and PE32+ alike.
+    let subsystem = lfanew.checked_add(4 + 20 + 68)?;
+    Some(u16::from_le_bytes(
+        bytes.get(subsystem..subsystem + 2)?.try_into().ok()?,
+    ))
 }
 
 /// `rustc` from the environment, the PATH, or the rustup home. The fixture is
