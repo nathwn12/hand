@@ -25,7 +25,7 @@ Generated from this repo's manifests. `--check` fails when a declared command or
 - path: `docs/SPEC.md`
 - path: `docs/CAPABILITIES.md`
 - path: `docs/COMPATIBILITY.md`
-- path: `.opencode/skills`
+- path: `scripts`
 
 ## Notes
 
