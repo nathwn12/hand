@@ -15,10 +15,12 @@ fn main() {
     let code = match args.first().map(String::as_str) {
         None | Some("mcp") => run_server(),
         Some("--version") | Some("-V") | Some("version") => {
+            let dirty = env!("HAND_GIT_DIRTY") == "1";
             println!(
-                "hand-mcp {} (gladius 59c6d77, puppet 0f790be; {})",
+                "hand {} ({}{})",
                 env!("CARGO_PKG_VERSION"),
-                std::env::consts::ARCH
+                env!("HAND_GIT_SHA"),
+                if dirty { "-dirty" } else { "" }
             );
             0
         }
