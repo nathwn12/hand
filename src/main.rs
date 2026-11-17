@@ -111,22 +111,26 @@ fn run_server() -> i32 {
     }
 }
 
-/// Local diagnostics: no MCP connection, no state change, no browser launch.
-fn doctor() -> i32 {
+/// Build the local diagnostics report. Split from `doctor` so the published
+/// counts can be checked against the catalog the server actually serves.
+fn doctor_report() -> serde_json::Value {
     let chromium = match browser_engine::chromium_path() {
         Ok(path) => serde_json::json!({"path": path.display().to_string(), "provisioned": true}),
         Err(e) => serde_json::json!({"provisioned": false, "error": e}),
     };
-    let browser_tools = browser_engine::list()
-        .get("tools")
-        .and_then(|t| t.as_array())
-        .map(|a| a.len())
-        .unwrap_or(0);
-    let desktop_tools = desktop_engine::tools_list()
-        .get("tools")
-        .and_then(|t| t.as_array())
-        .map(|a| a.len())
-        .unwrap_or(0);
+    // The served catalog is the single source of truth: the engine lists alone
+    // miss hand's own `browser_context`, which is how doctor used to report 32
+    // while the server published 33. Both counts and the split come from the
+    // same names `tools/list` emits.
+    let names = catalog::catalog_names();
+    let browser_tools = names
+        .iter()
+        .filter(|name| name.starts_with(catalog::BROWSER_PREFIX))
+        .count();
+    let desktop_tools = names
+        .iter()
+        .filter(|name| name.starts_with(catalog::DESKTOP_PREFIX))
+        .count();
     let report = serde_json::json!({
         "name": "hand",
         "executable": "hand-mcp",
@@ -148,13 +152,43 @@ fn doctor() -> i32 {
             "toolCount": desktop_tools,
         },
         "catalog": match catalog::validate() {
-            Ok(()) => serde_json::json!({"valid": true, "count": browser_tools + desktop_tools}),
+            Ok(()) => serde_json::json!({"valid": true, "count": names.len()}),
             Err(e) => serde_json::json!({"valid": false, "error": e}),
         },
     });
+    report
+}
+
+/// Local diagnostics: no MCP connection, no state change, no browser launch.
+fn doctor() -> i32 {
     println!(
         "{}",
-        serde_json::to_string_pretty(&report).unwrap_or_default()
+        serde_json::to_string_pretty(&doctor_report()).unwrap_or_default()
     );
     0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Doctor must report what the server publishes, not the engine's raw list:
+    /// `browser_context` is hand's own tool and belongs in the browser count.
+    #[test]
+    fn doctor_reports_the_served_catalog() {
+        let report = doctor_report();
+        let names = catalog::catalog_names();
+        let browser = names
+            .iter()
+            .filter(|name| name.starts_with(catalog::BROWSER_PREFIX))
+            .count();
+        let desktop = names
+            .iter()
+            .filter(|name| name.starts_with(catalog::DESKTOP_PREFIX))
+            .count();
+        assert_eq!(report["catalog"]["count"], serde_json::json!(names.len()));
+        assert_eq!(report["browser"]["toolCount"], serde_json::json!(browser));
+        assert_eq!(report["desktop"]["toolCount"], serde_json::json!(desktop));
+        assert_eq!(browser + desktop, names.len());
+    }
 }
