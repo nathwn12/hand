@@ -13,7 +13,7 @@ pub fn list() -> Value {
             "required": ["url", "title"], "additionalProperties": false},
          "annotations": {"readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": true}},
         {"name": "snapshot", "title": "Snapshot",
-         "description": "Snapshot: one line per node with a stable ref (@eN, unique per snapshot), role/name/value, plus page text. Default is the real Accessibility tree (shadow + same-process frames; hidden/ignored subtrees excluded). mode:\"legacy\" keeps the old DOM heuristic (the only path that stamps an attribute into the page); mode:\"text\" is text-only. frame=<CDP frameId> from targets scopes the snapshot to that iframe (same-process first; OOPIF is a follow-up). AX refs resolve by backend node id, so a shadow ref is actionable exactly like a light-DOM ref. Paging: pass the snapshotId from the offset:0 render with offset>0 (required; paging slices that render and never re-renders).",
+         "description": "Snapshot: one line per node with a stable ref (@eN, unique per snapshot), role/name/value, plus page text. Default is the real Accessibility tree of the page itself: open shadow roots are included, iframe content is NOT part of this tree (snapshot the frame with frame= to see inside it), and hidden/ignored subtrees are excluded. mode:\"legacy\" keeps the old DOM heuristic (the only path that stamps an attribute into the page); mode:\"text\" is text-only. frame=<CDP frameId> from targets scopes the snapshot to that iframe (same-process first; OOPIF is a follow-up). AX refs resolve by backend node id, so a shadow ref is actionable exactly like a light-DOM ref. Paging: pass the snapshotId from the offset:0 render with offset>0 (required; paging slices that render and never re-renders).",
          "inputSchema": {"type": "object", "properties": {"mode": {"type": "string", "enum": ["ax", "legacy", "text"]}, "frame": {"type": "string"}, "offset": {"type": "integer", "minimum": 0, "default": 0}, "snapshotId": {"type": "string", "description": "required when offset > 0: the id returned by the offset:0 render"}}, "additionalProperties": false},
          "outputSchema": {"type": "object",
             "properties": {
@@ -53,19 +53,27 @@ pub fn list() -> Value {
             "required": ["mimeType", "bytes"], "additionalProperties": false},
          "annotations": {"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}},
         {"name": "click", "title": "Click",
-         "description": "Click an element by CSS selector (first match) or AX ref (@eN from snapshot; exact). The click is exactly two CDP events at the element's exact float box centre: mousePressed then mouseReleased - no mouseMoved, no hover, no movement loop, no interpolation. hoverFirst:true sends ONE mouseMoved at that same point first, for pages whose handlers read hover state; the default is false. frame=<CDP frameId> from targets scopes to that iframe (same-process CSS selectors; refs are main-frame only - with frame= use a CSS selector; OOPIF without a mapped target is a typed error, never a main-frame click)",
+         "description": "Click an element by CSS selector (first match) or AX ref (@eN from snapshot; exact). AX selector forms are also accepted and are uniqueness-mandatory: role=<role>, role=<role>[name=\"<accessible name>\"], name=\"<accessible name>\", text=\"<text>\" (exact visible text inside one element; when nested elements contain exactly that text the innermost one is the match) and label=\"<label text>\" (form control by its associated <label>). They are resolved fresh at action time on the accessibility tree browser_snapshot renders for the page itself (like a CSS selector, so a re-rendered element keeps answering while a snapshot-bound @eN would go stale; iframe content is not part of that tree - pass frame= to search inside a frame); names and text are whitespace-normalised and compared case-insensitively, and text= reads visible text while name=/label= read the accessible name. Zero matches is invalid_target/not_found naming the selector; more than one is invalid_target/ambiguous listing every candidate as @eN plus role and name - the first match is never taken. Every reply adds resolved {selector, ref, role, name}, where ref is that element's @eN in the current snapshot (null when the snapshot holds none). resolved.name is the name browser_snapshot prints for it (capped at 80 characters, or the fallback name of an unlabeled control), so a name copied out of a snapshot resolves. resolved.name is the name browser_snapshot prints for it (capped at 80 characters, or the fallback name of an unlabeled control). role= takes an ARIA role string such as button, generic, StaticText or Iframe (capital I), never a tag name; quote values with double quotes and escape an inner double quote as \". The click is exactly two CDP events at the element's exact float box centre: mousePressed then mouseReleased - no mouseMoved, no hover, no movement loop, no interpolation. hoverFirst:true sends ONE mouseMoved at that same point first, for pages whose handlers read hover state; the default is false. frame=<CDP frameId> from targets scopes to that iframe (same-process CSS selectors; a frame-scoped AX selector is resolved inside that frame's own accessibility tree and never against the page; refs are main-frame only - with frame= use a CSS or AX selector; OOPIF without a mapped target is a typed error, never a main-frame click)",
          "inputSchema": {"type": "object", "properties": {"element": {"type": "string"}, "frame": {"type": "string"}, "hoverFirst": {"type": "boolean"}}, "required": ["element"], "additionalProperties": false},
          "outputSchema": {"type": "object",
-            "properties": {"ok": {"type": "boolean"}, "dialog": {"type": "object"}, "note": {"type": "string"}},
+            "properties": {"ok": {"type": "boolean"}, "dialog": {"type": "object"}, "note": {"type": "string"},
+                "resolved": {"type": "object",
+                    "properties": {"selector": {"type": "string"}, "ref": {"type": ["string", "null"]},
+                        "role": {"type": "string"}, "name": {"type": "string"}},
+                    "required": ["selector", "ref", "role", "name"], "additionalProperties": false}},
             "required": ["ok"], "additionalProperties": false},
          "annotations": {"readOnlyHint": false, "destructiveHint": true, "idempotentHint": false, "openWorldHint": true}},
         {"name": "type", "title": "Type",
-         "description": "Type text into an element by CSS selector (first match) or AX ref (@eN from snapshot; exact). frame=<CDP frameId> from targets scopes to that iframe (same-process CSS selectors; refs are main-frame only - with frame= use a CSS selector; OOPIF without a mapped target is a typed error, never a main-frame type)",
+         "description": "Type text into an element by CSS selector (first match) or AX ref (@eN from snapshot; exact). AX selector forms are also accepted and are uniqueness-mandatory: role=<role>, role=<role>[name=\"<accessible name>\"], name=\"<accessible name>\", text=\"<text>\" (exact visible text inside one element; when nested elements contain exactly that text the innermost one is the match) and label=\"<label text>\" (form control by its associated <label>). They are resolved fresh at action time on the accessibility tree browser_snapshot renders for the page itself (like a CSS selector, so a re-rendered element keeps answering while a snapshot-bound @eN would go stale; iframe content is not part of that tree - pass frame= to search inside a frame); names and text are whitespace-normalised and compared case-insensitively, and text= reads visible text while name=/label= read the accessible name. Zero matches is invalid_target/not_found naming the selector; more than one is invalid_target/ambiguous listing every candidate as @eN plus role and name - the first match is never taken. Every reply adds resolved {selector, ref, role, name}, where ref is that element's @eN in the current snapshot (null when the snapshot holds none). resolved.name is the name browser_snapshot prints for it (capped at 80 characters, or the fallback name of an unlabeled control), so a name copied out of a snapshot resolves. resolved.name is the name browser_snapshot prints for it (capped at 80 characters, or the fallback name of an unlabeled control). role= takes an ARIA role string such as button, generic, StaticText or Iframe (capital I), never a tag name; quote values with double quotes and escape an inner double quote as \". frame=<CDP frameId> from targets scopes to that iframe (same-process CSS selectors; a frame-scoped AX selector is resolved inside that frame's own accessibility tree and never against the page; refs are main-frame only - with frame= use a CSS or AX selector; OOPIF without a mapped target is a typed error, never a main-frame type)",
          "inputSchema": {"type": "object", "properties": {
              "element": {"type": "string"}, "text": {"type": "string"}, "submit": {"type": "boolean"}, "frame": {"type": "string"}},
              "required": ["element", "text"], "additionalProperties": false},
          "outputSchema": {"type": "object",
-            "properties": {"ok": {"type": "boolean"}, "valueLength": {"type": "integer", "minimum": 0}, "note": {"type": "string"}},
+            "properties": {"ok": {"type": "boolean"}, "valueLength": {"type": "integer", "minimum": 0}, "note": {"type": "string"},
+                "resolved": {"type": "object",
+                    "properties": {"selector": {"type": "string"}, "ref": {"type": ["string", "null"]},
+                        "role": {"type": "string"}, "name": {"type": "string"}},
+                    "required": ["selector", "ref", "role", "name"], "additionalProperties": false}},
             "required": ["ok"], "additionalProperties": false},
          "annotations": {"readOnlyHint": false, "destructiveHint": true, "idempotentHint": false, "openWorldHint": true}},
         {"name": "evaluate", "title": "Evaluate",
@@ -143,12 +151,16 @@ pub fn list() -> Value {
             "required": ["cap"], "additionalProperties": false},
          "annotations": {"readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": false}},
         {"name": "upload", "title": "Upload",
-         "description": "Set files on an <input type=file> by CSS selector (first match) or AX ref (@eN from snapshot; exact). paths[] must exist locally. frame=<CDP frameId> from targets scopes to that iframe (same-process CSS selectors; refs are main-frame only - with frame= use a CSS selector; OOPIF without a mapped target is a typed error, never a main-frame upload)",
+         "description": "Set files on an <input type=file> by CSS selector (first match) or AX ref (@eN from snapshot; exact). AX selector forms are also accepted and are uniqueness-mandatory: role=<role>, role=<role>[name=\"<accessible name>\"], name=\"<accessible name>\", text=\"<text>\" (exact visible text; the innermost element wins when nested ones contain it) and label=\"<label text>\" (form control by its associated <label>), resolved fresh at action time on the accessibility tree of the page itself (iframe content is not in that tree - pass frame= to search inside a frame) with whitespace-normalised, case-insensitive comparison; zero matches is invalid_target/not_found, more than one is invalid_target/ambiguous with every candidate as @eN plus role and name, and the reply adds resolved {selector, ref, role, name}. resolved.name is the name browser_snapshot prints for it (capped at 80 characters, or the fallback name of an unlabeled control). role= takes an ARIA role string such as button, generic, StaticText or Iframe (capital I), never a tag name; quote values with double quotes and escape an inner double quote as \". paths[] must exist locally. frame=<CDP frameId> from targets scopes to that iframe (same-process CSS selectors; a frame-scoped AX selector is resolved inside that frame's own accessibility tree and never against the page; refs are main-frame only - with frame= use a CSS or AX selector; OOPIF without a mapped target is a typed error, never a main-frame upload)",
          "inputSchema": {"type": "object", "properties": {
              "element": {"type": "string"}, "paths": {"type": "array", "items": {"type": "string"}, "minItems": 1}, "frame": {"type": "string"}},
              "required": ["element", "paths"], "additionalProperties": false},
          "outputSchema": {"type": "object",
-            "properties": {"ok": {"type": "boolean"}, "files": {"type": "integer"}},
+            "properties": {"ok": {"type": "boolean"}, "files": {"type": "integer"},
+                "resolved": {"type": "object",
+                    "properties": {"selector": {"type": "string"}, "ref": {"type": ["string", "null"]},
+                        "role": {"type": "string"}, "name": {"type": "string"}},
+                    "required": ["selector", "ref", "role", "name"], "additionalProperties": false}},
             "required": ["ok", "files"], "additionalProperties": false},
          "annotations": {"readOnlyHint": false, "destructiveHint": true, "idempotentHint": true, "openWorldHint": false}},
         {"name": "fetch_text", "title": "Fetch Text",
@@ -159,18 +171,26 @@ pub fn list() -> Value {
             "required": ["text", "url", "chars"], "additionalProperties": false},
          "annotations": {"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": true}},
         {"name": "hover", "title": "Hover",
-         "description": "Hover over an element by CSS selector (first match) or AX ref (@eN from snapshot; exact). frame=<CDP frameId> from targets scopes to that iframe (same-process CSS selectors; refs are main-frame only - with frame= use a CSS selector; OOPIF without a mapped target is a typed error, never a main-frame hover)",
+         "description": "Hover over an element by CSS selector (first match) or AX ref (@eN from snapshot; exact). AX selector forms are also accepted and are uniqueness-mandatory: role=<role>, role=<role>[name=\"<accessible name>\"], name=\"<accessible name>\", text=\"<text>\" (exact visible text inside one element; when nested elements contain exactly that text the innermost one is the match) and label=\"<label text>\" (form control by its associated <label>), resolved fresh at action time on the accessibility tree of the page itself (iframe content is not in that tree - pass frame= to search inside a frame) with whitespace-normalised, case-insensitive comparison; zero matches is invalid_target/not_found, more than one is invalid_target/ambiguous with every candidate as @eN plus role and name, and the reply adds resolved {selector, ref, role, name}. resolved.name is the name browser_snapshot prints for it (capped at 80 characters, or the fallback name of an unlabeled control). role= takes an ARIA role string such as button, generic, StaticText or Iframe (capital I), never a tag name; quote values with double quotes and escape an inner double quote as \". frame=<CDP frameId> from targets scopes to that iframe (same-process CSS selectors; a frame-scoped AX selector is resolved inside that frame's own accessibility tree and never against the page; refs are main-frame only - with frame= use a CSS or AX selector; OOPIF without a mapped target is a typed error, never a main-frame hover)",
          "inputSchema": {"type": "object", "properties": {"element": {"type": "string"}, "frame": {"type": "string"}}, "required": ["element"], "additionalProperties": false},
          "outputSchema": {"type": "object",
-            "properties": {"ok": {"type": "boolean"}}, "required": ["ok"], "additionalProperties": false},
+            "properties": {"ok": {"type": "boolean"}, "resolved": {"type": "object",
+                "properties": {"selector": {"type": "string"}, "ref": {"type": ["string", "null"]},
+                    "role": {"type": "string"}, "name": {"type": "string"}},
+                "required": ["selector", "ref", "role", "name"], "additionalProperties": false}},
+            "required": ["ok"], "additionalProperties": false},
          "annotations": {"readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": true}},
         {"name": "select", "title": "Select",
-         "description": "Choose a <select> option by value (preferred) or visible text; element is a CSS selector or AX ref (@eN). frame=<CDP frameId> from targets scopes to that iframe (same-process CSS selectors; refs are main-frame only - with frame= use a CSS selector; OOPIF without a mapped target is a typed error, never a main-frame select)",
+         "description": "Choose a <select> option by value (preferred) or visible text; element is a CSS selector or AX ref (@eN). AX selector forms are also accepted and are uniqueness-mandatory: role=<role>, role=<role>[name=\"<accessible name>\"], name=\"<accessible name>\", text=\"<text>\" (exact visible text; the innermost element wins when nested ones contain it) and label=\"<label text>\", resolved fresh at action time on the accessibility tree of the page itself (iframe content is not in that tree - pass frame= to search inside a frame) with whitespace-normalised, case-insensitive comparison; zero matches is invalid_target/not_found, more than one is invalid_target/ambiguous with every candidate as @eN plus role and name, and the reply adds resolved {selector, ref, role, name}. resolved.name is the name browser_snapshot prints for it (capped at 80 characters, or the fallback name of an unlabeled control). role= takes an ARIA role string such as button, generic, StaticText or Iframe (capital I), never a tag name; quote values with double quotes and escape an inner double quote as \". frame=<CDP frameId> from targets scopes to that iframe (same-process CSS selectors; a frame-scoped AX selector is resolved inside that frame's own accessibility tree and never against the page; refs are main-frame only - with frame= use a CSS or AX selector; OOPIF without a mapped target is a typed error, never a main-frame select)",
          "inputSchema": {"type": "object", "properties": {
              "element": {"type": "string"}, "value": {"type": "string"}, "text": {"type": "string"}, "frame": {"type": "string"}},
              "required": ["element"], "additionalProperties": false},
          "outputSchema": {"type": "object",
-            "properties": {"ok": {"type": "boolean"}}, "required": ["ok"], "additionalProperties": false},
+            "properties": {"ok": {"type": "boolean"}, "resolved": {"type": "object",
+                "properties": {"selector": {"type": "string"}, "ref": {"type": ["string", "null"]},
+                    "role": {"type": "string"}, "name": {"type": "string"}},
+                "required": ["selector", "ref", "role", "name"], "additionalProperties": false}},
+            "required": ["ok"], "additionalProperties": false},
          "annotations": {"readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}},
         {"name": "key", "title": "Key",
          "description": "Press a named key (Enter, Tab, Escape, Backspace, ArrowDown, ...) on the focused element. Combos with '+' (Ctrl+A, Shift+Tab, Alt+F4, Meta+C; case-insensitive modifiers, last token is the base key) hold modifiers (Alt=1/Ctrl=2/Meta=4/Shift=8); with Ctrl/Meta/Alt held the base dispatches as rawKeyDown with no text (Ctrl+A never inserts text)",
@@ -625,6 +645,10 @@ pub(crate) enum ToolReason {
     Missing,
     Malformed,
     Unreadable,
+    /// An AX selector form matched more than one element: uniqueness is
+    /// mandatory for `role=`/`name=`/`text=`/`label=`, so the call lists the
+    /// candidates instead of acting on the first one.
+    Ambiguous,
 }
 
 impl ToolReason {
@@ -674,6 +698,7 @@ impl ToolReason {
             Self::Missing => "missing",
             Self::Malformed => "malformed",
             Self::Unreadable => "unreadable",
+            Self::Ambiguous => "ambiguous",
         }
     }
 
@@ -722,6 +747,7 @@ impl ToolReason {
         Self::Missing,
         Self::Malformed,
         Self::Unreadable,
+        Self::Ambiguous,
     ];
 
     pub(crate) fn from_wire(s: &str) -> Option<Self> {
@@ -1323,6 +1349,730 @@ fn parse_ref(s: &str) -> Option<String> {
     }
 }
 
+/// The four additive selector forms, plus `role` with an exact name. Every
+/// one of them is uniqueness-mandatory: the resolver never falls back to the
+/// first match. Parsed from the same `element` string as CSS and `@eN`, so no
+/// tool gains a new argument.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum AxKind {
+    /// `role=<role>`
+    Role,
+    /// `role=<role>[name="<accessible name>"]`
+    RoleName,
+    /// `name="<accessible name>"`
+    Name,
+    /// `text="<text>"` - exact visible text within one element.
+    Text,
+    /// `label="<label text>"` - form control by its associated label.
+    Label,
+}
+
+struct AxSel {
+    kind: AxKind,
+    role: String,
+    want: String,
+}
+
+/// Every accepted spelling, for the error a malformed selector earns.
+const AX_FORMS: &str = "role=<role>, role=<role>[name=\"<accessible name>\"], \
+                        name=\"<accessible name>\", text=\"<text>\" or label=\"<label text>\"; \
+                        values are double-quoted and an inner double quote is escaped as \\\"";
+
+/// Collapse whitespace runs to one space and trim: the normalisation both the
+/// snapshot's names and these selectors use, so a name that renders on one
+/// line matches whether the DOM broke it across ten.
+fn ax_norm(s: &str) -> String {
+    s.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Name/text comparison: whitespace-normalised, case-insensitive. Uniqueness
+/// is enforced before anything acts, so a looser comparison can only turn a
+/// silent wrong pick into a loud `ambiguous` candidate list - never the
+/// other way round.
+fn ax_eq(a: &str, b: &str) -> bool {
+    ax_norm(a).to_lowercase() == ax_norm(b).to_lowercase()
+}
+
+/// The snapshot's 80-character cap, applied to a normalized name.
+fn ax_cap(s: &str) -> String {
+    ax_norm(s).chars().take(80).collect()
+}
+
+/// The name a snapshot PRINTS for one node, shared by the renderer and the
+/// resolver so a name an agent copies out of a snapshot is a name the resolver
+/// accepts.
+///
+/// That name is the accessible name, whitespace-collapsed and capped at 80
+/// characters; when that is empty on a form control it is the fallback chain
+/// the legacy heuristic has always used - selected option text, placeholder,
+/// full value unless sensitive, id, name attribute, type. `info` is the live
+/// enrichment (`enrich_objects`) for the node: without it only the accessible
+/// half is knowable, which is exactly the difference between the printed name
+/// and the raw AX name.
+fn snapshot_name(ax_name: &str, tag: &str, sens: bool, info: Option<&Value>) -> String {
+    let printed = ax_cap(ax_name);
+    let Some(info) = info else {
+        return printed;
+    };
+    if !printed.is_empty() || !matches!(tag, "input" | "textarea" | "select") {
+        return printed;
+    }
+    let s = |k: &str| {
+        info.get(k)
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string()
+    };
+    let (full_val, ph, eid, enm, sel_text, ty) = (
+        s("fullVal"),
+        s("ph"),
+        s("eid"),
+        s("enm"),
+        s("selText"),
+        s("ty"),
+    );
+    // Ordering runs on the RAW candidates (a whitespace-only string is truthy
+    // in the legacy `||` chain, so it blocks fallthrough and then normalizes
+    // to ""); the pick is normalized and capped exactly like the renderer.
+    let mut fb = String::new();
+    if tag == "select" {
+        if !sel_text.is_empty() {
+            fb = sel_text;
+        } else if !eid.is_empty() {
+            fb = eid;
+        } else if !enm.is_empty() {
+            fb = enm;
+        }
+    } else if !ph.is_empty() {
+        fb = ph;
+    } else if !sens && !full_val.is_empty() {
+        fb = full_val;
+    } else if !eid.is_empty() {
+        fb = eid;
+    } else if !enm.is_empty() {
+        fb = enm;
+    } else if tag == "input" && !ty.is_empty() {
+        fb = ty;
+    }
+    ax_cap(&fb)
+}
+
+/// A double-quoted selector value, with `\"` and `\\` escapes. Anything else
+/// is None, so `name=Save` (unquoted) can never quietly become a CSS parse.
+fn ax_unquote(s: &str) -> Option<String> {
+    let inner = s.strip_prefix('"')?.strip_suffix('"')?;
+    let mut out = String::with_capacity(inner.len());
+    let mut it = inner.chars();
+    while let Some(c) = it.next() {
+        match c {
+            '"' => return None,
+            '\\' => match it.next()? {
+                '"' => out.push('"'),
+                '\\' => out.push('\\'),
+                other => {
+                    out.push('\\');
+                    out.push(other);
+                }
+            },
+            c => out.push(c),
+        }
+    }
+    Some(out)
+}
+
+/// Parse the additive AX selector forms. `Ok(None)` means a legacy string
+/// (CSS selector or `@eN`) and is returned for every string that does not
+/// start with one of the form keywords, so legacy behaviour is untouched: a
+/// `<label>` element selector or `[name="x"]` never reaches this branch, and
+/// every keyword form (`role=...`) is already invalid CSS, so classifying it
+/// here cannot change what used to work.
+fn ax_sel_parse(tool: &str, raw: &str) -> Result<Option<AxSel>, ToolErr> {
+    let t = raw.trim();
+    let bad = |why: &str| -> ToolErr {
+        ToolErr::typed(
+            format!("{tool}: malformed selector {raw:?} ({why}); want {AX_FORMS}"),
+            json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(),
+                   "tool": tool, "arg": "element", "element": raw, "forms": AX_FORMS}),
+        )
+    };
+    let mut found: Option<(&str, AxKind)> = None;
+    for (kw, kind) in [
+        ("role=", AxKind::Role),
+        ("name=", AxKind::Name),
+        ("text=", AxKind::Text),
+        ("label=", AxKind::Label),
+    ] {
+        if t.get(..kw.len())
+            .is_some_and(|p| p.eq_ignore_ascii_case(kw))
+        {
+            found = Some((&t[kw.len()..], kind));
+            break;
+        }
+    }
+    let Some((rest, kind)) = found else {
+        // A near miss - the keyword, optional spaces, then `=` (`role = button`,
+        // `text = "x"`) - is a malformed AX selector, not a CSS selector:
+        // falling through would spend the CSS presence wait and then answer a
+        // JS syntax error, which tells the caller nothing about the form it
+        // almost wrote. Anything else (a `<label>` element, `label[for=x]`,
+        // `[name="x"]`, `input[name=x]`) is untouched legacy CSS.
+        let near = ["role", "name", "text", "label"].iter().any(|kw| {
+            t.get(..kw.len())
+                .is_some_and(|p| p.eq_ignore_ascii_case(kw))
+                && t[kw.len()..].trim_start().starts_with('=')
+        });
+        if near {
+            return Err(bad(
+                "no space is allowed before '=' and the keyword is written exactly as shown",
+            ));
+        }
+        return Ok(None);
+    };
+    let (role, want, kind) = match kind {
+        AxKind::Role | AxKind::RoleName => {
+            let (role_txt, suffix) = match rest.find('[') {
+                Some(i) => (&rest[..i], Some(&rest[i..])),
+                None => (rest, None),
+            };
+            let role_txt = role_txt.trim().to_lowercase();
+            if role_txt.is_empty()
+                || role_txt
+                    .chars()
+                    .any(|c| c.is_whitespace() || matches!(c, '[' | ']' | '"'))
+            {
+                return Err(bad("the role must be a bare ARIA role token"));
+            }
+            match suffix {
+                None => (role_txt, String::new(), AxKind::Role),
+                Some(s) => {
+                    let inner = s
+                        .strip_prefix('[')
+                        .and_then(|x| x.strip_suffix(']'))
+                        .ok_or_else(|| bad("the name filter must close with ]"))?;
+                    let (key, val) = inner
+                        .split_once('=')
+                        .ok_or_else(|| bad("the name filter must be [name=\"...\"]"))?;
+                    if !key.trim().eq_ignore_ascii_case("name") {
+                        return Err(bad("the only filter is [name=\"...\"]"));
+                    }
+                    let val = ax_unquote(val.trim())
+                        .ok_or_else(|| bad("the filtered name must be double-quoted"))?;
+                    if ax_norm(&val).is_empty() {
+                        return Err(bad("the filtered name is empty"));
+                    }
+                    (role_txt, ax_norm(&val), AxKind::RoleName)
+                }
+            }
+        }
+        AxKind::Name | AxKind::Text | AxKind::Label => {
+            let val = ax_unquote(rest.trim()).ok_or_else(|| {
+                bad("the value must be a double-quoted string: single quotes and bare values are not accepted, and an inner double quote is written \\\" (escaped with a backslash)")
+            })?;
+            if ax_norm(&val).is_empty() {
+                return Err(bad("the value is empty"));
+            }
+            (String::new(), ax_norm(&val), kind)
+        }
+    };
+    Ok(Some(AxSel { kind, role, want }))
+}
+
+/// One AX node, reduced to what the selector forms read.
+struct AxNode {
+    parent: String,
+    role: String,
+    name: String,
+    backend: Option<i64>,
+    ignored: bool,
+    /// The accessible name came from a `<label>` association (`labelfor` /
+    /// `labelwrapped`), not from aria-label, contents or placeholder.
+    from_label: bool,
+}
+
+/// One resolved element: the exact AX node, its role/name, and the `@eN` the
+/// current snapshot minted for it when there is one.
+struct AxHit {
+    backend: i64,
+    role: String,
+    name: String,
+    at: Option<String>,
+}
+
+impl AxHit {
+    /// Error context for a resolved (or resolved-then-failed) selector.
+    fn ctx(&self, tool: &str, element: &str) -> Value {
+        json!({"tool": tool, "element": element, "ref": self.at, "role": self.role, "name": self.name})
+    }
+
+    /// The `resolved` field every AX-selector reply carries, so the caller
+    /// can see exactly which element was chosen.
+    fn resolved(&self, element: &str) -> Value {
+        json!({"selector": element, "ref": self.at, "role": self.role, "name": self.name})
+    }
+}
+
+/// Did the accessible name come from a `<label>` association? Provenance is a
+/// non-superseded name source of `labelfor` (a `for=` label) or `labelwrapped`
+/// (a wrapping label). The source's own value is NOT compared to the name:
+/// measured, that value is the label's text, which differs from the computed
+/// name whenever the label carries inline markup or hidden fragments - and a
+/// source the engine lists as superseded (aria-label winning, say) never
+/// supplied the name at all.
+fn ax_name_from_label(node: &Value) -> bool {
+    let Some(sources) = node.pointer("/name/sources").and_then(|s| s.as_array()) else {
+        return false;
+    };
+    sources.iter().any(|s| {
+        s.get("superseded").and_then(|v| v.as_bool()) != Some(true)
+            && matches!(
+                s.get("nativeSource").and_then(|v| v.as_str()),
+                Some("labelfor") | Some("labelwrapped")
+            )
+    })
+}
+
+/// Resolve one AX selector form against the accessibility tree the snapshot
+/// renders (`Accessibility.getFullAXTree`), scoped to `frame` when the caller
+/// named one. Zero matches and more than one match are both typed refusals:
+/// the caller gets the selector back, and for ambiguity every candidate as
+/// `@eN` + role + name, so it can pick one deliberately or narrow the form.
+///
+/// The resolved element is acted on by its backend node id, the same identity
+/// a snapshot ref records, so a successful selector is the element the
+/// accessibility tree reports - never a DOM guess.
+async fn ax_resolve(
+    browser: &Browser,
+    tool: &str,
+    sel: &AxSel,
+    raw: &str,
+    fid: Option<&str>,
+) -> Result<AxHit, ToolErr> {
+    let tree = match browser.ax_tree(fid).await {
+        Ok(t) => t,
+        Err(e) => {
+            let l = e.to_lowercase();
+            if l.contains("no frame with id")
+                || l.contains("no such frame")
+                || l.contains("cannot find")
+            {
+                return Err(frame_lookup_err(tool, fid.unwrap_or(""), e));
+            }
+            if let Some(f) = fid {
+                // A frame whose AX tree this session cannot read is a typed
+                // unreachable: the page is NOT searched instead, and retrying
+                // the same call cannot help, so the prose says so. Measured
+                // shapes: a detached frame ("Frame with the given frameId is
+                // not found") and an out-of-process frame, whose tree lives on
+                // its own session.
+                return Err(ToolErr::typed(
+                    format!("{tool}: frame '{f}' has no AX tree readable from this session ({e}); nothing was resolved and the page was not searched instead - the frame is detached or out of process, and retrying this call cannot help; re-read targets for a live frameId, or address an element on the page"),
+                    json!({"code": ToolCode::InvalidTarget.as_str(), "reason": ToolReason::Unreachable.as_str(), "tool": tool, "frame": f, "element": raw}),
+                ));
+            }
+            return Err(ToolErr::from(e));
+        }
+    };
+    if let Some(f) = fid {
+        // A frame the engine already knows is out-of-process: its nodes are
+        // not on this page session, so resolving one would look like a
+        // detached node. Say what it is instead.
+        if let Some(target) = browser.oop_target_for_frame(f).await {
+            return Err(ToolErr::typed(
+                format!("{tool}: frame '{f}' is out-of-process (target {target}), so its accessibility tree is not on this page session; nothing was resolved - act on that target directly, or use a frame the page session can read"),
+                json!({"code": ToolCode::InvalidTarget.as_str(), "reason": ToolReason::Unreachable.as_str(), "tool": tool, "frame": f, "element": raw, "target": target}),
+            ));
+        }
+    }
+    let empty = Vec::new();
+    let raw_nodes = tree
+        .get("nodes")
+        .and_then(|n| n.as_array())
+        .unwrap_or(&empty);
+    let mut nodes: Vec<AxNode> = Vec::with_capacity(raw_nodes.len());
+    let mut index: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::with_capacity(raw_nodes.len());
+    for n in raw_nodes.iter() {
+        let role = n
+            .pointer("/role/value")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_lowercase();
+        let name = ax_norm(
+            n.pointer("/name/value")
+                .and_then(|v| v.as_str())
+                .unwrap_or(""),
+        );
+        if let Some(id) = n.get("nodeId").and_then(|v| v.as_str()) {
+            index.insert(id.to_string(), nodes.len());
+        }
+        nodes.push(AxNode {
+            parent: n
+                .get("parentId")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            ignored: n.get("ignored").and_then(|v| v.as_bool()) == Some(true),
+            from_label: ax_name_from_label(n),
+            backend: n.get("backendDOMNodeId").and_then(|v| v.as_i64()),
+            role,
+            name,
+        });
+    }
+    // Visible text per element, accumulated from the StaticText leaves that
+    // belong to it. StaticText carries the whole text of one text node
+    // (InlineTextBox splits it into fragments and owns no DOM node), so it is
+    // the only leaf source. Fragments are concatenated with no separator, so
+    // `<p>Hel<span>lo</span></p>` reads "Hello" exactly as rendered; an
+    // ignored leaf contributes nothing.
+    //
+    // Measured on the pinned engine: hidden content (display:none,
+    // visibility:hidden, aria-hidden, content-visibility:hidden) is pruned
+    // from the tree entirely, so a hidden leaf is rare - and every VISIBLE
+    // element carries ignored ancestors (body/html wrappers), so skipping an
+    // ignored ancestor would erase the page's text. Only the leaf is filtered.
+    let mut text_of: Vec<String> = vec![String::new(); nodes.len()];
+    for n in nodes.iter() {
+        if n.role != "statictext" || n.name.is_empty() || n.ignored {
+            continue;
+        }
+        let mut cur = n.parent.as_str();
+        // Depth guard: a malformed parent chain must not loop.
+        for _ in 0..64 {
+            let Some(&p) = index.get(cur) else { break };
+            text_of[p].push_str(&n.name);
+            cur = nodes[p].parent.as_str();
+        }
+    }
+    let mut hits: Vec<usize> = Vec::new();
+    for (i, n) in nodes.iter().enumerate() {
+        // Text leaves own the words, not an element a caller can act on, and
+        // the snapshot mints no ref for them: they are never candidates.
+        if n.ignored || n.backend.is_none() || n.role == "statictext" || n.role == "inlinetextbox" {
+            continue;
+        }
+        let matched = match sel.kind {
+            AxKind::Role => n.role == sel.role,
+            // The printed name (snapshot cap included) is accepted as well as
+            // the raw AX name: an agent copies what the snapshot shows.
+            AxKind::RoleName => {
+                n.role == sel.role
+                    && (ax_eq(&n.name, &sel.want) || ax_eq(&ax_cap(&n.name), &sel.want))
+            }
+            AxKind::Name => ax_eq(&n.name, &sel.want) || ax_eq(&ax_cap(&n.name), &sel.want),
+            AxKind::Label => {
+                n.from_label && (ax_eq(&n.name, &sel.want) || ax_eq(&ax_cap(&n.name), &sel.want))
+            }
+            // Visible text only: an element whose text lives nowhere in the
+            // tree (an unlabeled control, an aria-label-only box) has no
+            // visible text to match, so the accessible name is NOT a fallback
+            // here - `name=` is the form that reads names.
+            AxKind::Text => ax_eq(&text_of[i], &sel.want),
+        };
+        if matched {
+            hits.push(i);
+        }
+    }
+    if sel.kind == AxKind::Text && hits.len() > 1 {
+        // Containment, not identity: a wrapper whose only text is the matched
+        // text is the same words in a bigger box. Keep the innermost owner -
+        // the element with no matching descendant - so `text=` names a
+        // target, and a wrapper that also contains the text can never be
+        // picked over the element that actually owns it.
+        let set: std::collections::HashSet<usize> = hits.iter().copied().collect();
+        let mut outer: std::collections::HashSet<usize> = std::collections::HashSet::new();
+        for &h in hits.iter() {
+            let mut cur = nodes[h].parent.as_str();
+            for _ in 0..64 {
+                let Some(&p) = index.get(cur) else { break };
+                if set.contains(&p) {
+                    outer.insert(p);
+                }
+                cur = nodes[p].parent.as_str();
+            }
+        }
+        hits.retain(|h| !outer.contains(h));
+    }
+    // A name the snapshot PRINTS for an unlabeled control comes from its live
+    // fallback (placeholder/id/name/type), which the AX tree does not carry.
+    // Only when the printed half has already missed do we pay for the live
+    // read, and only for the controls that can have such a name at all.
+    let mut synthesized: std::collections::HashMap<usize, String> =
+        std::collections::HashMap::new();
+    if hits.is_empty() && matches!(sel.kind, AxKind::Name | AxKind::RoleName) {
+        for (i, printed) in ax_synthesized_name_hits(browser, &nodes, sel).await {
+            hits.push(i);
+            synthesized.insert(i, printed);
+        }
+    }
+    let scope = match fid {
+        Some(f) => format!(
+            "the AX tree of frame '{f}' (that frame only; the page and its other frames are not searched)"
+        ),
+        None => "the page's own AX tree (content of iframes is not part of it - pass frame= to search inside a frame)".to_string(),
+    };
+    if hits.is_empty() {
+        let about_role = match sel.kind {
+            AxKind::Role | AxKind::RoleName => {
+                "; the value is an ARIA role string (e.g. button, generic, StaticText, Iframe with a capital I), not a tag name or an element selector".to_string()
+            }
+            _ => String::new(),
+        };
+        return Err(ToolErr::typed(
+            format!("{tool}: no element matches selector {raw} (searched {scope}){about_role}"),
+            json!({"code": ToolCode::InvalidTarget.as_str(), "reason": ToolReason::NotFound.as_str(),
+                   "tool": tool, "element": raw, "frame": fid}),
+        ));
+    }
+    // One candidate per element: the same backend can appear on more than one
+    // AX node, and a duplicate would read as a second "match" and turn a
+    // unique selector into a false ambiguity.
+    let mut seen: std::collections::HashSet<i64> = std::collections::HashSet::new();
+    // Resolve every candidate's ref before deciding: an ambiguity error must
+    // list the @eN the caller can act on, not just a count.
+    let mut cands: Vec<AxHit> = Vec::with_capacity(hits.len());
+    for i in hits.iter().copied() {
+        let backend = nodes[i].backend.unwrap_or_default();
+        if !seen.insert(backend) {
+            continue;
+        }
+        let at = browser
+            .ref_for_backend(backend)
+            .await
+            .map(|id| format!("@{id}"));
+        cands.push(AxHit {
+            backend,
+            role: nodes[i].role.clone(),
+            // The name a snapshot prints, so the reply and the selector that
+            // matched agree - including the fallback name of an unlabeled
+            // control, which the AX node itself does not carry.
+            name: synthesized
+                .get(&i)
+                .cloned()
+                .unwrap_or_else(|| ax_cap(&nodes[i].name)),
+            at,
+        });
+    }
+    if cands.len() > 1 {
+        let listed: Vec<String> = cands
+            .iter()
+            .map(|c| match &c.at {
+                Some(at) => format!("{at} {} \"{}\"", c.role, c.name),
+                None => format!("(no ref) {} \"{}\"", c.role, c.name),
+            })
+            .collect();
+        let missing = cands.iter().any(|c| c.at.is_none());
+        let hint = if missing {
+            match fid {
+                Some(f) => format!("; snapshot with frame={f} to mint @eN for these candidates"),
+                None => "; snapshot to mint @eN for these candidates".to_string(),
+            }
+        } else {
+            String::new()
+        };
+        return Err(ToolErr::typed(
+            format!(
+                "{tool}: selector {raw} is ambiguous ({} elements match; act on one @eN instead): {}{hint}",
+                cands.len(),
+                listed.join(", ")
+            ),
+            json!({"code": ToolCode::InvalidTarget.as_str(), "reason": ToolReason::Ambiguous.as_str(),
+                   "tool": tool, "element": raw, "frame": fid,
+                   "candidates": cands.iter().map(|c| json!({"ref": c.at, "role": c.role, "name": c.name})).collect::<Vec<_>>()}),
+        ));
+    }
+    Ok(cands.remove(0))
+}
+
+/// The names a snapshot PRINTS that the AX tree does not carry: an unlabeled
+/// form control falls back to its placeholder, value, id, name attribute or
+/// type, and an agent copying that name must be able to use it. Runs only
+/// after the accessible-name pass missed, resolves only the controls with an
+/// empty AX name, and judges them with the same [`snapshot_name`] the renderer
+/// uses, so the two cannot drift.
+async fn ax_synthesized_name_hits(
+    browser: &Browser,
+    nodes: &[AxNode],
+    sel: &AxSel,
+) -> Vec<(usize, String)> {
+    // Only nodes that can reach the fallback: an empty AX name on a control
+    // role (the renderer's own gate is the tag, which enrichment supplies).
+    const CONTROL_ROLES: &[&str] = &[
+        "textbox",
+        "searchbox",
+        "combobox",
+        "listbox",
+        "checkbox",
+        "radio",
+        "spinbutton",
+        "slider",
+        "button",
+    ];
+    let mut cands: Vec<usize> = Vec::new();
+    for (i, n) in nodes.iter().enumerate() {
+        if n.ignored
+            || n.backend.is_none()
+            || !n.name.is_empty()
+            || !CONTROL_ROLES.contains(&n.role.as_str())
+            // A role+name selector narrows to its role here too, so both
+            // name-bearing forms accept exactly the same printed names.
+            || (sel.kind == AxKind::RoleName && n.role != sel.role)
+        {
+            continue;
+        }
+        cands.push(i);
+        // A pathological page cannot make one selector resolve unbounded work.
+        if cands.len() >= 200 {
+            break;
+        }
+    }
+    if cands.is_empty() {
+        return Vec::new();
+    }
+    let mut oids: Vec<String> = Vec::with_capacity(cands.len());
+    let mut keep: Vec<usize> = Vec::with_capacity(cands.len());
+    for i in cands {
+        let backend = nodes[i].backend.unwrap_or_default();
+        match browser
+            .command("DOM.resolveNode", json!({"backendNodeId": backend}), true)
+            .await
+        {
+            Ok(v) => {
+                if let Some(oid) = v
+                    .get("object")
+                    .and_then(|o| o.get("objectId"))
+                    .and_then(|x| x.as_str())
+                {
+                    oids.push(oid.to_string());
+                    keep.push(i);
+                }
+            }
+            // A node that no longer resolves is not this pass's business: the
+            // action path reports it typed if it is the one that matched.
+            Err(_) => continue,
+        }
+    }
+    let infos = enrich_objects(browser, &oids).await;
+    keep.into_iter()
+        .zip(infos)
+        .filter(|(_, info)| info.is_object())
+        .filter_map(|(i, info)| {
+            let tag = info.get("tag").and_then(|v| v.as_str()).unwrap_or("");
+            let sens = info.get("sens").and_then(|v| v.as_bool()).unwrap_or(false);
+            let printed = snapshot_name(&nodes[i].name, tag, sens, Some(&info));
+            // The printed name is carried back: the reply reports it, so the
+            // name that matched is the name the caller is shown.
+            (!printed.is_empty() && ax_eq(&printed, &sel.want)).then_some((i, printed))
+        })
+        .collect()
+}
+
+/// Resolve an AX node's backend id to a live JS object. The same identity a
+/// snapshot ref records travels here, so a node the DOM no longer holds is a
+/// typed miss, never a wrong-element action.
+async fn ax_object(
+    browser: &Browser,
+    tool: &str,
+    element: &str,
+    hit: &AxHit,
+) -> Result<String, ToolErr> {
+    let gone = || {
+        ToolErr::typed(
+            format!("{tool}: element for selector {element} is gone (its AX node no longer resolves; re-snapshot and pick an @eN, or retry the selector)"),
+            json!({"code": ToolCode::InvalidTarget.as_str(), "reason": ToolReason::NotFound.as_str(),
+                   "tool": tool, "element": element, "role": hit.role, "name": hit.name}),
+        )
+    };
+    match browser
+        .command(
+            "DOM.resolveNode",
+            json!({"backendNodeId": hit.backend}),
+            true,
+        )
+        .await
+    {
+        Ok(v) => v
+            .get("object")
+            .and_then(|o| o.get("objectId"))
+            .and_then(|x| x.as_str())
+            .map(|s| s.to_string())
+            .ok_or_else(gone),
+        Err(e) => {
+            let l = e.to_lowercase();
+            if l.contains("could not find node")
+                || l.contains("no node with given id")
+                || l.contains("does not belong to the document")
+            {
+                Err(gone())
+            } else {
+                Err(ToolErr::fallback(e))
+            }
+        }
+    }
+}
+
+/// Map a preflight marker from an AX-resolved element to the same typed
+/// failure the CSS and ref paths mint, so one condition reads the same
+/// whichever way the element was named. `None` means "not a status this
+/// helper knows": the caller keeps its own default arm.
+fn ax_status_err(tool: &str, element: &str, hit: &AxHit, status: Option<&str>) -> Option<ToolErr> {
+    let ctx = hit.ctx(tool, element);
+    let typed = |code: ToolCode, reason: ToolReason, what: &str| {
+        let mut sc = ctx.clone();
+        if let Some(o) = sc.as_object_mut() {
+            o.insert("code".to_string(), json!(code.as_str()));
+            o.insert("reason".to_string(), json!(reason.as_str()));
+        }
+        Some(ToolErr::typed(
+            format!("{tool}: element is {what}: {element}"),
+            sc,
+        ))
+    };
+    match status? {
+        "GLADIUS_NOTFOUND" => Some(ToolErr::typed(
+            format!(
+                "{tool}: element for selector {element} is gone (the AX node no longer resolves)"
+            ),
+            json!({"code": ToolCode::InvalidTarget.as_str(), "reason": ToolReason::NotFound.as_str(),
+                   "tool": tool, "element": element, "role": hit.role, "name": hit.name}),
+        )),
+        "GLADIUS_DISABLED" => typed(ToolCode::NotActionable, ToolReason::Disabled, "disabled"),
+        "GLADIUS_READONLY" => typed(ToolCode::NotActionable, ToolReason::Readonly, "read-only"),
+        "GLADIUS_HIDDEN" => typed(ToolCode::NotActionable, ToolReason::Hidden, "hidden"),
+        "GLADIUS_OCCLUDED" => typed(ToolCode::NotActionable, ToolReason::Occluded, "occluded"),
+        "GLADIUS_NOTSELECT" => typed(
+            ToolCode::InvalidTarget,
+            ToolReason::NotSelect,
+            "not a <select>",
+        ),
+        "GLADIUS_NOTFILE" => typed(
+            ToolCode::InvalidTarget,
+            ToolReason::NotFile,
+            "not a file input",
+        ),
+        s if s.starts_with("GLADIUS_NOTEDIT:") => Some(type_not_editable(
+            "type",
+            &s["GLADIUS_NOTEDIT:".len()..],
+            &ctx,
+        )),
+        _ => None,
+    }
+}
+
+/// Add the `resolved` identity to an existing reply without losing or
+/// reordering any field: the text block is re-rendered from the same object,
+/// so prose and structuredContent still agree.
+fn with_resolved(reply: Value, element: &str, hit: &AxHit) -> Value {
+    let mut sc = reply
+        .get("structuredContent")
+        .cloned()
+        .unwrap_or(Value::Null);
+    if let Some(o) = sc.as_object_mut() {
+        o.insert("resolved".to_string(), hit.resolved(element));
+    }
+    let text = sc.to_string();
+    json!({"content": [{"type": "text", "text": text}], "structuredContent": sc})
+}
+
 /// Guard a ref-targeted action: unknown refs and post-navigation refs fail
 /// with a TYPED stale-ref error naming the reason - never a silent
 /// wrong-element click. Returns the ref id (`eN`) when it may proceed.
@@ -1472,7 +2222,7 @@ fn type_reply(typed: &str, value_length: Option<u64>) -> Value {
 /// resolver is unsupported, so the typed rejection stands either way.
 fn ref_in_frame(tool: &str, element: &str, frame: &str) -> ToolErr {
     ToolErr::typed(
-        format!("{tool}: refs (@eN) are main-frame only; with frame= use a CSS selector (got ref '{element}' with frame '{frame}'; take a frame snapshot for names, then act with the selector)"),
+        format!("{tool}: refs (@eN) are main-frame only; with frame= use a CSS selector or an AX selector (role=/name=/text=/label=) (got ref '{element}' with frame '{frame}'; take a frame snapshot for names, then act with the selector)"),
         json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": tool, "arg": "frame", "frame": frame, "element": element}),
     )
 }
@@ -2400,68 +3150,18 @@ async fn tool_snapshot_ax(
                 } else {
                     ax_value
                 };
-                // Unlabeled-control fallback (mirrors the legacy heuristic):
-                // an empty AX name on input/textarea/select falls back in
-                // legacy order - placeholder, full raw value unless
-                // sensitive, selected option text, id, name, type for
-                // input/textarea; option text, id, name for select. Ordering
-                // runs on the RAW candidates (a whitespace-only string is
-                // truthy in the legacy `||` chain, so it blocks fallthrough
-                // and then normalizes to ""); the SELECTED fallback is
-                // whitespace-normalized and capped at 80 exactly like the
-                // legacy `replace(/\s+/g, " ").trim().slice(0, 80)`. The
-                // 60-char display cut applies to the shown value only, never
-                // to the fallback name; sensitive values stay masked and are
-                // never used as names; an all-whitespace pick stays empty.
+                // Unlabeled-control fallback: the shared `snapshot_name`
+                // rule, so an agent can copy exactly what this prints. The
+                // ordering, the sensitive-value exclusion and the 80-char
+                // normalization are documented and enforced there.
                 let ax_name = it
                     .get("name")
                     .and_then(|x| x.as_str())
                     .unwrap_or("")
                     .to_string();
-                if ax_name.is_empty() && (tag == "input" || tag == "textarea" || tag == "select") {
-                    let s = |k: &str| {
-                        info.get(k)
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("")
-                            .to_string()
-                    };
-                    let (full_val, ph, eid, enm, sel_text, ty) = (
-                        s("fullVal"),
-                        s("ph"),
-                        s("eid"),
-                        s("enm"),
-                        s("selText"),
-                        s("ty"),
-                    );
-                    let mut fb = String::new();
-                    if tag == "select" {
-                        if !sel_text.is_empty() {
-                            fb = sel_text;
-                        } else if !eid.is_empty() {
-                            fb = eid;
-                        } else if !enm.is_empty() {
-                            fb = enm;
-                        }
-                    } else if !ph.is_empty() {
-                        fb = ph;
-                    } else if !sens && !full_val.is_empty() {
-                        fb = full_val;
-                    } else if !eid.is_empty() {
-                        fb = eid;
-                    } else if !enm.is_empty() {
-                        fb = enm;
-                    } else if tag == "input" && !ty.is_empty() {
-                        fb = ty;
-                    }
-                    if !fb.is_empty() {
-                        // Legacy normalization: collapse every whitespace
-                        // run to one space, trim, cap at 80 chars.
-                        let norm: String = fb.split_whitespace().collect::<Vec<_>>().join(" ");
-                        let norm: String = norm.chars().take(80).collect();
-                        if !norm.is_empty() {
-                            it["name"] = json!(norm);
-                        }
-                    }
+                let printed = snapshot_name(&ax_name, &tag, sens, Some(info));
+                if printed != ax_name {
+                    it["name"] = json!(printed);
                 }
                 it["tag"] = json!(tag);
                 it["value"] = json!(value);
@@ -3161,6 +3861,13 @@ async fn tool_click(
     // Drain any earlier dialog record so one found below belongs to THIS click.
     browser.take_dialog().await;
     let fid = frame_id_ok("click", frame)?;
+    // Additive AX selector forms (role=/name=/text=/label=) resolve on the AX
+    // tree first and act on that exact node. Legacy strings (CSS, @eN) skip
+    // this and keep their path byte-for-byte.
+    if let Some(sel) = ax_sel_parse("click", element)? {
+        let hit = ax_resolve(browser, "click", &sel, element, fid.as_deref()).await?;
+        return ax_click(browser, element, &hit, fid.as_deref(), hover_first).await;
+    }
     if let Some(ref f) = fid {
         // Frame policy: refs cannot resolve safely in a frame realm.
         if parse_ref(element).is_some() {
@@ -3292,6 +3999,235 @@ async fn tool_click(
             format!("click: element not visible or not clickable: {element}"),
             json!({"code": ToolCode::NotActionable.as_str(), "reason": ToolReason::Hidden.as_str(), "tool": "click", "element": element}),
         )),
+    }
+}
+
+/// Click an AX-selector target: the same visibility/occlusion preflight the
+/// ref path runs, on the node the selector resolved (not a DOM lookup). The
+/// leaf point is the element's own viewport centre; with a frame named it
+/// maps through the owner rect chain exactly like the CSS frame path, and the
+/// pointer always dispatches at main-viewport coordinates.
+async fn ax_click(
+    browser: &Browser,
+    element: &str,
+    hit: &AxHit,
+    fid: Option<&str>,
+    hover_first: bool,
+) -> Result<Value, ToolErr> {
+    let oid = ax_object(browser, "click", element, hit).await?;
+    let v = call_on_object(browser, &oid, click_preflight_fn(), vec![]).await?;
+    let (x, y, h0) = match v.as_str() {
+        Some(s) if s.starts_with("GLADIUS_FALLBACK:") => {
+            click_settle(browser, &s["GLADIUS_FALLBACK:".len()..]).await;
+            return Ok(with_resolved(click_ok(browser).await, element, hit));
+        }
+        Some("GLADIUS_FALLBACK") => {
+            click_settle(browser, "").await;
+            return Ok(with_resolved(click_ok(browser).await, element, hit));
+        }
+        Some(s) if s.starts_with("GLADIUS_POINT:") => {
+            let pt: Value = serde_json::from_str(&s["GLADIUS_POINT:".len()..])
+                .map_err(|_| "click: no layout point".to_string())?;
+            let x = pt.get("x").and_then(|n| n.as_f64()).unwrap_or(0.0);
+            let y = pt.get("y").and_then(|n| n.as_f64()).unwrap_or(0.0);
+            let h0 = pt
+                .get("h0")
+                .and_then(|n| n.as_str())
+                .unwrap_or("")
+                .to_string();
+            (x, y, h0)
+        }
+        other => {
+            return Err(ax_status_err("click", element, hit, other).unwrap_or_else(|| {
+                ToolErr::typed(
+                    format!("click: element not visible or not clickable: {element}"),
+                    json!({"code": ToolCode::NotActionable.as_str(), "reason": ToolReason::Hidden.as_str(),
+                           "tool": "click", "element": element, "ref": hit.at, "role": hit.role, "name": hit.name}),
+                )
+            }))
+        }
+    };
+    let (x, y, h0) = match fid {
+        // The preflight's href belongs to the leaf realm; a frame click
+        // settles against the MAIN href (same reason as the CSS frame path).
+        Some(f) => {
+            let (mx, my) = frame_owner_hit_ok(browser, "click", element, f, x, y).await?;
+            let h0 = browser
+                .eval("window.location.href")
+                .await
+                .ok()
+                .and_then(|v| v.as_str().map(|s| s.to_string()))
+                .unwrap_or_default();
+            (mx, my, h0)
+        }
+        None => (x, y, h0),
+    };
+    let st = click_dispatch(browser, x, y, &h0, hover_first).await?;
+    click_settle(browser, &st).await;
+    Ok(with_resolved(click_ok(browser).await, element, hit))
+}
+
+/// Hover an AX-selector target: preflight on the resolved node, then ONE
+/// trusted mouseMoved at the (frame-mapped) centre.
+async fn ax_hover(
+    browser: &Browser,
+    element: &str,
+    hit: &AxHit,
+    fid: Option<&str>,
+) -> Result<Value, ToolErr> {
+    let oid = ax_object(browser, "hover", element, hit).await?;
+    let v = call_on_object(browser, &oid, hover_preflight_fn(), vec![]).await?;
+    // The preflight answers a JSON STRING (`{"x":..,"y":..}`) on success and a
+    // `GLADIUS_*` marker on failure, exactly like the CSS frame path: parse it
+    // as text, never as an object value.
+    let point = v
+        .as_str()
+        .filter(|s| s.starts_with('{'))
+        .and_then(|s| serde_json::from_str::<Value>(s).ok())
+        .filter(|p| p.get("x").is_some() && p.get("y").is_some());
+    let Some(point) = point else {
+        return Err(ax_status_err("hover", element, hit, v.as_str()).unwrap_or_else(|| {
+            ToolErr::typed(
+                format!("hover: element not visible or not hoverable: {element}"),
+                json!({"code": ToolCode::NotActionable.as_str(), "reason": ToolReason::Hidden.as_str(),
+                       "tool": "hover", "element": element, "ref": hit.at, "role": hit.role, "name": hit.name}),
+            )
+        }));
+    };
+    let lx = point.get("x").and_then(|n| n.as_f64()).unwrap_or(0.0);
+    let ly = point.get("y").and_then(|n| n.as_f64()).unwrap_or(0.0);
+    let (mx, my) = match fid {
+        Some(f) => frame_owner_hit_ok(browser, "hover", element, f, lx, ly).await?,
+        None => (lx, ly),
+    };
+    browser.mouse_move(mx, my).await?;
+    Ok(with_resolved(
+        ok_text(json!({"ok": true}).to_string()),
+        element,
+        hit,
+    ))
+}
+
+/// Type into an AX-selector target: focus/select-all runs on the resolved
+/// node (so a control inside a frame focuses in its own realm) and the text
+/// goes through the same `Input.insertText` as every other path.
+async fn ax_type(
+    browser: &Browser,
+    element: &str,
+    hit: &AxHit,
+    text: &str,
+    submit: bool,
+) -> Result<Value, ToolErr> {
+    let oid = ax_object(browser, "type", element, hit).await?;
+    let v = call_on_object(browser, &oid, type_preflight_fn(), vec![]).await?;
+    if v.as_str() != Some("GLADIUS_READY") {
+        return Err(ax_status_err("type", element, hit, v.as_str()).unwrap_or_else(|| {
+            ToolErr::typed(
+                format!("type: element not found: {element}"),
+                json!({"code": ToolCode::InvalidTarget.as_str(), "reason": ToolReason::NotFound.as_str(),
+                       "tool": "type", "element": element, "ref": hit.at, "role": hit.role, "name": hit.name}),
+            )
+        }));
+    }
+    browser.insert_text(text).await.map_err(|e| {
+        type_not_editable(
+            "type",
+            &format!("insertText failed: {e}"),
+            &hit.ctx("type", element),
+        )
+    })?;
+    let value_length = call_on_object(browser, &oid, VALUE_LEN_FN, vec![])
+        .await
+        .ok()
+        .and_then(|v| v.as_u64());
+    if submit {
+        submit_enter(browser).await?;
+    }
+    Ok(with_resolved(type_reply(text, value_length), element, hit))
+}
+
+/// Upload to an AX-selector target: the same file-input probe, then
+/// `DOM.setFileInputFiles` by backend node id (the identity a ref records),
+/// so a file input inside a shadow root or a frame resolves the same way.
+async fn ax_upload(
+    browser: &Browser,
+    element: &str,
+    hit: &AxHit,
+    paths: &[String],
+) -> Result<Value, ToolErr> {
+    let oid = ax_object(browser, "upload", element, hit).await?;
+    let probe = r#"function() { const el = this; if (!el || !el.isConnected) return 'GLADIUS_NOTFOUND'; if (el.disabled) return 'GLADIUS_DISABLED'; if (el.tagName !== 'INPUT' || (el.type || '').toLowerCase() !== 'file') return 'GLADIUS_NOTFILE'; return 'GLADIUS_OK'; }"#;
+    let v = call_on_object(browser, &oid, probe, vec![]).await?;
+    if v.as_str() != Some("GLADIUS_OK") {
+        return Err(ax_status_err("upload", element, hit, v.as_str()).unwrap_or_else(|| {
+            ToolErr::typed(
+                format!("upload: element not found: {element}"),
+                json!({"code": ToolCode::InvalidTarget.as_str(), "reason": ToolReason::NotFound.as_str(),
+                       "tool": "upload", "element": element, "ref": hit.at, "role": hit.role, "name": hit.name}),
+            )
+        }));
+    }
+    browser
+        .command(
+            "DOM.setFileInputFiles",
+            json!({"backendNodeId": hit.backend, "files": paths}),
+            true,
+        )
+        .await
+        .map_err(|e| format!("upload: {e}"))?;
+    Ok(with_resolved(
+        ok_text(json!({"ok": true, "files": paths.len()}).to_string()),
+        element,
+        hit,
+    ))
+}
+
+/// Select an option on an AX-selector target: the same option matcher the
+/// ref path runs, on the resolved node.
+async fn ax_select(
+    browser: &Browser,
+    element: &str,
+    hit: &AxHit,
+    value: Option<&str>,
+    text: Option<&str>,
+) -> Result<Value, ToolErr> {
+    let val_lit = match value {
+        Some(s) => serde_json::to_string(s).map_err(|e| e.to_string())?,
+        None => "null".to_string(),
+    };
+    let txt_lit = match text {
+        Some(s) => serde_json::to_string(s).map_err(|e| e.to_string())?,
+        None => "null".to_string(),
+    };
+    let oid = ax_object(browser, "select", element, hit).await?;
+    let v = call_on_object(
+        browser,
+        &oid,
+        &select_preflight_fn(&val_lit, &txt_lit),
+        vec![],
+    )
+    .await?;
+    match v.as_str() {
+        Some("GLADIUS_OK") => Ok(with_resolved(
+            ok_text(json!({"ok": true}).to_string()),
+            element,
+            hit,
+        )),
+        Some("GLADIUS_NOOPT") => {
+            let want = value.or(text).unwrap_or("");
+            Err(ToolErr::typed(
+                format!("select: option not found: {want}"),
+                json!({"code": ToolCode::OptionNotFound.as_str(), "reason": ToolReason::NoMatch.as_str(),
+                       "tool": "select", "want": want, "element": element}),
+            ))
+        }
+        other => Err(ax_status_err("select", element, hit, other).unwrap_or_else(|| {
+            ToolErr::typed(
+                format!("select: element not found: {element}"),
+                json!({"code": ToolCode::InvalidTarget.as_str(), "reason": ToolReason::NotFound.as_str(),
+                       "tool": "select", "element": element, "ref": hit.at, "role": hit.role, "name": hit.name}),
+            )
+        })),
     }
 }
 
@@ -3521,6 +4457,12 @@ async fn tool_type(
     frame: Option<&str>,
 ) -> Result<Value, ToolErr> {
     let fid = frame_id_ok("type", frame)?;
+    // Additive AX selector forms resolve on the AX tree (scoped by frame when
+    // named) and act on that exact node; legacy strings are untouched.
+    if let Some(sel) = ax_sel_parse("type", element)? {
+        let hit = ax_resolve(browser, "type", &sel, element, fid.as_deref()).await?;
+        return ax_type(browser, element, &hit, text, submit).await;
+    }
     if let Some(ref f) = fid {
         if parse_ref(element).is_some() {
             return Err(ref_in_frame("type", element, f));
@@ -3830,6 +4772,12 @@ async fn tool_upload(
     // DOM lookup below; the guard gives the typed stale-ref error.
     // Frame policy first: refs cannot resolve safely in a frame realm.
     let fid = frame_id_ok("upload", frame)?;
+    // Additive AX selector forms: resolve on the AX tree (scoped by frame when
+    // named), then set files on that exact node by backend id.
+    if let Some(sel) = ax_sel_parse("upload", element)? {
+        let hit = ax_resolve(browser, "upload", &sel, element, fid.as_deref()).await?;
+        return ax_upload(browser, element, &hit, paths).await;
+    }
     if let Some(ref f) = fid {
         if parse_ref(element).is_some() {
             return Err(ref_in_frame("upload", element, f));
@@ -4266,6 +5214,12 @@ async fn tool_hover(
     // G4b: with frame= the guard runs in the frame realm and the leaf point
     // maps through the owner rect chain; dispatch stays on the page session.
     let fid = frame_id_ok("hover", frame)?;
+    // Additive AX selector forms: resolve on the AX tree (scoped by frame when
+    // named) and hover that exact node; legacy strings keep their path.
+    if let Some(sel) = ax_sel_parse("hover", element)? {
+        let hit = ax_resolve(browser, "hover", &sel, element, fid.as_deref()).await?;
+        return ax_hover(browser, element, &hit, fid.as_deref()).await;
+    }
     if let Some(ref f) = fid {
         if parse_ref(element).is_some() {
             return Err(ref_in_frame("hover", element, f));
@@ -4389,6 +5343,12 @@ async fn tool_select(
     // G4b: with frame= the same JS selection runs in the frame realm via
     // eval_in_frame (no coordinates involved). Refs are main-frame only.
     let fid = frame_id_ok("select", frame)?;
+    // Additive AX selector forms: resolve on the AX tree (scoped by frame when
+    // named) and select on that exact node; legacy strings keep their path.
+    if let Some(sel) = ax_sel_parse("select", element)? {
+        let hit = ax_resolve(browser, "select", &sel, element, fid.as_deref()).await?;
+        return ax_select(browser, element, &hit, value, text).await;
+    }
     if let Some(ref f) = fid {
         if parse_ref(element).is_some() {
             return Err(ref_in_frame("select", element, f));

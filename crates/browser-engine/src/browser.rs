@@ -643,6 +643,25 @@ impl Browser {
         self.refs.lock().await.get(id).and_then(|e| e.backend)
     }
 
+    /// The ref id (`eN`) minted from this backend node id, when the current
+    /// snapshot recorded one. AX selector resolution uses it to name the
+    /// element it resolved as the same `@eN` the caller already sees, so a
+    /// selector and a ref agree on identity instead of minting a second one.
+    /// Lowest id wins if a table ever holds the same backend twice: the ref
+    /// id is reported to a caller, so it must not depend on map iteration
+    /// order.
+    pub async fn ref_for_backend(&self, backend: i64) -> Option<String> {
+        let refs = self.refs.lock().await;
+        refs.iter()
+            .filter(|(_, e)| e.backend == Some(backend))
+            .min_by_key(|(id, _)| {
+                id.trim_start_matches('e')
+                    .parse::<u64>()
+                    .unwrap_or(u64::MAX)
+            })
+            .map(|(id, _)| id.clone())
+    }
+
     /// Cache the render that `snapshot` just produced, for `offset` paging.
     pub async fn store_snapshot(&self, cache: SnapshotCache) {
         *self.snap_cache.lock().await = Some(cache);
