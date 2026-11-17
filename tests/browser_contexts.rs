@@ -366,12 +366,18 @@ async fn page_url(rig: &Rig, name: &str) -> String {
     sc(&r)["value"].as_str().unwrap_or("").to_string()
 }
 
-/// Bounded poll of the LEGACY active page until its title is the expected one.
-/// (`Page.navigate` acknowledges the start of a navigation, and the first
-/// `readyState` read can still belong to the old document, so wait for the
-/// postcondition instead of a moment in time.)
-async fn wait_legacy_title(rig: &Rig, want: &str, cap: Duration) -> bool {
+/// Wait for the LEGACY active page to be the expected document, returning the
+/// last observation so a failure explains itself.
+///
+/// One postcondition (`document.title`), one deadline. The old version polled
+/// the same thing from a 10 s stopwatch; a loaded machine can outlast that while
+/// the page is still loading (14 CPU burners stretched the wait to 8.2 s of the
+/// 10 s budget, and 22 reproduced the failure), so the budget is a precondition
+/// allowance rather than a measurement: the poll returns as soon as the title
+/// matches, normally in well under a second.
+async fn wait_legacy_page(rig: &Rig, want: &str, cap: Duration) -> Result<(), String> {
     let deadline = Instant::now() + cap;
+    let mut last = String::from("no evaluate completed");
     loop {
         let r = browser_engine::call(
             "evaluate",
@@ -379,11 +385,17 @@ async fn wait_legacy_title(rig: &Rig, want: &str, cap: Duration) -> bool {
             &rig.browser,
         )
         .await;
-        if !is_error(&r) && sc(&r)["value"].as_str() == Some(want) {
-            return true;
+        if is_error(&r) {
+            last = format!("evaluate failed: {}", text_of(&r));
+        } else {
+            let title = sc(&r)["value"].as_str().unwrap_or("").to_string();
+            if title == want {
+                return Ok(());
+            }
+            last = format!("document.title is {title:?}, want {want:?}");
         }
         if Instant::now() >= deadline {
-            return false;
+            return Err(format!("{last} (gave up after {}s)", cap.as_secs()));
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
@@ -981,10 +993,12 @@ fn legacy_realm_routing_refuses_a_context_page() {
             )
             .await
             .expect("legacy navigate");
-        assert!(
-            wait_legacy_title(&rig, "Context Fixture", Duration::from_secs(10)).await,
-            "the legacy fixture page must commit before the boundary checks"
-        );
+        // The fixture page must be the legacy document before the boundary
+        // checks: a precondition with a generous budget, not a stopwatch.
+        if let Err(last) = wait_legacy_page(&rig, "Context Fixture", Duration::from_secs(30)).await
+        {
+            panic!("the legacy fixture page must commit before the boundary checks: {last}");
+        }
 
         let created = rig
             .call(json!({"action": "create", "name": "sealed", "url": format!("{}/?sealed", fixture.base)}))
