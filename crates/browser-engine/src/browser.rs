@@ -1040,20 +1040,70 @@ impl Browser {
         .map(|_| ())
     }
 
-    /// Trusted main-frame left click at main-frame viewport CSS px: by default
-    /// exactly TWO CDP events - `mousePressed` (left, buttons:1, clickCount:1)
-    /// then `mouseReleased` (left, buttons:0, clickCount:1) at the given
-    /// point. No `mouseMoved` is sent unless `hover_first` is true, and then
-    /// it is ONE positioning event at that same point (never a path, never
-    /// interpolation, never a stepped animation). Hover is an explicit
-    /// choice, not a side effect of clicking.
+    /// Map a CDP `button` name to the `buttons` bitmask Chromium reports for
+    /// a held button. Left=1, right=2, middle=4. An unknown name is refused
+    /// by the caller, never defaulted here.
+    fn button_mask(button: &str) -> Option<i64> {
+        match button {
+            "left" => Some(1),
+            "right" => Some(2),
+            "middle" => Some(4),
+            _ => None,
+        }
+    }
+
+    /// Trusted main-frame click with an explicit button and click count:
+    /// `mousePressed` then `mouseReleased` at `(x, y)` with the button's own
+    /// bitmask and `clickCount`. `clickCount: 2` is a double click - the
+    /// engine synthesises `dblclick` from the second press, so no synthetic
+    /// DOM event is ever dispatched. `hover_first` behaves exactly as in
+    /// `mouse_click` (one positioning `mouseMoved` at the same point).
     ///
-    /// The caller passes the exact float box centre: coordinates are not
-    /// rounded, stepped, or animated anywhere on this path. Coordinates are
-    /// main-frame viewport CSS px (CDP `Input.dispatchMouseEvent`
-    /// convention); modifiers default to 0 (no Alt/Ctrl/Meta/Shift - key
-    /// combos are G4b, never smuggled here). No OS input is involved: the
-    /// whole sequence rides CDP.
+    /// Right and middle clicks carry their own `buttons`: a right press is
+    /// `buttons: 2`, and the engine raises `contextmenu` from the release -
+    /// the browser's own menu, never a page-authored stand-in.
+    pub async fn mouse_click_button(
+        &self,
+        x: f64,
+        y: f64,
+        button: &str,
+        click_count: i64,
+        hover_first: bool,
+    ) -> Result<(), String> {
+        let mask = Self::button_mask(button)
+            .ok_or_else(|| format!("mouse: unknown button '{button}' (left, right, middle)"))?;
+        let count = click_count.max(1);
+        if hover_first {
+            self.command(
+                "Input.dispatchMouseEvent",
+                json!({"type": "mouseMoved", "x": x, "y": y}),
+                true,
+            )
+            .await?;
+        }
+        // A click count of N is N real clicks, the last one carrying the count:
+        // that is what a person's double click is, and it is what makes the
+        // engine raise `dblclick` on the second press (one press carrying
+        // clickCount:2 produces a single `click` and no `dblclick` - measured).
+        for n in 1..=count {
+            self.command(
+                "Input.dispatchMouseEvent",
+                json!({"type": "mousePressed", "x": x, "y": y,
+                       "button": button, "buttons": mask, "clickCount": n}),
+                true,
+            )
+            .await?;
+            self.command(
+                "Input.dispatchMouseEvent",
+                json!({"type": "mouseReleased", "x": x, "y": y,
+                       "button": button, "buttons": 0, "clickCount": n}),
+                true,
+            )
+            .await?;
+        }
+        Ok(())
+    }
+
     /// Trusted main-frame wheel at main-frame viewport CSS px: ONE
     /// `Input.dispatchMouseEvent` of type `mouseWheel` carrying the pixel
     /// deltas. Chromium runs the page's own scroll machinery (compositor or
@@ -1133,30 +1183,25 @@ impl Browser {
         Ok(sent + 1)
     }
 
+    /// Trusted main-frame left click at main-frame viewport CSS px: by default
+    /// exactly TWO CDP events - `mousePressed` (left, buttons:1, clickCount:1)
+    /// then `mouseReleased` (left, buttons:0, clickCount:1) at the given
+    /// point. No `mouseMoved` is sent unless `hover_first` is true, and then
+    /// it is ONE positioning event at that same point (never a path, never
+    /// interpolation, never a stepped animation). Hover is an explicit
+    /// choice, not a side effect of clicking.
+    ///
+    /// The caller passes the exact float box centre: coordinates are not
+    /// rounded, stepped, or animated anywhere on this path. Coordinates are
+    /// main-frame viewport CSS px (CDP `Input.dispatchMouseEvent`
+    /// convention); modifiers default to 0 (no Alt/Ctrl/Meta/Shift - key
+    /// combos are G4b, never smuggled here). No OS input is involved: the
+    /// whole sequence rides CDP.
     pub async fn mouse_click(&self, x: f64, y: f64, hover_first: bool) -> Result<(), String> {
-        if hover_first {
-            self.command(
-                "Input.dispatchMouseEvent",
-                json!({"type": "mouseMoved", "x": x, "y": y}),
-                true,
-            )
-            .await?;
-        }
-        self.command(
-            "Input.dispatchMouseEvent",
-            json!({"type": "mousePressed", "x": x, "y": y,
-                   "button": "left", "buttons": 1, "clickCount": 1}),
-            true,
-        )
-        .await?;
-        self.command(
-            "Input.dispatchMouseEvent",
-            json!({"type": "mouseReleased", "x": x, "y": y,
-                   "button": "left", "buttons": 0, "clickCount": 1}),
-            true,
-        )
-        .await
-        .map(|_| ())
+        // Byte-identical to the historic sequence: left button, clickCount 1,
+        // no move unless the caller asked for the hover state.
+        self.mouse_click_button(x, y, "left", 1, hover_first)
+            .await
     }
 
     /// Trusted text insertion into the focused editable: `Input.insertText`.

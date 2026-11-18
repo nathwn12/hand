@@ -121,6 +121,62 @@ fn evaluate(s: &mut Session, expression: &str, frame: Option<&str>) -> Value {
     structured(&resp)["value"].clone()
 }
 
+/// Right click reaches the page as a trusted contextmenu, and the menu the page
+/// opens is what `snapshot` then reports as `menu`/`menuitem` nodes.
+#[test]
+fn right_click_opens_the_pages_menu_and_snapshot_reports_it() {
+    let fx = Fixture::start();
+    let mut s = Session::spawn();
+    s.call("browser_navigate", json!({"url": format!("{}/pointer.html", fx.a)}));
+
+    let hidden = evaluate(&mut s, "document.getElementById('menu').hidden", None);
+    assert_eq!(hidden, json!(true), "the menu starts hidden");
+
+    let clicked = s.call("browser_click", json!({"element": "#rc", "button": "right"}));
+    assert!(!is_error(&clicked), "{}", text_of(&clicked));
+
+    assert_eq!(
+        evaluate(&mut s, "document.getElementById('menu').hidden", None),
+        json!(false),
+        "a right click must raise the page's contextmenu handler"
+    );
+    let snap = s.call("browser_snapshot", json!({}));
+    let snap_text = text_of(&snap);
+    assert!(
+        snap_text.contains("role=\"menu\"") || snap_text.contains("- menu "),
+        "snapshot must report the opened menu node: {snap_text}"
+    );
+    assert!(
+        snap_text.contains("menuitem"),
+        "snapshot must report the menu items: {snap_text}"
+    );
+}
+
+/// A left click with clickCount 2 is a real double click: the engine's own
+/// `dblclick` fires, which no single click can produce.
+#[test]
+fn click_count_two_raises_dblclick() {
+    let fx = Fixture::start();
+    let mut s = Session::spawn();
+    s.call("browser_navigate", json!({"url": format!("{}/pointer.html", fx.a)}));
+
+    let single = s.call("browser_click", json!({"element": "#dbl"}));
+    assert!(!is_error(&single), "{}", text_of(&single));
+    assert_eq!(
+        evaluate(&mut s, "document.getElementById('dbl-out').textContent", None),
+        json!("dbl: 0"),
+        "one click must not be a double click"
+    );
+
+    let double = s.call("browser_click", json!({"element": "#dbl", "clickCount": 2}));
+    assert!(!is_error(&double), "{}", text_of(&double));
+    assert_eq!(
+        evaluate(&mut s, "document.getElementById('dbl-out').textContent", None),
+        json!("dbl: 1"),
+        "clickCount 2 must raise exactly one dblclick"
+    );
+}
+
 /// The wheel scrolls the document through the engine's own input pipeline, and
 /// the reply's read-back matches the page's own `scrollY`.
 #[test]

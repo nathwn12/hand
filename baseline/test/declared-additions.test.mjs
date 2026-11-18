@@ -157,8 +157,9 @@ test("a candidate that is the floor plus the declared allowances passes, and the
   assert.deepEqual(
     input.map((entry) => `${entry.tool} ${entry.paths.join(",")}`).sort(),
     [
+      "browser_click properties.button,properties.clickCount",
     ],
-    "exactly zero declared input properties are allowed",
+    "exactly the two declared input properties are allowed",
   );
   assert.equal(
     output.reduce((count, entry) => count + entry.paths.length, 0),
@@ -194,24 +195,24 @@ test("an addition that is not declared fails: red on properties.bogus", () => {
   assert.match(cli.stdout, /properties\.bogus: missing-left/);
 });
 
-test("a declared addition that is missing fails: red on a deleted properties.resolved", () => {
+test("a declared addition that is missing fails: red on a deleted properties.clickCount", () => {
   const candidate = additiveCandidate();
   const click = candidate.tools.find((tool) => tool.name === "browser_click");
-  deletePath(click.outputSchema, "properties.resolved");
+  deletePath(click.inputSchema, "properties.clickCount");
 
   const report = compareCatalogs({ baseline: handCatalog, candidate, profile: "hand" });
   assert.equal(report.ok, false, "a declared addition that vanished must fail the gate");
   const missing = report.declaredMissing.find((entry) => entry.tool === "browser_click");
   assert.ok(missing, JSON.stringify(report.declaredMissing));
-  assert.equal(missing.kind, "outputSchema");
-  assert.deepEqual(missing.paths, ["properties.resolved"]);
+  assert.equal(missing.kind, "inputSchema");
+  assert.deepEqual(missing.paths, ["properties.clickCount"]);
   // The schema itself still matches the pin, so the failure must come from the
   // presence check, not from an accidental deep-equal mismatch.
   assert.deepEqual(report.schemaMismatches, []);
 
   const cli = runCli(candidate);
   assert.equal(cli.status, 1, cli.stdout + cli.stderr);
-  assert.match(cli.stdout, /MISSING-ADDITION browser_click outputSchema: properties\.resolved/);
+  assert.match(cli.stdout, /MISSING-ADDITION browser_click inputSchema: properties\.clickCount/);
 });
 
 test("a listed addition under a renamed property fails, because presence is checked first", () => {
@@ -302,9 +303,9 @@ test("the green candidate is green through the real CLI, exit 0", () => {
   assert.match(cli.stdout, /metadata {3}0 title\/description difference\(s\) \(strict: on\)/);
   assert.doesNotMatch(cli.stdout, /failure/i, "a passing run must not print the word failure");
   assert.doesNotMatch(cli.stdout, /--strict-metadata/, "the reported policy is not stated as a flag");
-  assert.match(cli.stdout, /browser_click outputSchema \+= properties\.resolved/);
+  assert.match(cli.stdout, /browser_click inputSchema \+= properties\.button, properties\.clickCount/);
   assert.match(cli.stdout, /browser_click metadata\.description \+= description/);
-  assert.match(cli.stdout, /declared {3}13 addition group\(s\)/);
+  assert.match(cli.stdout, /declared {3}14 addition group\(s\)/);
 });
 
 test("the legacy profile is never allowed to grow: a declared path does not soften a recapture", () => {

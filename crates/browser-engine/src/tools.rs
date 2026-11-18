@@ -53,8 +53,8 @@ pub fn list() -> Value {
             "required": ["mimeType", "bytes"], "additionalProperties": false},
          "annotations": {"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}},
         {"name": "click", "title": "Click",
-         "description": "Click an element by CSS selector (first match) or AX ref (@eN from snapshot; exact). AX selector forms are also accepted and are uniqueness-mandatory: role=<role>, role=<role>[name=\"<accessible name>\"], name=\"<accessible name>\", text=\"<text>\" (exact visible text inside one element; when nested elements contain exactly that text the innermost one is the match) and label=\"<label text>\" (form control by its associated <label>). They are resolved fresh at action time on the accessibility tree browser_snapshot renders for the page itself (like a CSS selector, so a re-rendered element keeps answering while a snapshot-bound @eN would go stale; iframe content is not part of that tree - pass frame= to search inside a frame); names and text are whitespace-normalised and compared case-insensitively, and text= reads visible text while name=/label= read the accessible name. Zero matches is invalid_target/not_found naming the selector; more than one is invalid_target/ambiguous listing every candidate as @eN plus role and name - the first match is never taken. Every reply adds resolved {selector, ref, role, name}, where ref is that element's @eN in the current snapshot (null when the snapshot holds none). resolved.name is the name browser_snapshot prints for it (capped at 80 characters, or the fallback name of an unlabeled control), so a name copied out of a snapshot resolves. resolved.name is the name browser_snapshot prints for it (capped at 80 characters, or the fallback name of an unlabeled control). role= takes an ARIA role string such as button, generic, StaticText or Iframe (capital I), never a tag name; quote values with double quotes and escape an inner double quote as \". The click is exactly two CDP events at the element's exact float box centre: mousePressed then mouseReleased - no mouseMoved, no hover, no movement loop, no interpolation. hoverFirst:true sends ONE mouseMoved at that same point first, for pages whose handlers read hover state; the default is false. frame=<CDP frameId> from targets scopes to that iframe (same-process CSS selectors; a frame-scoped AX selector is resolved inside that frame's own accessibility tree and never against the page; refs are main-frame only - with frame= use a CSS or AX selector; OOPIF without a mapped target is a typed error, never a main-frame click)",
-         "inputSchema": {"type": "object", "properties": {"element": {"type": "string"}, "frame": {"type": "string"}, "hoverFirst": {"type": "boolean"}}, "required": ["element"], "additionalProperties": false},
+         "description": "Click an element by CSS selector (first match) or AX ref (@eN from snapshot; exact). AX selector forms are also accepted and are uniqueness-mandatory: role=<role>, role=<role>[name=\"<accessible name>\"], name=\"<accessible name>\", text=\"<text>\" (exact visible text inside one element; when nested elements contain exactly that text the innermost one is the match) and label=\"<label text>\" (form control by its associated <label>). They are resolved fresh at action time on the accessibility tree browser_snapshot renders for the page itself (like a CSS selector, so a re-rendered element keeps answering while a snapshot-bound @eN would go stale; iframe content is not part of that tree - pass frame= to search inside a frame); names and text are whitespace-normalised and compared case-insensitively, and text= reads visible text while name=/label= read the accessible name. Zero matches is invalid_target/not_found naming the selector; more than one is invalid_target/ambiguous listing every candidate as @eN plus role and name - the first match is never taken. Every reply adds resolved {selector, ref, role, name}, where ref is that element's @eN in the current snapshot (null when the snapshot holds none). resolved.name is the name browser_snapshot prints for it (capped at 80 characters, or the fallback name of an unlabeled control), so a name copied out of a snapshot resolves. resolved.name is the name browser_snapshot prints for it (capped at 80 characters, or the fallback name of an unlabeled control). role= takes an ARIA role string such as button, generic, StaticText or Iframe (capital I), never a tag name; quote values with double quotes and escape an inner double quote as \". The click is exactly two CDP events at the element's exact float box centre: mousePressed then mouseReleased - no mouseMoved, no hover, no movement loop, no interpolation (with frame= pointing at a cross-process OOPIF, ONE positioning mouseMoved precedes the press, because the browser routes pointer input to a child renderer only after a move at that position; that is routing, not hover). hoverFirst:true sends ONE mouseMoved at that same point first, for pages whose handlers read hover state; the default is false. frame=<CDP frameId> from targets scopes to that iframe (same-process CSS selectors; a frame-scoped AX selector is resolved inside that frame's own accessibility tree and never against the page; a ref is actionable only in the frame whose own snapshot minted it (main-frame refs stay main-frame); an out-of-process frame with no mapped session is a typed error, never a main-frame click. button=left (default)|right|middle chooses the pointer button; a right click raises the engine's own contextmenu, and the page's menu (a DOM node it shows) is what the next snapshot reports. clickCount (default 1) is passed to the engine: 2 is a DOUBLE click, so the engine raises dblclick on the second press - no synthetic DOM event, no second-guessing. Existing calls are unchanged: no button and no clickCount is exactly the historic press+release pair with left/1)",
+         "inputSchema": {"type": "object", "properties": {"element": {"type": "string"}, "frame": {"type": "string"}, "hoverFirst": {"type": "boolean"}, "button": {"type": "string", "enum": ["left", "right", "middle"], "default": "left"}, "clickCount": {"type": "integer", "minimum": 1, "maximum": 3, "default": 1}}, "required": ["element"], "additionalProperties": false},
          "outputSchema": {"type": "object",
             "properties": {"ok": {"type": "boolean"}, "dialog": {"type": "object"}, "note": {"type": "string"},
                 "resolved": {"type": "object",
@@ -363,7 +363,8 @@ pub fn list() -> Value {
              "required": ["ok", "action"], "additionalProperties": false},
           "annotations": {"readOnlyHint": false, "destructiveHint": true, "idempotentHint": false, "openWorldHint": false}}));
         // Pointer completeness: a drag and a wheel are distinct primitives, so
-        // they are distinct tools.
+        // they are distinct tools (the click tool gained button/clickCount
+        // parameters instead of a second click tool).
         tools.insert(at + 3, json!({"name": "drag", "title": "Drag",
           "description": "Drag from one element (or point) to another with real trusted input: one positioning Input.dispatchMouseEvent mouseMoved at the source, one mousePressed there, `steps` interpolated mouseMoved events with buttons:1, then mouseReleased at the target. The opening move is what routes pointer input to the renderer that owns the source (a cross-process frame receives nothing without it - measured), and the move at the source is also what starts a drag. from/to are a CSS selector (first match), an @eN ref from snapshot, or an AX selector (role=/name=/text=/label=); fromPoint/toPoint {x,y} in viewport CSS px stand in for an element on either side, so a drag between bare coordinates needs no DOM at all. Both endpoints run the same visibility/occlusion preflight click uses: a hidden or occluded endpoint is a typed not_actionable refusal and NOTHING is dispatched. Every event is trusted, so the engine's own HTML5 drag-and-drop machinery and the page's pointer handlers both fire - no synthetic DragEvent, no DataTransfer construction, no .value writes. steps (default 8, 2-64) splits the path into that many move events. Reply: the two points, the events dispatched and the step count. frame=<CDP frameId> resolves from/to inside that iframe (CSS or AX selectors; refs are main-frame only) and the dispatch point is mapped to main-viewport coordinates.",
           "inputSchema": {"type": "object", "properties": {
@@ -900,7 +901,11 @@ pub async fn call(name: &str, args: &Value, browser: &Browser) -> Value {
         "layout" => Box::pin(tool_layout(browser, args)).await,
         "visual" => Box::pin(tool_visual(browser, args)).await,
         "click" => {
-            if let Err(e) = check_unknown("click", args, &["element", "frame", "hoverFirst"]) {
+            if let Err(e) = check_unknown(
+                "click",
+                args,
+                &["element", "frame", "hoverFirst", "button", "clickCount"],
+            ) {
                 return e.envelope();
             }
             let el =
@@ -922,7 +927,44 @@ pub async fn call(name: &str, args: &Value, browser: &Browser) -> Value {
                 .get("hoverFirst")
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
-            tool_click(browser, &el, frame.as_deref(), hover_first).await
+            // Pointer completeness rides the same press/release path: the
+            // button and the click count are CDP's own parameters, so right,
+            // middle and double clicks need no second tool and no synthetic
+            // event. An unknown button is a typed refusal, never a default.
+            let button = match args.get("button").and_then(|v| v.as_str()) {
+                None | Some("left") => "left",
+                Some("right") => "right",
+                Some("middle") => "middle",
+                Some(other) => {
+                    return ToolErr::typed(
+                        format!("click: unknown 'button' '{other}' (left, right, middle)"),
+                        json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "click", "arg": "button"}),
+                    )
+                    .envelope()
+                }
+            };
+            let click_count = match args.get("clickCount") {
+                None => 1i64,
+                Some(v) => match v.as_i64() {
+                    Some(n) if (1..=3).contains(&n) => n,
+                    _ => {
+                        return ToolErr::typed(
+                            "click: 'clickCount' must be 1, 2 (double click) or 3".to_string(),
+                            json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "click", "arg": "clickCount"}),
+                        )
+                        .envelope()
+                    }
+                },
+            };
+            tool_click(
+                browser,
+                &el,
+                frame.as_deref(),
+                hover_first,
+                button,
+                click_count,
+            )
+            .await
         }
         "wheel" => {
             if let Err(e) = check_unknown("wheel", args, &["deltaY", "deltaX", "x", "y"]) {
@@ -972,7 +1014,6 @@ pub async fn call(name: &str, args: &Value, browser: &Browser) -> Value {
             };
             tool_wheel(browser, delta_x, delta_y, point).await
         }
-
         "drag" => {
             if let Err(e) = check_unknown(
                 "drag",
@@ -1044,7 +1085,6 @@ pub async fn call(name: &str, args: &Value, browser: &Browser) -> Value {
             }
             tool_drag(browser, from, to, from_point, to_point, steps, frame).await
         }
-
         "type" => {
             if let Err(e) = check_unknown("type", args, &["element", "text", "submit", "frame"]) {
                 return e.envelope();
@@ -3991,9 +4031,14 @@ async fn click_dispatch(
     y: f64,
     h0: &str,
     hover_first: bool,
+    button: &str,
+    click_count: i64,
 ) -> Result<String, ToolErr> {
+    // The button and the click count are CDP's own parameters: a right,
+    // middle or double click is the same trusted press/release pair, never a
+    // synthetic DOM event.
     browser
-        .mouse_click(x, y, hover_first)
+        .mouse_click_button(x, y, button, click_count, hover_first)
         .await
         .map_err(ToolErr::from)?;
     let live = browser.eval("[location.href, document.readyState]").await?;
@@ -4008,23 +4053,28 @@ async fn tool_click(
     element: &str,
     frame: Option<&str>,
     hover_first: bool,
+    button: &str,
+    click_count: i64,
 ) -> Result<Value, ToolErr> {
     // Drain any earlier dialog record so one found below belongs to THIS click.
     browser.take_dialog().await;
     let fid = frame_id_ok("click", frame)?;
+
     // Additive AX selector forms (role=/name=/text=/label=) resolve on the AX
     // tree first and act on that exact node. Legacy strings (CSS, @eN) skip
     // this and keep their path byte-for-byte.
     if let Some(sel) = ax_sel_parse("click", element)? {
         let hit = ax_resolve(browser, "click", &sel, element, fid.as_deref()).await?;
-        return ax_click(browser, element, &hit, fid.as_deref(), hover_first).await;
+        return ax_click(browser, element, &hit, fid.as_deref(), hover_first, button, click_count).await;
     }
-    if let Some(ref f) = fid {
-        // Frame policy: refs cannot resolve safely in a frame realm.
+    if let Some(f) = fid.as_deref() {
+        // Frame policy: a ref is actionable only in the frame whose own
+        // snapshot minted it. A main-frame ref, or another frame's ref, is a
+        // typed `invalid_args` (never a silent main-frame click).
         if parse_ref(element).is_some() {
             return Err(ref_in_frame("click", element, f));
         }
-        return tool_click_frame(browser, element, f, hover_first).await;
+        return tool_click_frame(browser, element, f, hover_first, button, click_count).await;
     }
     if let Some(id) = parse_ref(element) {
         let at_id = guard_ref(browser, "click", element, &id).await?;
@@ -4056,7 +4106,7 @@ async fn tool_click(
                     .and_then(|n| n.as_str())
                     .unwrap_or("")
                     .to_string();
-                let st = click_dispatch(browser, x, y, &h0, hover_first).await?;
+                let st = click_dispatch(browser, x, y, &h0, hover_first, button, click_count).await?;
                 click_settle(browser, &st).await;
                 Ok(click_ok(browser).await)
             }
@@ -4122,7 +4172,7 @@ async fn tool_click(
                 .and_then(|n| n.as_str())
                 .unwrap_or("")
                 .to_string();
-            let st = click_dispatch(browser, x, y, &h0, hover_first).await?;
+            let st = click_dispatch(browser, x, y, &h0, hover_first, button, click_count).await?;
             click_settle(browser, &st).await;
             Ok(click_ok(browser).await)
         }
@@ -4164,6 +4214,8 @@ async fn ax_click(
     hit: &AxHit,
     fid: Option<&str>,
     hover_first: bool,
+    button: &str,
+    click_count: i64,
 ) -> Result<Value, ToolErr> {
     let oid = ax_object(browser, "click", element, hit).await?;
     let v = call_on_object(browser, &oid, click_preflight_fn(), vec![]).await?;
@@ -4213,7 +4265,7 @@ async fn ax_click(
         }
         None => (x, y, h0),
     };
-    let st = click_dispatch(browser, x, y, &h0, hover_first).await?;
+    let st = click_dispatch(browser, x, y, &h0, hover_first, button, click_count).await?;
     click_settle(browser, &st).await;
     Ok(with_resolved(click_ok(browser).await, element, hit))
 }
@@ -4396,6 +4448,8 @@ async fn tool_click_frame(
     element: &str,
     fid: &str,
     hover_first: bool,
+    button: &str,
+    click_count: i64,
 ) -> Result<Value, ToolErr> {
     let sel = serde_json::to_string(element).map_err(|e| e.to_string())?;
     // Bounded presence wait inside the frame realm (same 3s cap shape as main).
@@ -4449,7 +4503,7 @@ async fn tool_click_frame(
             // at ANY level is typed occluded, never a click into the wrong
             // surface.
             let (mx, my) = frame_owner_hit_ok(browser, "click", element, fid, lx, ly).await?;
-            let st = click_dispatch(browser, mx, my, &h0, hover_first).await?;
+            let st = click_dispatch(browser, mx, my, &h0, hover_first, button, click_count).await?;
             click_settle(browser, &st).await;
             Ok(click_ok(browser).await)
         }

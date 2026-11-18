@@ -1,7 +1,12 @@
 {
   "$comment": "The one place a legacy tool may differ by hand. `inputSchema` and `outputSchema` list dotted paths relative to the schema object, so a top-level property is 'properties.<name>': each listed path must be PRESENT in the candidate (a missing or renamed one fails), and every property this file does not list must stay structurally identical to the pinned body in hand-catalog.json. `metadata.description` lists bare tool names whose description was deliberately rewritten: such a tool's description must DIFFER from the pin (an identical one is a stale declaration), and an unlisted description difference fails. `title` has no declared exceptions at all. A new entry needs its justification in docs/COMPATIBILITY.md under 'Intentional differences', and an entry is staged with the commit that ships it.",
   "version": 1,
-  "inputSchema": {},
+  "inputSchema": {
+    "browser_click": [
+      "properties.button",
+      "properties.clickCount"
+    ]
+  },
   "outputSchema": {
     "browser_click": [
       "properties.resolved"
