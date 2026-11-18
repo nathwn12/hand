@@ -1,0 +1,9 @@
+{
+  "keep": [
+    { "path": "baseline", "why": "The frozen legacy catalog and the comparator that proves zero metadata drift." },
+    { "path": "benchmarks", "why": "Fixture receipts and the comparator behind docs/CAPABILITIES.md." },
+    { "path": "fixtures", "why": "Deterministic browser and desktop test targets used by the suite." },
+    { "path": ".opencode", "why": "The rendered repo seed skill the harness loads before working here." },
+    { "path": ".seed", "why": "Seed facts and manifest hash; .opencode/skills/hand-seed is rendered from it." }
+  ]
+}
