@@ -942,3 +942,57 @@ fn a_snapshot_reply_larger_than_one_transport_frame_keeps_the_engine() {
         text_of(&tabs)
     );
 }
+
+/// An out-of-range tab index is refused when it is asked, not when a CDP
+/// deadline expires.
+///
+/// `select` waited up to 10 s for the index to appear, which is the right
+/// tolerance for a tab a click just opened (measured: listed ~120 ms after
+/// `click_settle`) and the wrong answer for an index no tab can occupy - the
+/// caller paid the whole deadline for the same typed error. An index at the
+/// end of the list keeps the bounded settle; a wider gap is refused on the
+/// spot.
+#[test]
+fn an_out_of_range_tab_select_is_refused_without_waiting_on_the_deadline() {
+    let _serial = serial();
+    let mut s = Session::spawn();
+    let nav = s.call("browser_navigate", json!({"url": "about:blank"}));
+    assert!(!is_error(&nav), "navigate: {}", text_of(&nav));
+
+    // One tab exists. Index 1 is the "one past the end" case the settle
+    // window covers; it must still fail well inside a second.
+    let started = Instant::now();
+    let one_past = s.call("browser_tabs", json!({"action": "select", "index": 1}));
+    let elapsed = started.elapsed();
+    assert!(is_error(&one_past), "an absent index is refused: {one_past}");
+    assert_eq!(structured(&one_past)["code"], json!("invalid_target"));
+    assert_eq!(structured(&one_past)["reason"], json!("not_found"));
+    assert!(
+        text_of(&one_past).contains("tabs: no tab at index 1"),
+        "the refusal names the index: {}",
+        text_of(&one_past)
+    );
+    assert!(
+        elapsed < Duration::from_secs(1),
+        "the refusal must not wait on a 10 s deadline (took {elapsed:?})"
+    );
+
+    // A gap wider than one opened tab can close is not a listing lag at all.
+    let started = Instant::now();
+    let far = s.call("browser_tabs", json!({"action": "select", "index": 9999}));
+    let elapsed = started.elapsed();
+    assert!(is_error(&far), "a far index is refused: {far}");
+    assert!(
+        text_of(&far).contains("tabs: no tab at index 9999"),
+        "the refusal names the index: {}",
+        text_of(&far)
+    );
+    assert!(
+        elapsed < Duration::from_millis(300),
+        "an index the list cannot reach is refused without a settle (took {elapsed:?})"
+    );
+
+    // The engine is untouched by either refusal.
+    let tabs = s.call("browser_tabs", json!({"action": "list"}));
+    assert!(!is_error(&tabs), "tabs after the refusals: {}", text_of(&tabs));
+}

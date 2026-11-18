@@ -1555,15 +1555,21 @@ impl Browser {
         ensure_session(&shared).await?;
         // A click that opens a tab returns before the engine lists the new
         // target (measured: one target still listed ~120ms after
-        // click_settle on a slow engine, two already on a fast one). Bounded
-        // wait for the index to appear so select is deterministic.
-        let deadline = Instant::now() + Duration::from_secs(10);
+        // click_settle on a slow engine, two already on a fast one), so the
+        // index is validated against a list that is allowed a short settle.
+        // The settle is bounded by the RACE, not by a 10 s deadline: one
+        // opened tab can only land one past the end of the list read before
+        // it appeared, so a wider gap is a caller mistake and is refused on
+        // the spot (measured pre-fix: `select index 1` with one tab burned
+        // the whole deadline, 10.0 s, before saying so).
+        const SETTLE: Duration = Duration::from_millis(500);
+        let settle_deadline = Instant::now() + SETTLE;
         let infos = loop {
             let infos = ordered_targets(&shared).await?;
             if infos.len() > index {
                 break infos;
             }
-            if Instant::now() >= deadline {
+            if index > infos.len() || Instant::now() >= settle_deadline {
                 return Err(format!("tabs: no tab at index {index}"));
             }
             tokio::time::sleep(Duration::from_millis(50)).await;
