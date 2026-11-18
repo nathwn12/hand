@@ -1,0 +1,1530 @@
+{
+  "schema": "hand-mcp.benchmark.receipt/v1",
+  "driverVersion": "1.0.0",
+  "generatedAtUtc": "2026-11-18T05:50:53.941Z",
+  "testOnly": false,
+  "evidence": "measured against the resolved product binary on this machine",
+  "product": {
+    "id": "hand",
+    "label": "hand",
+    "command": "Q:\\PROJECTS\\PERSONAL\\hand\\target\\release\\hand.exe",
+    "args": [],
+    "cwd": "Q:\\PROJECTS\\PERSONAL\\hand",
+    "source": "explicit --command",
+    "testFixture": false,
+    "resolved": true,
+    "executable": {
+      "path": "Q:\\PROJECTS\\PERSONAL\\hand\\target\\release\\hand.exe",
+      "bytes": 14640128,
+      "sha256": "sha256:82440a7e35025de401ceaf3cb4978bdd880c171f5e4a5db5fc019a64bc93920a"
+    },
+    "version": {
+      "status": 0,
+      "stdout": "hand 0.1.0 (8d1d41cf3469005a5e672344352a9205a0411b6b; release)",
+      "stderr": ""
+    },
+    "entrypoint": null,
+    "releaseIdentity": {
+      "claimed": "release",
+      "verified": false,
+      "basis": "embedded-build-metadata",
+      "embedded": {
+        "sha": "8d1d41cf3469005a5e672344352a9205a0411b6b",
+        "dirty": false,
+        "profile": "release"
+      },
+      "reason": "the binary embeds commit 8d1d41cf3469005a5e672344352a9205a0411b6b and profile \"release\"; a self-report is not an attestation, so compare.mjs re-checks it against a recorded --release build receipt and artifact hash"
+    }
+  },
+  "scenario": {
+    "id": "desktop-enumerate",
+    "title": "desktop window enumeration including the controlled fixture",
+    "domain": "desktop",
+    "specTargetP95Ms": 250,
+    "tool": "desktop_list_windows",
+    "method": null,
+    "params": {},
+    "paramsHash": "sha256:0fd74056dc81f4a5d3e2772ae7a66ae7d39383233d4f6a7716238bf0356ed154"
+  },
+  "protocol": {
+    "warmup": 10,
+    "measured": 100,
+    "sequential": true,
+    "timeoutMs": 60000,
+    "framing": "newline-delimited JSON-RPC",
+    "latencyBasis": "stdin write to complete response frame; validation happens after the measurement"
+  },
+  "fingerprint": {
+    "machine": {
+      "hostname": "NECESSE",
+      "platform": "win32",
+      "release": "10.0.26300",
+      "version": "Windows 11 Pro",
+      "arch": "x64",
+      "cpu": {
+        "model": "AMD Ryzen 7 5800X 8-Core Processor",
+        "logicalCores": 16,
+        "speedMHz": 4392
+      },
+      "memoryTotalBytes": 34276126720,
+      "display": {
+        "width": 2560,
+        "height": 1440,
+        "dpi": 96,
+        "scaleFactor": 1
+      },
+      "displayProbe": {
+        "ok": true
+      },
+      "node": {
+        "version": "v26.13.1",
+        "arch": "x64",
+        "execPath": "C:\\Users\\nathan\\scoop\\apps\\nodejs-lts\\current\\node.exe"
+      },
+      "hash": "sha256:993049499f61bbe0fe2f531d589535b0ae7e89934300b1cf01c6669a49ae22a7"
+    },
+    "browser": null,
+    "fixture": null,
+    "desktopTarget": {
+      "matcher": {
+        "titleContains": "hand-bench-fixture"
+      },
+      "identity": {
+        "title": "hand-bench-fixture",
+        "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+        "class": "WindowsForms10.Window.8.app.0.34f5582_r6_ad1",
+        "clientRect": [
+          100,
+          100,
+          1380,
+          820
+        ],
+        "rect": [
+          100,
+          100,
+          1380,
+          820
+        ],
+        "dpi": 96,
+        "minimized": false
+      },
+      "hwnd": 10618206,
+      "hash": "sha256:3b2defd1f0948186aafe7e7076e483f1db79b8e1685ae99d66fd0f6d672415d3"
+    }
+  },
+  "samples": {
+    "warmup": {
+      "attempts": [
+        {
+          "index": 1,
+          "ok": true,
+          "elapsedMs": 1.666,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 2,
+          "ok": true,
+          "elapsedMs": 1.81,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 3,
+          "ok": true,
+          "elapsedMs": 1.541,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 4,
+          "ok": true,
+          "elapsedMs": 1.431,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 5,
+          "ok": true,
+          "elapsedMs": 1.69,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 6,
+          "ok": true,
+          "elapsedMs": 1.482,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 7,
+          "ok": true,
+          "elapsedMs": 1.499,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 8,
+          "ok": true,
+          "elapsedMs": 1.5,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 9,
+          "ok": true,
+          "elapsedMs": 1.501,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 10,
+          "ok": true,
+          "elapsedMs": 1.598,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        }
+      ],
+      "failures": 0
+    },
+    "measured": {
+      "attempts": [
+        {
+          "index": 1,
+          "ok": true,
+          "elapsedMs": 1.473,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 2,
+          "ok": true,
+          "elapsedMs": 1.471,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 3,
+          "ok": true,
+          "elapsedMs": 1.611,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 4,
+          "ok": true,
+          "elapsedMs": 1.477,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 5,
+          "ok": true,
+          "elapsedMs": 1.462,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 6,
+          "ok": true,
+          "elapsedMs": 1.591,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 7,
+          "ok": true,
+          "elapsedMs": 1.446,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 8,
+          "ok": true,
+          "elapsedMs": 1.63,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 9,
+          "ok": true,
+          "elapsedMs": 1.429,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 10,
+          "ok": true,
+          "elapsedMs": 1.567,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 11,
+          "ok": true,
+          "elapsedMs": 1.623,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 12,
+          "ok": true,
+          "elapsedMs": 1.47,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 13,
+          "ok": true,
+          "elapsedMs": 1.454,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 14,
+          "ok": true,
+          "elapsedMs": 1.552,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 15,
+          "ok": true,
+          "elapsedMs": 1.595,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 16,
+          "ok": true,
+          "elapsedMs": 1.571,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 17,
+          "ok": true,
+          "elapsedMs": 1.518,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 18,
+          "ok": true,
+          "elapsedMs": 1.421,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 19,
+          "ok": true,
+          "elapsedMs": 1.47,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 20,
+          "ok": true,
+          "elapsedMs": 1.797,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 21,
+          "ok": true,
+          "elapsedMs": 1.772,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 22,
+          "ok": true,
+          "elapsedMs": 1.597,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 23,
+          "ok": true,
+          "elapsedMs": 1.534,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 24,
+          "ok": true,
+          "elapsedMs": 1.772,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 25,
+          "ok": true,
+          "elapsedMs": 1.444,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 26,
+          "ok": true,
+          "elapsedMs": 1.484,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 27,
+          "ok": true,
+          "elapsedMs": 1.574,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 28,
+          "ok": true,
+          "elapsedMs": 1.463,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 29,
+          "ok": true,
+          "elapsedMs": 1.456,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 30,
+          "ok": true,
+          "elapsedMs": 1.457,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 31,
+          "ok": true,
+          "elapsedMs": 1.471,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 32,
+          "ok": true,
+          "elapsedMs": 1.408,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 33,
+          "ok": true,
+          "elapsedMs": 1.414,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 34,
+          "ok": true,
+          "elapsedMs": 1.47,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 35,
+          "ok": true,
+          "elapsedMs": 1.408,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 36,
+          "ok": true,
+          "elapsedMs": 1.455,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 37,
+          "ok": true,
+          "elapsedMs": 1.441,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 38,
+          "ok": true,
+          "elapsedMs": 1.531,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 39,
+          "ok": true,
+          "elapsedMs": 1.52,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 40,
+          "ok": true,
+          "elapsedMs": 1.428,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 41,
+          "ok": true,
+          "elapsedMs": 1.543,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 42,
+          "ok": true,
+          "elapsedMs": 1.6,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 43,
+          "ok": true,
+          "elapsedMs": 1.385,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 44,
+          "ok": true,
+          "elapsedMs": 1.413,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 45,
+          "ok": true,
+          "elapsedMs": 1.425,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 46,
+          "ok": true,
+          "elapsedMs": 1.658,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 47,
+          "ok": true,
+          "elapsedMs": 1.425,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 48,
+          "ok": true,
+          "elapsedMs": 1.467,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 49,
+          "ok": true,
+          "elapsedMs": 1.391,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 50,
+          "ok": true,
+          "elapsedMs": 1.459,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 51,
+          "ok": true,
+          "elapsedMs": 1.39,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 52,
+          "ok": true,
+          "elapsedMs": 1.597,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 53,
+          "ok": true,
+          "elapsedMs": 1.46,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 54,
+          "ok": true,
+          "elapsedMs": 1.436,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 55,
+          "ok": true,
+          "elapsedMs": 1.547,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 56,
+          "ok": true,
+          "elapsedMs": 1.62,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 57,
+          "ok": true,
+          "elapsedMs": 1.575,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 58,
+          "ok": true,
+          "elapsedMs": 1.532,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 59,
+          "ok": true,
+          "elapsedMs": 1.488,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 60,
+          "ok": true,
+          "elapsedMs": 1.527,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 61,
+          "ok": true,
+          "elapsedMs": 1.42,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 62,
+          "ok": true,
+          "elapsedMs": 1.44,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 63,
+          "ok": true,
+          "elapsedMs": 1.406,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 64,
+          "ok": true,
+          "elapsedMs": 1.394,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 65,
+          "ok": true,
+          "elapsedMs": 1.428,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 66,
+          "ok": true,
+          "elapsedMs": 1.435,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 67,
+          "ok": true,
+          "elapsedMs": 1.469,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 68,
+          "ok": true,
+          "elapsedMs": 1.485,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 69,
+          "ok": true,
+          "elapsedMs": 2.103,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 70,
+          "ok": true,
+          "elapsedMs": 1.672,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 71,
+          "ok": true,
+          "elapsedMs": 1.415,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 72,
+          "ok": true,
+          "elapsedMs": 1.393,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 73,
+          "ok": true,
+          "elapsedMs": 1.523,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 74,
+          "ok": true,
+          "elapsedMs": 1.473,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 75,
+          "ok": true,
+          "elapsedMs": 1.674,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 76,
+          "ok": true,
+          "elapsedMs": 1.404,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 77,
+          "ok": true,
+          "elapsedMs": 1.463,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 78,
+          "ok": true,
+          "elapsedMs": 1.546,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 79,
+          "ok": true,
+          "elapsedMs": 1.424,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 80,
+          "ok": true,
+          "elapsedMs": 1.485,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 81,
+          "ok": true,
+          "elapsedMs": 1.422,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 82,
+          "ok": true,
+          "elapsedMs": 1.483,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 83,
+          "ok": true,
+          "elapsedMs": 1.703,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 84,
+          "ok": true,
+          "elapsedMs": 1.422,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 85,
+          "ok": true,
+          "elapsedMs": 1.469,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 86,
+          "ok": true,
+          "elapsedMs": 1.459,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 87,
+          "ok": true,
+          "elapsedMs": 1.483,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 88,
+          "ok": true,
+          "elapsedMs": 1.475,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 89,
+          "ok": true,
+          "elapsedMs": 1.477,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 90,
+          "ok": true,
+          "elapsedMs": 1.517,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 91,
+          "ok": true,
+          "elapsedMs": 1.529,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 92,
+          "ok": true,
+          "elapsedMs": 1.457,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 93,
+          "ok": true,
+          "elapsedMs": 1.497,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 94,
+          "ok": true,
+          "elapsedMs": 1.388,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 95,
+          "ok": true,
+          "elapsedMs": 1.44,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 96,
+          "ok": true,
+          "elapsedMs": 1.383,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 97,
+          "ok": true,
+          "elapsedMs": 1.387,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 98,
+          "ok": true,
+          "elapsedMs": 1.4,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 99,
+          "ok": true,
+          "elapsedMs": 1.486,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        },
+        {
+          "index": 100,
+          "ok": true,
+          "elapsedMs": 1.565,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 10618206,
+            "title": "hand-bench-fixture",
+            "windows": 16
+          }
+        }
+      ],
+      "failures": 0
+    }
+  },
+  "setup": {
+    "ok": true,
+    "steps": [
+      {
+        "name": "resolve controlled fixture window",
+        "tool": "desktop_list_windows",
+        "params": {},
+        "ok": true,
+        "elapsedMs": 2.435,
+        "error": null,
+        "detail": {
+          "hwnd": 10618206,
+          "title": "hand-bench-fixture",
+          "windows": 16
+        }
+      }
+    ],
+    "failure": null,
+    "controlledTarget": {
+      "identity": {
+        "title": "hand-bench-fixture",
+        "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+        "class": "WindowsForms10.Window.8.app.0.34f5582_r6_ad1",
+        "clientRect": [
+          100,
+          100,
+          1380,
+          820
+        ],
+        "rect": [
+          100,
+          100,
+          1380,
+          820
+        ],
+        "dpi": 96,
+        "minimized": false
+      },
+      "hwnd": 10618206,
+      "hash": "sha256:3b2defd1f0948186aafe7e7076e483f1db79b8e1685ae99d66fd0f6d672415d3"
+    }
+  },
+  "coldStart": {
+    "ok": true,
+    "spawnToInitializeMs": 15.418,
+    "initializeRoundTripMs": 10.308,
+    "error": null
+  },
+  "catalog": {
+    "toolCount": 33,
+    "sha256": "sha256:baaed173c16df4ed246572f7db44e8bb856b951460e81d8846a95ccf38bdb339",
+    "names": [
+      "browser_navigate",
+      "browser_snapshot",
+      "browser_screenshot",
+      "browser_click",
+      "browser_type",
+      "browser_evaluate",
+      "browser_wait_for",
+      "browser_targets",
+      "browser_dialog",
+      "browser_history",
+      "browser_network",
+      "browser_cdp",
+      "browser_console",
+      "browser_upload",
+      "browser_fetch_text",
+      "browser_hover",
+      "browser_select",
+      "browser_key",
+      "browser_viewport",
+      "browser_tabs",
+      "browser_storage",
+      "browser_assert_layout",
+      "browser_layout",
+      "browser_visual",
+      "browser_close",
+      "browser_context",
+      "desktop_screenshot",
+      "desktop_diff",
+      "desktop_list_windows",
+      "desktop_window",
+      "desktop_do",
+      "desktop_cursor",
+      "desktop_elements"
+    ]
+  },
+  "load": {
+    "sampling": "whole-machine os.cpus() idle/total delta across the run; free memory at start/end; no per-request sampling",
+    "cpuBusyPercent": 21.57,
+    "freeMemoryBytesStart": 20134993920,
+    "freeMemoryBytesEnd": 20212572160,
+    "sequential": true,
+    "maxConcurrentRequests": 1,
+    "unrelatedLoad": "not externally audited; concurrent work on this machine would appear in cpuBusyPercent. The driver issues one request at a time."
+  },
+  "stats": {
+    "attempted": 100,
+    "observed": 100,
+    "passed": 100,
+    "failed": 0,
+    "percentileMethod": "nearest-rank",
+    "percentileBase": {
+      "observed": 100,
+      "attempted": 100
+    },
+    "minMs": 1.383,
+    "p50Ms": 1.47,
+    "p95Ms": 1.674,
+    "maxMs": 2.103,
+    "meanMs": 1.502,
+    "sumMs": 150.159
+  },
+  "phases": [
+    {
+      "name": "cold server start (spawn to initialize reply)",
+      "kind": "setup",
+      "elapsedMs": 15.418,
+      "notThresholded": true
+    },
+    {
+      "name": "initialize round trip",
+      "kind": "setup",
+      "elapsedMs": 10.308,
+      "notThresholded": true
+    },
+    {
+      "name": "setup: resolve controlled fixture window",
+      "kind": "setup",
+      "elapsedMs": 2.435,
+      "ok": true,
+      "notThresholded": true,
+      "note": null
+    },
+    {
+      "name": "warm samples",
+      "kind": "warmup",
+      "attempts": 10,
+      "failures": 0,
+      "notThresholded": true
+    },
+    {
+      "name": "measured desktop window enumeration including the controlled fixture",
+      "kind": "measured",
+      "attempts": 100,
+      "failures": 0,
+      "targetP95Ms": 250,
+      "p50Ms": 1.47,
+      "p95Ms": 1.674,
+      "maxMs": 2.103
+    }
+  ],
+  "process": {
+    "exited": {
+      "code": 0,
+      "signal": null,
+      "atMs": 1335.3948
+    },
+    "requestsCompleted": 113,
+    "protocolViolations": {
+      "count": 0,
+      "samples": []
+    },
+    "unsolicitedFrames": 0,
+    "notifications": 0,
+    "stderr": {
+      "bytes": 80,
+      "truncated": false,
+      "tail": "[hand] engine hand 0.1.0 (gladius 59c6d77, puppet 0f790be) platform windows-x64\n"
+    }
+  },
+  "verdict": {
+    "status": "pass",
+    "targetP95Ms": 250,
+    "failures": 0,
+    "reasons": [],
+    "releaseBlocked": true,
+    "releaseIdentity": {
+      "claimed": "release",
+      "verified": false,
+      "basis": "embedded-build-metadata",
+      "embedded": {
+        "sha": "8d1d41cf3469005a5e672344352a9205a0411b6b",
+        "dirty": false,
+        "profile": "release"
+      },
+      "reason": "the binary embeds commit 8d1d41cf3469005a5e672344352a9205a0411b6b and profile \"release\"; a self-report is not an attestation, so compare.mjs re-checks it against a recorded --release build receipt and artifact hash"
+    },
+    "releaseIdentityUnverified": true,
+    "warnings": [
+      "release identity is unverified (embedded-build-metadata): the binary embeds commit 8d1d41cf3469005a5e672344352a9205a0411b6b and profile \"release\"; a self-report is not an attestation, so compare.mjs re-checks it against a recorded --release build receipt and artifact hash"
+    ]
+  }
+}

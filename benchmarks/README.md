@@ -227,26 +227,32 @@ Current measured state:
 - Startup safety run: foreground `66414` before/after, cursor `(1246,1411)`
   before/after, fixture terminated, `windowAfterClose: false`.
 - `desktop-enumerate`: **measured** against the 1280×720 fixture, 10 warmups and
-  100/100 attempts. hand p50 `2.012 ms`, p95 `2.355 ms`, max `2.922 ms`; Puppet
-  p50 `1.769 ms`, p95 `1.993 ms`, max `2.399 ms`.
-- `desktop-capture`: **unsupported / not measured.** The one run that showed the
-  fixture safely was disturbed by external desktop activity during the measured
-  window (foreground and cursor changed), and later pre-show checks found the
-  desktop moving, so the launcher refused to show it. The first capture run was
-  also invalidated by the driver's old stale-frame rule (now fixed: a static
-  fixture legitimately reports `stale: true`). No valid 100-attempt capture
-  receipt exists; none is reported as passing.
+  100/100 attempts. hand p50 `1.646 ms`, p95 `2.045 ms`, max `2.295 ms`; Puppet
+  p50 `1.543 ms`, p95 `1.663 ms`, max `1.936 ms`.
+- `desktop-capture`: **measured**, 10 warmups and 100/100 attempts. hand p50
+  `215.051 ms`, p95 `228.575 ms`, max `234.03 ms`; Puppet p50 `209.88 ms`, p95
+  `215.62 ms`, max `220.19 ms`. Both sit under the 500 ms target and the earlier
+  blocker is gone: the driver now accepts a static fixture that legitimately
+  reports `stale: true`, and a show with an unmoved foreground and cursor is
+  enough for the launcher.
+- **The fixture title is part of the comparison.** `compare.mjs` requires one
+  `fingerprint.desktopTarget.hash` and one `scenario.paramsHash` across every
+  receipt in a desktop scenario, hand and Puppet together, and both fold in the
+  window title. The launcher defaults to a per-run title
+  `hand-bench-desktop-1280x720-<pid>`, which no pinned baseline shares, so a fresh
+  run lands in a new comparison group. Pass `--title hand-bench-desktop-1280x720-26036`
+  to match the Puppet baseline receipts. A hand receipt measured against any other
+  title still passes on its own numbers but drags its group to `comparable=false`
+  and the gate refuses.
 
 ## Verification limits
 
 - The benchmark-owned 1280×720 fixture proved the native capture setup live:
   image/source `1280×720`, scale 1, PrintWindow backend, `content` blank check,
   matching window identity, `MODE_B_NOTE`, `foregroundUnchanged: true` and
-  `cursorUnchanged: true`. A full 100-attempt `desktop-capture` measurement is
-  **not available**: external desktop activity changed foreground/cursor during
-  the only safe show, and later pre-show checks refused to display the fixture.
-  The earlier 420×320 `tests/desktop_fixture` remains private-desktop-only and does
-  not exercise `desktop_screenshot`.
+  `cursorUnchanged: true`, and full 100-attempt `desktop-capture` receipts now
+  exist for hand and Puppet. The earlier 420×320 `tests/desktop_fixture` remains
+  private-desktop-only and does not exercise `desktop_screenshot`.
 - Browser launch verification trusts the product's own backend log plus the
   bound `GLADIUS_CHROMIUM`; the driver does not inspect the OS process tree.
 - `fixtures/SHA256SUMS` is a local pin, not a signed external root.
@@ -254,15 +260,18 @@ Current measured state:
   Untracked source files are not part of that hash; a build that depends on them
   is only bound if they are added to the tree first.
 - Build type is a path claim. The local build route and baseline pins are
-  evidence, not signatures. The first hand release-build attempt was rejected
-  because tracked source changed during the build. A second attempt at HEAD
-  `eb75149a` (dirty) succeeded; its artifact was relocated to the durable
-  gitignored path `benchmarks/receipts/builds/artifacts/` and the measured
-  release receipts verify as `local-release-build`. A later recorder rerun failed
-  to compile (`src/server.rs` E0061) and correctly wrote a failed receipt.
+  evidence, not signatures. The current receipts were measured against the binary
+  built at HEAD `8d1d41c` from a clean tree; that build receipt re-hashes to
+  `benchmarks/receipts/builds/artifacts/hand-8d1d41cf-20261118T055014405Z-hand.exe`
+  (`sha256:82440a7e…`), which is the `release` binary staged into the npm tarball.
+  Earlier attempts stay on the record: one was rejected because tracked source
+  changed during the build, one at HEAD `eb75149a` (dirty) succeeded and was
+  relocated, and a later recorder rerun failed to compile (`src/server.rs` E0061)
+  and correctly wrote a failed receipt.
 - Baseline Gladius/Puppet verify from `baseline/pins.json` because their measured
-  binary hashes match the captured executable hashes. The release gate now fails
-  only for `desktop-capture`, which has no valid 100-attempt receipt.
+  binary hashes match the captured executable hashes. All four scenarios pass the
+  strict gate: hand's receipts verify as `local-release-build` against the recorded
+  artifact, and the desktop groups compare against the Puppet baselines.
 
 ## Tests
 
