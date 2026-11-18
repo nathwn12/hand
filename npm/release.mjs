@@ -31,13 +31,18 @@ function step(name, fn) {
 }
 
 // 1. Preflight: the release comes from main, and main is what the registry will see.
-const branch = step('preflight', () => run('git', ['rev-parse', '--abbrev-ref', 'HEAD']));
-if (branch !== 'main') fail('preflight', `branch is ${branch}, not main`);
-const dirty = step('preflight', () => run('git', ['status', '--porcelain']));
-if (dirty) fail('preflight', `working tree is dirty:\n${dirty}`);
+//    --ci skips the branch and cleanliness checks, because a workflow runs on main
+//    by definition and checks out a merge ref; the identity check still runs.
+const ci = process.argv.includes('--ci');
 const head = step('preflight', () => run('git', ['rev-parse', 'HEAD']));
-const origin = step('preflight', () => run('git', ['rev-parse', 'origin/main']));
-if (head !== origin) fail('preflight', `HEAD ${head.slice(0, 8)} is not origin/main ${origin.slice(0, 8)}`);
+if (!ci) {
+  const branch = step('preflight', () => run('git', ['rev-parse', '--abbrev-ref', 'HEAD']));
+  if (branch !== 'main') fail('preflight', `branch is ${branch}, not main`);
+  const dirty = step('preflight', () => run('git', ['status', '--porcelain']));
+  if (dirty) fail('preflight', `working tree is dirty:\n${dirty}`);
+  const origin = step('preflight', () => run('git', ['rev-parse', 'origin/main']));
+  if (head !== origin) fail('preflight', `HEAD ${head.slice(0, 8)} is not origin/main ${origin.slice(0, 8)}`);
+}
 
 const pkg = JSON.parse(readFileSync(join(here, 'package.json'), 'utf8'));
 const cargo = readFileSync(join(repo, 'Cargo.toml'), 'utf8');
@@ -100,7 +105,9 @@ console.log(`check: ${tarballName} ${pkg.version} ${head.slice(0, 8)} tools=${ha
 if (publish) {
   step('whoami', () => run('npm', ['whoami'], { cwd: here }));
   console.log('publish: npm publish --access public (a passkey URL may appear)');
-  step('publish', () => execFileSync('npm', ['publish', '--access', 'public'], { cwd: here, stdio: ['inherit', 'inherit', 'inherit'] }));
+  const publishArgs = ['publish', '--access', 'public'];
+  if (ci) publishArgs.push('--provenance');
+  step('publish', () => execFileSync('npm', publishArgs, { cwd: here, stdio: ['inherit', 'inherit', 'inherit'] }));
   const live = step('registry', () => run('npm', ['view', `${pkg.name}@${pkg.version}`, 'version'], { cwd: here }));
   if (live !== pkg.version) fail('registry', `registry reports ${live}, manifest says ${pkg.version}`);
   console.log(`published: ${pkg.name}@${live}`);
