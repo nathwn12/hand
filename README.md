@@ -6,14 +6,13 @@
 
 ## Install
 
-hand is not on npm yet. Today the route is a build from source:
+The published package is the official route. No compiler, no build tree:
 
 ```powershell
-cargo build --release
-.\target\release\hand.exe doctor    # build, pinned engines, browser path; changes nothing
+npx -y hand-mcp@0.1.0 --version
 ```
 
-Point your MCP client at the built binary — on your `PATH`, or by its absolute path — and restart it:
+Point your MCP client at the package:
 
 ```jsonc
 {
@@ -21,16 +20,25 @@ Point your MCP client at the built binary — on your `PATH`, or by its absolute
     "servers": {
       "hand": {
         "type": "local",
-        "command": ["hand", "mcp"]
+        "command": ["cmd", "/c", "npx", "-y", "hand-mcp@0.1.0"]
       }
     }
   }
 }
 ```
 
-The client spawns `hand` and speaks newline-delimited JSON-RPC 2.0 on stdio. stdout carries protocol frames only; diagnostics go to stderr.
+The client spawns npx, which runs the bundled binary and speaks newline-delimited JSON-RPC 2.0 on stdio. stdout carries protocol frames only; diagnostics go to stderr.
 
-`node scripts/verify-install.mjs` proves the installed bytes are the commit you built; `--loaded` proves a process is actually serving that file.
+From source, for development:
+
+```powershell
+cargo build --release
+.\target\release\hand.exe doctor    # build, pinned engines, browser path; changes nothing
+```
+
+Point the client at `.\target\release\hand.exe mcp` (or `hand` on PATH) and restart it.
+
+`node scripts/verify-install.mjs` proves the installed bytes are the commit you built; `--loaded` proves a process is actually serving that file. `node npm/release.mjs --check` proves the packaged artifact from its own bytes before anything is published.
 
 ## Use it
 
@@ -78,7 +86,7 @@ The live browser test starts a loopback fixture and drives inspect, act and veri
 
 Three commits in this history carried the local harness seed: `a0bdbe5`, `3295432` and `f1013fa`. They remain reachable objects. Leaving them was deliberate: they contain no secret, and a copy of the seed is kept in the harness archive.
 
-That decision expires on publication. If this repository becomes public, or the npm gate passes, the history must be dealt with before the release goes out.
+The repository is public and the package is published with that history. The seed files stopped being tracked at `f08da64`; the three earlier commits remain reachable and contain no secret.
 
 ## Links
 
