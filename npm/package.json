@@ -1,0 +1,34 @@
+{
+  "name": "hand-mcp",
+  "version": "0.1.0",
+  "description": "One MCP server for the headless browser and the Windows desktop: the Gladius and Puppet engines under one stdio connection",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nathwn12/hand"
+  },
+  "homepage": "https://github.com/nathwn12/hand",
+  "engines": {
+    "node": ">=22.14.0"
+  },
+  "os": [
+    "win32"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "bin": {
+    "hand-mcp": "./bin/hand-mcp.js"
+  },
+  "scripts": {
+    "prepack": "node ./stage.mjs",
+    "preinstall": "node -e \"if(process.env.npm_config_global==='true'){console.error('hand-mcp: global install refused — use npx hand-mcp@0.1.0');process.exit(1)}\""
+  },
+  "files": [
+    "bin/",
+    "hand.exe",
+    "LICENSE",
+    "README.md"
+  ]
+}
