@@ -76,6 +76,10 @@ The live browser test starts a loopback fixture and drives inspect, act and veri
 
 **Experimental** — pre-release; interfaces may change.
 
+Three commits in this history carried the local harness seed: `a0bdbe5`, `3295432` and `f1013fa`. They remain reachable objects. Leaving them was deliberate: they contain no secret, and a copy of the seed is kept in the harness archive.
+
+That decision expires on publication. If this repository becomes public, or the npm gate passes, the history must be dealt with before the release goes out.
+
 ## Links
 
 - [Issues](https://github.com/nathwn12/hand/issues)
