@@ -19,13 +19,13 @@ not to be claimed.
 | Capability | Evidence |
 |---|---|
 | One executable, one stdio MCP connection | `tests/discovery.rs` (7 tests): initialize, ping, tools/list, tools/call, server/discover, version gate |
-| Both catalogs plus hand's own tools, exact legacy bodies | `catalog_is_the_floor_plus_hand_additions`, `tool_bodies_are_engine_bodies_under_the_prefix`; independent `baseline/scripts/compare-catalog.mjs` PASS: 32/32 legacy tools compared, 2 extras (`browser_context`, `browser_wheel`). The live catalog is **34** tools: the 32-name compatibility floor plus those two, which `baseline/hand-catalog.json` records under `live` |
+| Both catalogs plus hand's own tools, exact legacy bodies | `catalog_is_the_floor_plus_hand_additions`, `tool_bodies_are_engine_bodies_under_the_prefix`; independent `baseline/scripts/compare-catalog.mjs` PASS: 32/32 legacy tools compared, 3 extras (`browser_context`, `browser_wheel`, `browser_drag`). The live catalog is **35** tools: the 32-name compatibility floor plus those two, which `baseline/hand-catalog.json` records under `live` |
 | Isolated, named browser contexts over the real MCP route | `tests/context_wire.rs`: published schema; two contexts with separate cookie jars; legacy page and legacy tab space untouched; `targets select` refuses a context page; typed errors; shutdown disposes only hand's contexts (two clients attached to one external engine, the other's context, page and cookie survive) |
 | Browser backend identity and availability | `initialize_identifies_version_platform_and_both_engines`: `gladius` pin, `puppet` pin, platform, counts, instructions |
 | Live headless browser inspect → act → verify | `tests/browser_live.rs`: loopback fixture; navigate, AX snapshot, click by `@eN`, DOM effect proven by evaluate, type into a labelled field and read back |
 | Deterministic browser screenshot | same test: `deterministic:true`, PNG > 1000 bytes, checksum present |
 | Navigation invalidates refs; stale ref refused | same test: old ref after navigation returns typed `stale_ref` (prose names staleness), engine stays healthy |
-| Wheel with read-back | `tests/pointer_frames.rs`: a 400 px wheel scrolls (`scrollY` 400) and the reply reports the measured offset, `moved:false` over a page that cannot scroll |
+| Wheel with read-back, trusted drag | `tests/pointer_frames.rs`: a 400 px wheel scrolls (`scrollY` 400) and the reply reports the measured offset, `moved:false` over a page that cannot scroll; a drag reorders the DOM with `isTrusted:true` pointer events (no synthetic DragEvent) and dispatches one positioning move, press, the moves and the release |
 | Desktop window enumeration | `tests/desktop_live.rs`: real `EnumWindows` rows with hwnd, pid, exe, rects, dpi, flags |
 | Desktop semantic inspection of a background window | same test: `desktop_elements` on a real non-foreground window, backend named, `rect_space: "screen"`, explicit empty/UIA state |
 | Desktop typed missing-target refusal | same test: unknown `titleContains` → tool error containing `target_gone`/`bad_target` |
@@ -67,7 +67,7 @@ These are not implemented, not exercised, or not safe to claim from this slice.
   kill of hand is not a cleanup path for an attached engine.
 - Same-origin/OOPIF frame-scoped acting beyond the engine's existing `frame`
   parameters: no new frame capability was added or tested here.
-- Double/right-click, drag/drop, downloads.
+- Double/right-click, downloads.
 - Ordered form batches with per-step partial failure reporting.
 - Extended navigation result with observed HTTP status and a versioned
   interface (the legacy `navigate` result is unchanged).
@@ -102,7 +102,7 @@ existing target takes precedence over the hidden-launch request.
 
 ### Lifecycle and distribution
 
-- `oc-hand` OpenCode wiring: live at `C:\Users\nathan\.local\bin\hand.exe`, 34
+- `oc-hand` OpenCode wiring: live at `C:\Users\nathan\.local\bin\hand.exe`, 35
   tools. Private remote `github.com/nathwn12/hand`. No npm package and nothing
   published; the npm name `hand-mcp` is reserved by intent only.
 - Product and executable are `hand`; the repo, crate and binary were renamed

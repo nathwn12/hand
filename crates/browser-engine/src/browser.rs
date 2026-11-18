@@ -1074,6 +1074,65 @@ impl Browser {
         .map(|_| ())
     }
 
+    /// Trusted main-frame drag between two viewport CSS points, entirely in
+    /// `Input.dispatchMouseEvent`: press at `from`, `steps` interpolated
+    /// `mouseMoved` events with `buttons: 1` (the first one exactly at
+    /// `from`, which is what starts a drag in Chromium), then release at
+    /// `to`. Every event is real trusted input, so a page's pointer handlers
+    /// and the engine's own HTML5 drag-and-drop machinery both see it.
+    /// Returns the number of CDP events dispatched (2 + steps), so a receipt
+    /// can prove the sequence instead of assuming it.
+    pub async fn mouse_drag(
+        &self,
+        from: (f64, f64),
+        to: (f64, f64),
+        steps: usize,
+    ) -> Result<usize, String> {
+        let steps = steps.clamp(2, 64);
+        let (x0, y0) = from;
+        let (x1, y1) = to;
+        // Positioning move at the source BEFORE the press. Measured: the
+        // browser only routes pointer input into a cross-process (OOPIF) child
+        // renderer after a move at that position, and a drag that starts inside
+        // an out-of-process frame otherwise never reaches it.
+        self.command(
+            "Input.dispatchMouseEvent",
+            json!({"type": "mouseMoved", "x": x0, "y": y0}),
+            true,
+        )
+        .await?;
+        self.command(
+            "Input.dispatchMouseEvent",
+            json!({"type": "mousePressed", "x": x0, "y": y0,
+                   "button": "left", "buttons": 1, "clickCount": 1}),
+            true,
+        )
+        .await?;
+        let mut sent = 2usize;
+        for i in 0..steps {
+            // Step 0 is the press point itself; the rest walk to `to`.
+            let t = if steps <= 1 { 1.0 } else { i as f64 / (steps - 1) as f64 };
+            let x = x0 + (x1 - x0) * t;
+            let y = y0 + (y1 - y0) * t;
+            self.command(
+                "Input.dispatchMouseEvent",
+                json!({"type": "mouseMoved", "x": x, "y": y,
+                       "button": "left", "buttons": 1}),
+                true,
+            )
+            .await?;
+            sent += 1;
+        }
+        self.command(
+            "Input.dispatchMouseEvent",
+            json!({"type": "mouseReleased", "x": x1, "y": y1,
+                   "button": "left", "buttons": 0, "clickCount": 1}),
+            true,
+        )
+        .await?;
+        Ok(sent + 1)
+    }
+
     pub async fn mouse_click(&self, x: f64, y: f64, hover_first: bool) -> Result<(), String> {
         if hover_first {
             self.command(

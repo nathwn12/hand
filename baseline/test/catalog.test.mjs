@@ -83,13 +83,13 @@ test("hand-catalog.json is exactly what the generator derives, not a hand edit",
   const derived = buildFromDisk({ root: ROOT }).hand;
   assert.deepEqual(withoutLive(handCatalog), derived);
   assert.equal(handCatalog.tools.length, 32);
-  assert.deepEqual(handCatalog.counts, { total: 32, browser: 25, desktop: 7, live: 34 });
+  assert.deepEqual(handCatalog.counts, { total: 32, browser: 25, desktop: 7, live: 35 });
 });
 
 test("the live block records the server's own tools/list beside the 32-name floor", () => {
   const live = handCatalog.live;
   // The count the docs quote and the block itself must agree three ways.
-  assert.equal(live.toolCount, 34);
+  assert.equal(live.toolCount, 35);
   assert.equal(live.toolCount, live.names.length);
   assert.equal(handCatalog.counts.live, live.toolCount);
   assert.equal(new Set(live.names).size, live.names.length, "live names are unique");
@@ -101,7 +101,7 @@ test("the live block records the server's own tools/list beside the 32-name floo
 
   // The additions hand makes on top, named in README.md and
   // docs/CAPABILITIES.md, are exactly what the server publishes above the floor.
-  assert.deepEqual(live.extra, ["browser_context", "browser_wheel"]);
+  assert.deepEqual(live.extra, ["browser_context", "browser_drag", "browser_wheel"]);
 
   // A capture is provenance, not a log: no timestamp, no environment, no paths
   // beyond the executable itself.
@@ -132,7 +132,7 @@ test("a live block that contradicts the floor is rejected, so the check is not v
   assert.deepEqual(stamped, ["live-capture-unexpected-field"]);
 
   const counted = JSON.parse(JSON.stringify(handCatalog));
-  counted.live.toolCount = 35;
+  counted.live.toolCount = 34;
   const miscounted = validateLive(counted).map((issue) => issue.code);
   assert.ok(miscounted.includes("live-count-mismatch"), miscounted.join(", "));
   assert.ok(miscounted.includes("live-count-not-in-counts"), miscounted.join(", "));

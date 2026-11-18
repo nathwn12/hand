@@ -362,10 +362,25 @@ pub fn list() -> Value {
                  "maxDiffRatio": {"type": "number"}, "fullPage": {"type": "boolean"}},
              "required": ["ok", "action"], "additionalProperties": false},
           "annotations": {"readOnlyHint": false, "destructiveHint": true, "idempotentHint": false, "openWorldHint": false}}));
-        // Pointer completeness: a wheel is a primitive of its own, so the
-        // cursor can be moved and the document scrolled without a second
-        // pointer tool standing in for it.
-        tools.insert(at + 3, json!({"name": "wheel", "title": "Wheel",
+        // Pointer completeness: a drag and a wheel are distinct primitives, so
+        // they are distinct tools.
+        tools.insert(at + 3, json!({"name": "drag", "title": "Drag",
+          "description": "Drag from one element (or point) to another with real trusted input: one positioning Input.dispatchMouseEvent mouseMoved at the source, one mousePressed there, `steps` interpolated mouseMoved events with buttons:1, then mouseReleased at the target. The opening move is what routes pointer input to the renderer that owns the source (a cross-process frame receives nothing without it - measured), and the move at the source is also what starts a drag. from/to are a CSS selector (first match), an @eN ref from snapshot, or an AX selector (role=/name=/text=/label=); fromPoint/toPoint {x,y} in viewport CSS px stand in for an element on either side, so a drag between bare coordinates needs no DOM at all. Both endpoints run the same visibility/occlusion preflight click uses: a hidden or occluded endpoint is a typed not_actionable refusal and NOTHING is dispatched. Every event is trusted, so the engine's own HTML5 drag-and-drop machinery and the page's pointer handlers both fire - no synthetic DragEvent, no DataTransfer construction, no .value writes. steps (default 8, 2-64) splits the path into that many move events. Reply: the two points, the events dispatched and the step count. frame=<CDP frameId> resolves from/to inside that iframe (CSS or AX selectors; refs are main-frame only) and the dispatch point is mapped to main-viewport coordinates.",
+          "inputSchema": {"type": "object", "properties": {
+              "from": {"type": "string"}, "to": {"type": "string"},
+              "fromPoint": {"type": "object", "properties": {"x": {"type": "number"}, "y": {"type": "number"}}, "required": ["x", "y"], "additionalProperties": false},
+              "toPoint": {"type": "object", "properties": {"x": {"type": "number"}, "y": {"type": "number"}}, "required": ["x", "y"], "additionalProperties": false},
+              "steps": {"type": "integer", "minimum": 2, "maximum": 64, "default": 8},
+              "frame": {"type": "string"}},
+              "additionalProperties": false},
+          "outputSchema": {"type": "object",
+             "properties": {"ok": {"type": "boolean"},
+                 "from": {"type": "object"}, "to": {"type": "object"},
+                 "events": {"type": "integer", "minimum": 0},
+                 "steps": {"type": "integer", "minimum": 0}},
+             "required": ["ok", "from", "to", "events", "steps"], "additionalProperties": false},
+          "annotations": {"readOnlyHint": false, "destructiveHint": true, "idempotentHint": false, "openWorldHint": true}}));
+        tools.insert(at + 4, json!({"name": "wheel", "title": "Wheel",
           "description": "Scroll with real trusted input: ONE Input.dispatchMouseEvent of type mouseWheel at (x,y) - viewport CSS px, default the viewport centre - carrying deltaX/deltaY in pixels. The page's own scroll machinery runs (smooth scrolling, scroll listeners, nested scroll containers, whatever the page uses), so this is not window.scrollBy and not a synthetic WheelEvent. The reply reads scrollX/scrollY back after a bounded settle and reports them with `moved`, so 'it scrolled' is measured rather than assumed: a delta aimed at an element that cannot scroll reports moved:false and the same offsets, never a false success. Coordinates are main-viewport CSS px; pass them from browser_layout when a specific scroller must receive the wheel.",
           "inputSchema": {"type": "object", "properties": {
               "deltaY": {"type": "number"}, "deltaX": {"type": "number"},
@@ -956,6 +971,78 @@ pub async fn call(name: &str, args: &Value, browser: &Browser) -> Value {
                 }
             };
             tool_wheel(browser, delta_x, delta_y, point).await
+        }
+
+        "drag" => {
+            if let Err(e) = check_unknown(
+                "drag",
+                args,
+                &["from", "to", "fromPoint", "toPoint", "steps", "frame"],
+            ) {
+                return e.envelope();
+            }
+            let steps = match args.get("steps") {
+                None => 8usize,
+                Some(v) => match v.as_u64() {
+                    Some(n) if (2..=64).contains(&n) => n as usize,
+                    _ => {
+                        return ToolErr::typed(
+                            "drag: 'steps' must be an integer 2-64".to_string(),
+                            json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "drag", "arg": "steps"}),
+                        )
+                        .envelope()
+                    }
+                },
+            };
+            let point = |key: &str| -> Result<Option<(f64, f64)>, ToolErr> {
+                match args.get(key) {
+                    None => Ok(None),
+                    Some(v) => match (
+                        v.get("x").and_then(|x| x.as_f64()),
+                        v.get("y").and_then(|y| y.as_f64()),
+                    ) {
+                        (Some(x), Some(y)) => Ok(Some((x, y))),
+                        _ => Err(ToolErr::typed(
+                            format!("drag: '{key}' needs numeric x and y"),
+                            json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "drag", "arg": key}),
+                        )),
+                    },
+                }
+            };
+            let from_point = match point("fromPoint") {
+                Ok(p) => p,
+                Err(e) => return e.envelope(),
+            };
+            let to_point = match point("toPoint") {
+                Ok(p) => p,
+                Err(e) => return e.envelope(),
+            };
+            let from = args.get("from").and_then(|v| v.as_str());
+            let to = args.get("to").and_then(|v| v.as_str());
+            let frame = args.get("frame").and_then(|v| v.as_str());
+            // Each endpoint needs exactly one addressing form; neither is a
+            // typed refusal because a drag with no source or no target is not
+            // a smaller drag, it is a missing instruction.
+            let endpoint = |name: &str, el: Option<&str>, pt: Option<(f64, f64)>| {
+                match (el, pt) {
+                    (Some(_), Some(_)) => Err(ToolErr::typed(
+                        format!("drag: '{name}' and '{name}Point' are two addresses for one endpoint; pass one"),
+                        json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "drag", "arg": name}),
+                    )),
+                    (None, None) => Err(ToolErr::typed(
+                        format!("drag: missing '{name}' (an element) or '{name}Point' (x/y)"),
+                        json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::MissingArg.as_str(), "tool": "drag", "arg": name}),
+                    )),
+                    _ => Ok(()),
+                }
+            };
+            if let Err(e) = endpoint("from", from, from_point) {
+                return e.envelope();
+            }
+            if let Err(e) = endpoint("to", to, to_point) {
+                return e.envelope();
+            }
+            tool_drag(browser, from, to, from_point, to_point, steps, frame).await
         }
 
         "type" => {
@@ -4744,6 +4831,110 @@ async fn submit_enter(browser: &Browser) -> Result<(), String> {
     Ok(())
 }
 
+/// Preflight for a DRAG endpoint: the same liveness, visibility, disabled,
+/// box and occlusion checks a click runs, but it NEVER scrolls. A drag has two
+/// endpoints in one viewport, and scrolling one into view moves the other, so
+/// an endpoint that is off screen is a typed refusal that says to bring it on
+/// screen first - never a silent scroll that makes the pair disagree.
+fn drag_preflight_fn() -> &'static str {
+    r#"function() { const el = this; if (!el || !el.isConnected) return 'GLADIUS_NOTFOUND'; const cs = getComputedStyle(el); if (cs.display === 'none' || cs.visibility === 'hidden' || cs.visibility === 'collapse') return 'GLADIUS_HIDDEN'; if (el.disabled) return 'GLADIUS_DISABLED'; const r = el.getBoundingClientRect(); if (!r || r.width === 0 || r.height === 0) return 'GLADIUS_HIDDEN'; const cx = r.left + r.width / 2, cy = r.top + r.height / 2; if (cx < 0 || cy < 0 || cx > window.innerWidth || cy > window.innerHeight) return 'GLADIUS_OFFSCREEN'; let hit = null; try { const root = el.getRootNode ? el.getRootNode() : document; hit = (root.elementFromPoint || document.elementFromPoint).call(root, cx, cy); } catch (e) { return 'GLADIUS_OCCLUDED'; } if (!hit || (hit !== el && !el.contains(hit))) return 'GLADIUS_OCCLUDED'; return 'GLADIUS_POINT:' + JSON.stringify({x: cx, y: cy}); }"#
+}
+
+/// The same drag preflight, by CSS selector, for the main realm and a frame
+/// realm (the element is looked up in the realm the expression runs in).
+fn drag_preflight_sel(sel: &str) -> String {
+    format!(
+        "(() => {{ const el = document.querySelector({sel}); if (!el) return 'GLADIUS_NOTFOUND'; const cs = getComputedStyle(el); if (cs.display === 'none' || cs.visibility === 'hidden' || cs.visibility === 'collapse') return 'GLADIUS_HIDDEN'; if (el.disabled) return 'GLADIUS_DISABLED'; const r = el.getBoundingClientRect(); if (!r || r.width === 0 || r.height === 0) return 'GLADIUS_HIDDEN'; const cx = r.left + r.width / 2, cy = r.top + r.height / 2; if (cx < 0 || cy < 0 || cx > window.innerWidth || cy > window.innerHeight) return 'GLADIUS_OFFSCREEN'; let hit = null; try {{ hit = document.elementFromPoint(cx, cy); }} catch (e) {{ return 'GLADIUS_OCCLUDED'; }} if (!hit || (hit !== el && !el.contains(hit))) return 'GLADIUS_OCCLUDED'; return 'GLADIUS_POINT:' + JSON.stringify({{x: cx, y: cy}}); }})()"
+    )
+}
+
+/// Turn a click-preflight result into a viewport point, or the same typed
+/// refusal `click` would give. `<option>` has no pointer box, so it cannot be
+/// an endpoint of a drag: that is a typed refusal, never a guess.
+fn preflight_point(v: &Value, tool: &str, element: &str) -> Result<(f64, f64), ToolErr> {
+    match v.as_str() {
+        Some(s) if s.starts_with("GLADIUS_POINT:") => {
+            let pt: Value = serde_json::from_str(&s["GLADIUS_POINT:".len()..])
+                .map_err(|_| ToolErr::fallback(format!("{tool}: no layout point")))?;
+            Ok((
+                pt.get("x").and_then(|n| n.as_f64()).unwrap_or(0.0),
+                pt.get("y").and_then(|n| n.as_f64()).unwrap_or(0.0),
+            ))
+        }
+        Some(s) if s.starts_with("GLADIUS_FALLBACK") => Err(ToolErr::typed(
+            format!("{tool}: element has no pointer box (a native <option> cannot be dragged): {element}"),
+            json!({"code": ToolCode::NotActionable.as_str(), "reason": ToolReason::Hidden.as_str(), "tool": tool, "element": element}),
+        )),
+        Some("GLADIUS_NOTFOUND") => Err(ToolErr::typed(
+            format!("{tool}: element not found: {element}"),
+            json!({"code": ToolCode::InvalidTarget.as_str(), "reason": ToolReason::NotFound.as_str(), "tool": tool, "element": element}),
+        )),
+        Some("GLADIUS_DISABLED") => Err(ToolErr::typed(
+            format!("{tool}: element is disabled: {element}"),
+            json!({"code": ToolCode::NotActionable.as_str(), "reason": ToolReason::Disabled.as_str(), "tool": tool, "element": element}),
+        )),
+        Some("GLADIUS_OCCLUDED") => Err(ToolErr::typed(
+            format!("{tool}: element is occluded by another element (no {tool} dispatched): {element}"),
+            json!({"code": ToolCode::NotActionable.as_str(), "reason": ToolReason::Occluded.as_str(), "tool": tool, "element": element}),
+        )),
+        Some("GLADIUS_OFFSCREEN") => Err(ToolErr::typed(
+            format!("{tool}: element is not inside the viewport; scroll it into view first (browser_wheel, or evaluate scrollIntoView) - a drag never scrolls, because scrolling one endpoint moves the other: {element}"),
+            json!({"code": ToolCode::NotActionable.as_str(), "reason": ToolReason::Hidden.as_str(), "tool": tool, "element": element, "offscreen": true}),
+        )),
+        _ => Err(ToolErr::typed(
+            format!("{tool}: element not visible or not actionable: {element}"),
+            json!({"code": ToolCode::NotActionable.as_str(), "reason": ToolReason::Hidden.as_str(), "tool": tool, "element": element}),
+        )),
+    }
+}
+
+/// Resolve one drag endpoint to a MAIN-VIEWPORT point, running the same
+/// visibility/occlusion preflight `click` runs: an endpoint a click could not
+/// land on is a typed refusal here too, and nothing is dispatched. Ref, AX
+/// selector and CSS selector are all accepted; with `fid` the endpoint is
+/// resolved inside that frame's realm and its point mapped through the owner
+/// chain exactly like a frame click.
+async fn drag_point(
+    browser: &Browser,
+    tool: &str,
+    element: &str,
+    fid: Option<&str>,
+) -> Result<(f64, f64), ToolErr> {
+    if let Some(sel) = ax_sel_parse(tool, element)? {
+        let hit = ax_resolve(browser, tool, &sel, element, fid).await?;
+        let oid = ax_object(browser, tool, element, &hit).await?;
+        let v = call_on_object(browser, &oid, drag_preflight_fn(), vec![]).await?;
+        let (lx, ly) = preflight_point(&v, tool, element)?;
+        return match fid {
+            Some(f) => frame_owner_hit_ok(browser, tool, element, f, lx, ly).await,
+            None => Ok((lx, ly)),
+        };
+    }
+    if let Some(f) = fid {
+        if parse_ref(element).is_some() {
+            return Err(ref_in_frame(tool, element, f));
+        }
+        let sel = serde_json::to_string(element).map_err(|e| ToolErr::fallback(e.to_string()))?;
+        let v = frame_realm_eval(browser, tool, f, &drag_preflight_sel(&sel)).await?;
+        let (lx, ly) = preflight_point(&v, tool, element)?;
+        return frame_owner_hit_ok(browser, tool, element, f, lx, ly).await;
+    }
+    if let Some(id) = parse_ref(element) {
+        let _at = guard_ref(browser, tool, element, &id).await?;
+        let v = match resolve_ref_object(browser, tool, &id).await? {
+            Some(oid) => call_on_object(browser, &oid, drag_preflight_fn(), vec![]).await?,
+            None => {
+                let (expr, _) = click_preflight_ref(&id);
+                browser.eval(&expr).await?
+            }
+        };
+        return preflight_point(&v, tool, element);
+    }
+    let sel = serde_json::to_string(element).map_err(|e| ToolErr::fallback(e.to_string()))?;
+    let v = browser.eval(&drag_preflight_sel(&sel)).await?;
+    preflight_point(&v, tool, element)
+}
+
 /// Refuse an explicit pointer point outside the live viewport: an event there
 /// lands on nothing, so accepting it would report a success that did nothing.
 async fn point_in_viewport(
@@ -4828,6 +5019,53 @@ async fn tool_wheel(
             "at": {"x": x, "y": y},
             "deltaX": dx,
             "deltaY": dy,
+        })
+        .to_string(),
+    ))
+}
+
+/// Drag: resolve both endpoints (with the click preflight's occlusion guard),
+/// then dispatch the trusted press/move/release sequence. Every event is
+/// `Input.dispatchMouseEvent`; no DOM event is synthesised and no `.value` or
+/// `DataTransfer` is touched.
+async fn tool_drag(
+    browser: &Browser,
+    from: Option<&str>,
+    to: Option<&str>,
+    from_point: Option<(f64, f64)>,
+    to_point: Option<(f64, f64)>,
+    steps: usize,
+    frame: Option<&str>,
+) -> Result<Value, ToolErr> {
+    let fid = frame_id_ok("drag", frame)?;
+    let from_pt = match from_point {
+        Some(p) => {
+            point_in_viewport(browser, "drag", "fromPoint", p.0, p.1).await?;
+            p
+        }
+        None => drag_point(browser, "drag", from.unwrap_or(""), fid.as_deref()).await?,
+    };
+    let to_pt = match to_point {
+        Some(p) => {
+            point_in_viewport(browser, "drag", "toPoint", p.0, p.1).await?;
+            p
+        }
+        None => drag_point(browser, "drag", to.unwrap_or(""), fid.as_deref()).await?,
+    };
+    let events = browser
+        .mouse_drag(from_pt, to_pt, steps)
+        .await
+        .map_err(ToolErr::from)?;
+    // Give the page's own handlers a turn before the caller reads the DOM:
+    // the drop logic runs in the release task, not in the CDP acknowledgement.
+    tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+    Ok(ok_text(
+        json!({
+            "ok": true,
+            "from": {"x": from_pt.0, "y": from_pt.1},
+            "to": {"x": to_pt.0, "y": to_pt.1},
+            "events": events,
+            "steps": steps,
         })
         .to_string(),
     ))

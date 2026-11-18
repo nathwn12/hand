@@ -147,3 +147,50 @@ fn wheel_scrolls_the_document_and_reports_it() {
     assert!(!is_error(&still), "{}", text_of(&still));
     assert_eq!(structured(&still)["moved"], json!(false));
 }
+
+/// The drag is a trusted pointer sequence (the page's own listener records
+/// `isTrusted: true`), and it reorders the DOM by real hit-testing, not by a
+/// synthetic DragEvent or a `.value`/array write.
+#[test]
+fn drag_reorders_with_trusted_pointer_events() {
+    let fx = Fixture::start();
+    let mut s = Session::spawn();
+    s.call("browser_navigate", json!({"url": format!("{}/pointer.html", fx.a)}));
+
+    let before = evaluate(
+        &mut s,
+        "[...document.querySelectorAll('#list > li')].map(l => l.id).join(',')",
+        None,
+    );
+    assert_eq!(before, json!("item1,item2,item3"));
+
+    let drag = s.call("browser_drag", json!({"from": "#item1", "to": "#item3", "steps": 8}));
+    assert!(!is_error(&drag), "{}", text_of(&drag));
+    let structured_drag = structured(&drag);
+    assert!(
+        structured_drag["events"].as_u64().unwrap_or(0) >= 3,
+        "a drag must dispatch press, moves and release: {structured_drag}"
+    );
+
+    let after = evaluate(
+        &mut s,
+        "[...document.querySelectorAll('#list > li')].map(l => l.id).join(',')",
+        None,
+    );
+    assert_ne!(after, before, "the drag must reorder the list");
+    assert_eq!(after, json!("item2,item3,item1"));
+
+    let ledger = evaluate(&mut s, "window.__ev", None);
+    assert_eq!(ledger["trustedDown"], json!(1), "the press must be trusted: {ledger}");
+    assert_eq!(ledger["trustedUp"], json!(1), "the release must be trusted: {ledger}");
+    assert_eq!(ledger["up"], json!(1));
+    assert!(
+        ledger["move"].as_u64().unwrap_or(0) >= 2,
+        "the path needs move events: {ledger}"
+    );
+    assert_eq!(
+        evaluate(&mut s, "document.getElementById('drag-out').textContent", None),
+        json!("Item 2,Item 3,Item 1"),
+        "the page's own drop handler must have run"
+    );
+}
