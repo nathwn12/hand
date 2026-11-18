@@ -238,7 +238,7 @@ async function main() {
   }
   product.executable = executableFingerprint.executable;
   product.version = executableFingerprint.version;
-  product.releaseIdentity = releaseIdentityFor(product.executable.path);
+  product.releaseIdentity = releaseIdentityFor(product.version);
   if (product.testFixture) {
     const scriptPath = resolve(product.args[0]);
     const script = await hashFile(scriptPath);
@@ -459,7 +459,7 @@ async function main() {
       if (product.releaseIdentity.claimed !== "release") {
         verdict.releaseBlocked = true;
         reasons.push(
-          `binary path claims ${product.releaseIdentity.claimed ?? "unknown"}, not a release build; measurement may stand but release is blocked`,
+          `binary embeds ${product.releaseIdentity.claimed ?? "no build profile"}, not a release build; measurement may stand but release is blocked`,
         );
       }
       if (product.releaseIdentity.verified !== true) {

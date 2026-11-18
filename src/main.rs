@@ -15,13 +15,7 @@ fn main() {
     let code = match args.first().map(String::as_str) {
         None | Some("mcp") => run_server(),
         Some("--version") | Some("-V") | Some("version") => {
-            let dirty = env!("HAND_GIT_DIRTY") == "1";
-            println!(
-                "hand {} ({}{})",
-                env!("CARGO_PKG_VERSION"),
-                env!("HAND_GIT_SHA"),
-                if dirty { "-dirty" } else { "" }
-            );
+            println!("{}", version_line());
             0
         }
         Some("doctor") => doctor(),
@@ -31,6 +25,21 @@ fn main() {
         }
     };
     std::process::exit(code);
+}
+
+/// The build identity, compiled in by `build.rs`: package version, commit and
+/// cargo profile. Nothing here reads the executable's path or mtime, so a copy
+/// at an arbitrary location (`%TEMP%\hand-copy.exe`) reports the same build the
+/// release directory does.
+fn version_line() -> String {
+    let dirty = env!("HAND_GIT_DIRTY") == "1";
+    format!(
+        "hand {} ({}{}; {})",
+        env!("CARGO_PKG_VERSION"),
+        env!("HAND_GIT_SHA"),
+        if dirty { "-dirty" } else { "" },
+        env!("HAND_BUILD_PROFILE")
+    )
 }
 
 /// Runtime teardown bound after `serve()` returns. Tokio's `Runtime::drop`
@@ -173,6 +182,28 @@ fn doctor() -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The published identity must be the compiled-in build, not a guess from
+    /// where the file happens to live. `unknown` is only acceptable for a
+    /// source tarball with no `.git`, which the tracked build never is here.
+    #[test]
+    fn version_line_carries_the_embedded_build_identity() {
+        let line = version_line();
+        assert!(line.starts_with(&format!("hand {}", env!("CARGO_PKG_VERSION"))), "{line}");
+        assert!(line.contains(env!("HAND_GIT_SHA")), "{line}");
+        assert!(line.contains(env!("HAND_BUILD_PROFILE")), "{line}");
+        if env!("HAND_GIT_SHA") != "unknown" {
+            assert!(!line.to_lowercase().contains("unknown"), "{line}");
+            assert!(
+                env!("HAND_GIT_SHA").len() == 40,
+                "a git build must stamp the full commit: {line}"
+            );
+        }
+        assert!(
+            matches!(env!("HAND_BUILD_PROFILE"), "release" | "debug"),
+            "cargo sets PROFILE for a build script: {line}"
+        );
+    }
 
     /// Doctor must report what the server publishes, not the engine's raw list:
     /// `browser_context` is hand's own tool and belongs in the browser count.

@@ -15,6 +15,7 @@ import { createHash } from "node:crypto";
 import { readFile, readdir } from "node:fs/promises";
 import { basename, join } from "node:path";
 
+import { parseBuildIdentity } from "./build.mjs";
 import { hashFile } from "./fingerprint.mjs";
 
 export const BUILD_RECEIPT_SCHEMA = "hand-mcp.benchmark.build-receipt/v1";
@@ -154,6 +155,31 @@ export async function verifyBuildReceipt({ build, receipt, currentBinarySha }) {
       verified: false,
       reason: `measured binary ${measured ?? "(missing)"} does not match build output ${build.output?.sha256 ?? "(missing)"}`,
     };
+  }
+  // The measured binary's own identity is compiled in, so it travels with the
+  // bytes instead of being inferred from a path. Require it to agree with the
+  // source commit the build receipt recorded: a stale artifact copied over a
+  // release path cannot borrow that path's identity.
+  const embedded = parseBuildIdentity(receipt.product?.version);
+  if (id === "hand") {
+    if (!embedded) {
+      return {
+        verified: false,
+        reason: `hand --version carries no embedded commit and profile: ${JSON.stringify(String(receipt.product?.version?.stdout ?? "").slice(0, 200))}`,
+      };
+    }
+    if (!build.source?.gitHead || !build.source.gitHead.startsWith(embedded.sha)) {
+      return {
+        verified: false,
+        reason: `the binary embeds commit ${embedded.sha} but the build receipt records ${build.source?.gitHead ?? "(missing)"}`,
+      };
+    }
+    if (embedded.profile !== "release") {
+      return {
+        verified: false,
+        reason: `the binary embeds profile ${JSON.stringify(embedded.profile)}, not release`,
+      };
+    }
   }
   if (currentBinarySha !== build.output.sha256) {
     return {

@@ -609,7 +609,7 @@ test("live sample sizes are enforced and a test fixture cannot masquerade as mea
   });
 });
 
-test("a debug-path measurement passes but marks releaseBlocked and unverified", async () => {
+test("a binary with no embedded identity passes but marks releaseBlocked and unverified", async () => {
   await withTemp(async (dir) => {
     const debugDir = join(dir, "debug");
     await mkdir(debugDir);
@@ -643,8 +643,15 @@ test("a debug-path measurement passes but marks releaseBlocked and unverified", 
     assert.equal(receipt.verdict.status, "pass");
     assert.equal(receipt.verdict.releaseBlocked, true);
     assert.equal(receipt.verdict.releaseIdentityUnverified, true);
-    assert.equal(receipt.product.releaseIdentity.claimed, "debug");
+    // node.exe lives in a directory named "debug", but its --version carries no
+    // commit or cargo profile. The directory name is not evidence.
+    assert.equal(receipt.product.releaseIdentity.claimed, null);
+    assert.equal(receipt.product.releaseIdentity.basis, "embedded-build-metadata");
     assert.equal(receipt.product.releaseIdentity.verified, false);
+    assert.ok(
+      receipt.verdict.reasons.some((reason) => /binary embeds no build profile/.test(reason)),
+      receipt.verdict.reasons.join(" | "),
+    );
     assert.ok(receipt.verdict.warnings.some((warning) => /release identity is unverified/.test(warning)));
   });
 });

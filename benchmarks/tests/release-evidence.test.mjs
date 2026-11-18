@@ -55,7 +55,26 @@ async function makeCrate(dir) {
     '[package]\nname = "hand-bench-sample"\nversion = "0.1.0"\nedition = "2021"\n\n[[bin]]\nname = "hand-bench-sample"\npath = "src/main.rs"\n',
     "utf8",
   );
-  await writeFile(join(crate, "src", "main.rs"), 'fn main() { println!("sample"); }\n', "utf8");
+  // The product contract under test: `--version` prints the commit and cargo
+  // profile compiled in, so the measured bytes carry their own identity.
+  await writeFile(
+    join(crate, "build.rs"),
+    [
+      "fn main() {",
+      "    let out = std::process::Command::new(\"git\").args([\"rev-parse\", \"HEAD\"]).output().expect(\"git\");",
+      "    let sha = String::from_utf8_lossy(&out.stdout).trim().to_string();",
+      "    println!(\"cargo:rustc-env=SAMPLE_SHA={sha}\");",
+      "    println!(\"cargo:rustc-env=SAMPLE_PROFILE={}\", std::env::var(\"PROFILE\").unwrap_or_default());",
+      "}",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+  await writeFile(
+    join(crate, "src", "main.rs"),
+    'fn main() { println!("sample 0.1.0 ({}; {})", env!("SAMPLE_SHA"), env!("SAMPLE_PROFILE")); }\n',
+    "utf8",
+  );
   await writeFile(join(crate, ".gitignore"), "target/\n", "utf8");
   git(crate, ["init", "-q"]);
   const lock = run("cargo", ["generate-lockfile", "--manifest-path", join(crate, "Cargo.toml")], crate);

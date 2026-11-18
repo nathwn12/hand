@@ -125,19 +125,39 @@ test("a complete browser comparison with release binaries passes its group", () 
   assert.deepEqual(result.products.sort(), ["gladius", "hand"]);
 });
 
-test("a path claim is informational; verified release evidence decides", () => {
-  const debugWithEvidence = browserGroup((hand) => {
-    hand.product.executable.path = "Q:\\bench\\hand\\target\\debug\\hand.exe";
+test("the executable path is not evidence; the embedded profile is a claim and verified release evidence decides", () => {
+  // A release-looking directory with no embedded identity claims nothing.
+  const pathOnly = browserGroup((hand) => {
+    hand.product.executable.path = "Q:\\bench\\hand\\target\\release\\hand.exe";
   });
-  assert.equal(debugWithEvidence.allPass, true, debugWithEvidence.differences.join("; "));
+  assert.equal(pathOnly.allPass, true, pathOnly.differences.join("; "));
   assert.equal(
-    debugWithEvidence.members.find((member) => member.product === "hand").buildConfiguration,
+    pathOnly.members.find((member) => member.product === "hand").buildConfiguration,
+    null,
+  );
+
+  // The compiled-in profile travels with the bytes, wherever they are copied.
+  const embedded = browserGroup((hand) => {
+    hand.product.executable.path = "Q:\\bench\\arbitrary\\hand-copy.exe";
+    hand.product.version.stdout = "hand 0.1.0 (abc1234; release)";
+  });
+  assert.equal(embedded.allPass, true, embedded.differences.join("; "));
+  assert.equal(
+    embedded.members.find((member) => member.product === "hand").buildConfiguration,
+    "release",
+  );
+
+  const embeddedDebug = browserGroup((hand) => {
+    hand.product.version.stdout = "hand 0.1.0 (abc1234; debug)";
+  });
+  assert.equal(
+    embeddedDebug.members.find((member) => member.product === "hand").buildConfiguration,
     "debug",
   );
 
   const debugWithoutEvidence = browserGroup(
     (hand) => {
-      hand.product.executable.path = "Q:\\bench\\hand\\target\\debug\\hand.exe";
+      hand.product.version.stdout = "hand 0.1.0 (abc1234; debug)";
     },
     () => {},
     { hand: { verified: false, reason: "no matching release build" } },

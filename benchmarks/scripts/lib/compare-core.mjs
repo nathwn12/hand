@@ -86,7 +86,7 @@ export function describeReceipt({ file, sha256, receipt, currentBinarySha, relea
       isFingerprint(executable?.sha256) && typeof currentBinarySha === "string"
         ? executable.sha256 === currentBinarySha
         : null,
-    buildConfiguration: buildConfiguration(executable?.path),
+    buildConfiguration: buildConfiguration(receipt.product?.version),
     releaseEvidenceVerified: releaseEvidence?.verified === true,
     releaseEvidenceKind: releaseEvidence?.kind ?? null,
     releaseEvidenceReference: releaseEvidence?.reference ?? null,
