@@ -226,11 +226,14 @@ pub fn screenshot_window(a: &ShotArgs) -> String {
     let mut cur0 = POINT { x: 0, y: 0 };
     let cur_before = unsafe {
         if GetCursorPos(&mut cur0) != 0 {
-            (cur0.x as i64, cur0.y as i64)
+            Some((cur0.x as i64, cur0.y as i64))
         } else {
-            (-1, -1)
+            None
         }
     };
+    // The pointer and the foreground are process-global: keep the raw samples
+    // and let `no_steal` attribute a delta (external input vs this process).
+    let evidence = crate::no_steal::Evidence::begin(fg_before, cur_before);
     // Target lock first: one window, resolved once, and KEPT as a lock so the
     // identity can be revalidated immediately before the capture (the handle
     // alone would let a recycled hwnd be captured as somebody else's window).
@@ -435,22 +438,16 @@ pub fn screenshot_window(a: &ShotArgs) -> String {
         cmap.insert("out".to_string(), Value::from(o));
     }
     // Invariant telemetry: a window capture resolves + PrintWindows the
-    // target and never activates or restores it.
-    let mut cur1 = POINT { x: 0, y: 0 };
-    let cur_after = unsafe {
-        if GetCursorPos(&mut cur1) != 0 {
-            (cur1.x as i64, cur1.y as i64)
-        } else {
-            (-1, -1)
-        }
-    };
-    cmap.insert(
-        "foregroundUnchanged".to_string(),
-        Value::from(unsafe { GetForegroundWindow() as i64 } == fg_before),
-    );
-    cmap.insert(
-        "cursorUnchanged".to_string(),
-        Value::from(cur_after == cur_before),
+    // target and never activates or restores it. The raw booleans stay; the
+    // attribution says whether a change came from the owner's input or from
+    // this process, and the import audit proves this binary cannot write the
+    // pointer or take the foreground.
+    let cur_after = crate::no_steal::Evidence::cursor_now();
+    evidence.finish(
+        unsafe { GetForegroundWindow() as i64 },
+        cur_after,
+        cap.hwnd,
+        &mut cmap,
     );
     let mime = if f == "png" {
         "image/png"
@@ -554,11 +551,12 @@ pub fn screenshot_desktop(a: &ShotArgs) -> String {
     let mut cur0 = POINT { x: 0, y: 0 };
     let cur_before = unsafe {
         if GetCursorPos(&mut cur0) != 0 {
-            (cur0.x as i64, cur0.y as i64)
+            Some((cur0.x as i64, cur0.y as i64))
         } else {
-            (-1, -1)
+            None
         }
     };
+    let evidence = crate::no_steal::Evidence::begin(fg_before, cur_before);
     let (vx, vy, vr, vb) = virtual_rect();
     let mons = display_monitors();
     let n_mon = mons.len() as i64;
@@ -826,23 +824,10 @@ pub fn screenshot_desktop(a: &ShotArgs) -> String {
     }
     cmap.insert("capture".to_string(), Value::from(capt));
     // Invariant telemetry: a desktop capture is pixels-only (BitBlt/DXGI),
-    // no activation and no pointer call anywhere on this path.
-    let mut cur1 = POINT { x: 0, y: 0 };
-    let cur_after = unsafe {
-        if GetCursorPos(&mut cur1) != 0 {
-            (cur1.x as i64, cur1.y as i64)
-        } else {
-            (-1, -1)
-        }
-    };
-    cmap.insert(
-        "foregroundUnchanged".to_string(),
-        Value::from(foreground_window() as i64 == fg_before),
-    );
-    cmap.insert(
-        "cursorUnchanged".to_string(),
-        Value::from(cur_after == cur_before),
-    );
+    // no activation and no pointer call anywhere on this path. The raw
+    // booleans stay and `no_steal` attributes a delta to external input.
+    let cur_after = crate::no_steal::Evidence::cursor_now();
+    evidence.finish(foreground_window() as i64, cur_after, 0, &mut cmap);
     cmap.insert("formula".to_string(), Value::from(FORMULA));
     let warnings = warnings_of(a.quality, q, &f);
     if !warnings.is_empty() {

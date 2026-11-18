@@ -1,14 +1,17 @@
 #!/usr/bin/env node
 // Controlled 1280x720 desktop fixture launcher and benchmark coordinator.
 //
-// Safety gate before any measurement: the fixture is shown with WS_EX_NOACTIVATE
-// and ShowWithoutActivation, and independent before/after samples of
-// GetForegroundWindow and GetCursorPos must match. If they move, the launcher
-// stops, terminates the fixture, reports unsupported and never runs a scenario.
+// The fixture is shown with WS_EX_NOACTIVATE and ShowWithoutActivation, after a
+// short wait for a quiet desktop so it does not cover an active window
+// unannounced. Desktop changes during measurement are attributed, not hidden: a
+// pointer or foreground delta with real input behind it is the owner's, a delta
+// with no input is unattributable, and the fixture taking the foreground always
+// fails. `GetLastInputInfo` supplies the input tick; the before/after samples
+// stay in the output.
 //
 // On success it runs desktop-enumerate and desktop-capture for hand and Puppet
 // against the fixture title, then terminates the fixture, confirms its window is
-// gone and checks the foreground/cursor again.
+// gone and classifies the final desktop state again.
 
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -33,6 +36,7 @@ function parse(argv) {
     out: RECEIPTS,
     product: null,
     scenario: null,
+    quietWaitMs: 5_000,
   };
   const errors = [];
   for (let index = 0; index < argv.length; index += 1) {
@@ -43,7 +47,11 @@ function parse(argv) {
     else if (arg === "--out") options.out = argv[++index];
     else if (arg === "--product") options.product = argv[++index];
     else if (arg === "--scenario") options.scenario = argv[++index];
-    else errors.push(`unknown argument: ${arg}`);
+    else if (arg === "--quiet-wait-ms") {
+      const value = Number(argv[++index]);
+      if (Number.isInteger(value) && value >= 0) options.quietWaitMs = value;
+      else errors.push("--quiet-wait-ms requires a non-negative integer");
+    } else errors.push(`unknown argument: ${arg}`);
   }
   if (!options.title) options.title = `hand-bench-desktop-1280x720-${process.pid}`;
   return { options, errors };
@@ -114,8 +122,59 @@ function readState(hwnd = 0) {
   return JSON.parse(result.stdout);
 }
 
-function samePointer(a, b) {
-  return a.foreground === b.foreground && a.cursorX === b.cursorX && a.cursorY === b.cursorY;
+function desktopChanged(before, after) {
+  return (
+    before.foreground !== after.foreground ||
+    before.cursorX !== after.cursorX ||
+    before.cursorY !== after.cursorY
+  );
+}
+
+/** A physical event advances `GetLastInputInfo`; a synthetic pointer write does not. */
+function inputAdvanced(before, after) {
+  return (
+    Number.isInteger(before.inputTick) &&
+    Number.isInteger(after.inputTick) &&
+    before.inputTick !== after.inputTick
+  );
+}
+
+/**
+ * Attribute a desktop change. The fixture never activates and the launcher owns
+ * no pointer API, so a change to another window, or a pointer delta with real
+ * input behind it, is the owner's. Only the fixture taking the foreground or a
+ * pointer delta with no input at all is unattributable.
+ */
+function classifyDesktopChange(before, after, fixtureHwnd) {
+  if (!desktopChanged(before, after)) return "same";
+  if (fixtureHwnd && after.foreground === fixtureHwnd && before.foreground !== fixtureHwnd) {
+    return "fixture-stole";
+  }
+  if (after.foreground !== before.foreground) return "external";
+  return inputAdvanced(before, after) ? "external" : "unexplained";
+}
+
+async function sleep(ms) {
+  await new Promise((resolveWait) => setTimeout(resolveWait, ms));
+}
+
+/**
+ * Wait for a quiet second before showing the fixture. The desktop can be in use;
+ * this only avoids covering an active window unannounced. It never hides a
+ * change during measurement, which the per-scenario checks attribute instead.
+ */
+async function waitForQuietDesktop(timeoutMs) {
+  const started = Date.now();
+  let previous = readState(0);
+  while (Date.now() - started < timeoutMs) {
+    await sleep(700);
+    const next = readState(0);
+    if (!desktopChanged(previous, next) && !inputAdvanced(previous, next)) {
+      return { ok: true, state: next, waitedMs: Date.now() - started };
+    }
+    previous = next;
+  }
+  return { ok: false, state: previous, waitedMs: Date.now() - started };
 }
 
 async function waitForReady(path, timeoutMs = 20_000) {
@@ -180,24 +239,12 @@ async function main() {
 
   const readyPath = join(CACHE_DIR, `ready-${process.pid}.json`);
   await rm(readyPath, { force: true });
-  const beforeFirst = readState(0);
-  await new Promise((resolveWait) => setTimeout(resolveWait, 1_000));
-  const before = readState(0);
-  if (!samePointer(beforeFirst, before)) {
-    process.stdout.write(
-      `${JSON.stringify(
-        {
-          status: "unsupported",
-          reason: "desktop foreground/cursor moved before the fixture was shown; not showing it while the desktop is active",
-          safety: { beforeFirst, before },
-          results: [],
-        },
-        null,
-        2,
-      )}\n`,
-    );
-    return 2;
-  }
+  const quiet = await waitForQuietDesktop(options.quietWaitMs);
+  const before = quiet.state;
+  // A short quiet wait is a courtesy, not a precondition: the fixture never
+  // activates, and every change during measurement is attributed. Proceeding
+  // on an active desktop is recorded, not hidden.
+  const quietDeferred = !quiet.ok;
   const child = spawn(compiled.exe, [readyPath, options.title], {
     windowsHide: true,
     stdio: "ignore",
@@ -205,7 +252,7 @@ async function main() {
 
   let fixture = null;
   const results = [];
-  let safety = { before, afterShow: null, afterMeasurements: null, afterClose: null };
+  let safety = { quiet, quietDeferred, before, afterShow: null, afterMeasurements: null, afterClose: null };
   let status = "measured";
   let reason = null;
   try {
@@ -230,15 +277,22 @@ async function main() {
       return 2;
     }
 
-    await new Promise((resolveWait) => setTimeout(resolveWait, 400));
+    await sleep(400);
     safety.afterShow = readState(fixture.hwnd);
-    const fixtureOwnStill =
-      fixture.foregroundBeforeShow === fixture.foregroundAfterShow &&
+    const showChange = classifyDesktopChange(before, safety.afterShow, fixture.hwnd);
+    const fixtureCursorSame =
       fixture.cursorBeforeShow[0] === fixture.cursorAfterShow[0] &&
       fixture.cursorBeforeShow[1] === fixture.cursorAfterShow[1];
-    if (!samePointer(before, safety.afterShow) || !fixtureOwnStill) {
+    const fixtureInputExplains =
+      Number.isInteger(fixture.inputTickBeforeShow) &&
+      Number.isInteger(fixture.inputTickAfterShow) &&
+      fixture.inputTickBeforeShow !== fixture.inputTickAfterShow;
+    const fixtureOwnStill =
+      fixture.foregroundBeforeShow === fixture.foregroundAfterShow &&
+      (fixtureCursorSame || fixtureInputExplains);
+    if (showChange === "fixture-stole" || showChange === "unexplained" || !fixtureOwnStill) {
       status = "unsupported";
-      reason = "showing the fixture changed the foreground window or cursor position";
+      reason = `showing the fixture changed the desktop in a way the launcher cannot attribute (${showChange})`;
       return 2;
     }
 
@@ -295,9 +349,10 @@ async function main() {
       };
       results.push(result);
       const state = stateAfterRun;
-      if (!samePointer(before, state)) {
+      const change = classifyDesktopChange(before, state, fixture.hwnd);
+      if (change === "fixture-stole" || change === "unexplained") {
         status = "safety-failed";
-        reason = `${entry.product}/${entry.scenario} changed the foreground window or cursor position`;
+        reason = `${entry.product}/${entry.scenario} caused an unattributable desktop change (${change})`;
         break;
       }
       if (!state.isWindow || !state.visible) {
@@ -321,15 +376,18 @@ async function main() {
       finalState = null;
     }
     safety.afterClose = finalState;
+    const closeChange = finalState
+      ? classifyDesktopChange(before, finalState, fixture?.hwnd ?? 0)
+      : "unavailable";
     if (!terminated) {
       status = "unsupported";
       reason = "fixture process could not be terminated";
     } else if (finalState?.isWindow) {
       status = "unsupported";
       reason = "fixture window still exists after termination";
-    } else if (!samePointer(before, finalState ?? { foreground: -1, cursorX: -1, cursorY: -1 })) {
+    } else if (closeChange === "fixture-stole" || closeChange === "unexplained") {
       status = "safety-failed";
-      reason = "foreground window or cursor changed after fixture shutdown";
+      reason = `closing the fixture caused an unattributable desktop change (${closeChange})`;
     }
     await rm(readyPath, { force: true });
     process.stdout.write(

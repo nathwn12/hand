@@ -1,7 +1,9 @@
 // Capture-evidence validation tests. These are pure checks of the rule that a
 // 1280x720 image is not enough: the response must prove which window it is,
 // that the frame came from PrintWindow, that it was not blank, moved or stale,
-// and that foreground and cursor were unchanged.
+// and that neither the capture's process nor its target touched the pointer or
+// the foreground. A raw pointer delta is accepted only when external input
+// explains it and the binary's import table has no writer.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -45,8 +47,55 @@ function validPayload() {
     },
     foregroundUnchanged: true,
     cursorUnchanged: true,
+    noSteal: {
+      audited: true,
+      bannedImports: [],
+      pointer: {
+        readable: true,
+        before: [640, 360],
+        after: [640, 360],
+        inputTickBefore: 1000,
+        inputTickAfter: 1000,
+        inputDuringCall: false,
+        moved: false,
+        externalInput: false,
+      },
+      foreground: {
+        before: 111,
+        after: 111,
+        afterPid: 999,
+        afterExe: "owner.exe",
+        afterOwnedByThisProcess: false,
+        target: 4242,
+        targetWasForeground: false,
+        targetIsForeground: false,
+        targetActivated: false,
+        moved: false,
+        externalChange: false,
+        stolen: false,
+      },
+      stolen: false,
+    },
   };
 }
+
+function movePointer(payload, { input }) {
+  payload.cursorUnchanged = false;
+  payload.noSteal.pointer.after = [700, 400];
+  payload.noSteal.pointer.moved = true;
+  payload.noSteal.pointer.inputDuringCall = input;
+  payload.noSteal.pointer.externalInput = input;
+}
+
+function moveForeground(payload, { external }) {
+  payload.foregroundUnchanged = false;
+  payload.noSteal.foreground.after = 222;
+  payload.noSteal.foreground.afterPid = 1000;
+  payload.noSteal.foreground.afterExe = "third-party.exe";
+  payload.noSteal.foreground.moved = true;
+  payload.noSteal.foreground.externalChange = external;
+}
+
 
 test("a complete, stationary, non-blank PrintWindow capture proves its target", () => {
   const result = validateCapture(validPayload(), context());
@@ -73,6 +122,25 @@ test("the unchanged-frame stale flag is reported, not treated as an unsafe origi
   assert.equal(result.detail.stale, true);
 });
 
+test("a pointer delta explained by external input is attributed, and the raw sample stays visible", () => {
+  const payload = validPayload();
+  movePointer(payload, { input: true });
+  payload.noSteal.pointer.inputTickAfter = 1007;
+  const result = validateCapture(payload, context());
+  assert.equal(result.ok, true, result.reason);
+  assert.equal(result.detail.cursorUnchanged, false);
+  assert.equal(result.detail.cursorExternal, true);
+});
+
+test("a foreground change to a third-party window is attributed as external", () => {
+  const payload = validPayload();
+  moveForeground(payload, { external: true });
+  const result = validateCapture(payload, context());
+  assert.equal(result.ok, true, result.reason);
+  assert.equal(result.detail.foregroundUnchanged, false);
+  assert.equal(result.detail.foregroundExternal, true);
+});
+
 const unsafeCases = [
   ["blank frame", (payload) => (payload.capture.blank_check = { verdict: "full_blank", max_channel: 0, threshold: 8 })],
   ["low max channel", (payload) => (payload.capture.blank_check.max_channel = 3)],
@@ -80,8 +148,45 @@ const unsafeCases = [
   ["crop fallback", (payload) => (payload.capture.backend = "desktop-crop:gdi")],
   ["capture note", (payload) => (payload.capture.note = "PrintWindow refused; crop used")],
   ["missing clean note", (payload) => delete payload.capture.note],
-  ["foreground changed", (payload) => (payload.foregroundUnchanged = false)],
-  ["cursor moved", (payload) => (payload.cursorUnchanged = false)],
+  [
+    "a foreground window owned by the capture's process",
+    (payload) => {
+      payload.foregroundUnchanged = false;
+      payload.noSteal.foreground.after = 333;
+      payload.noSteal.foreground.afterPid = 4242;
+      payload.noSteal.foreground.afterExe = "hand.exe";
+      payload.noSteal.foreground.afterOwnedByThisProcess = true;
+      payload.noSteal.foreground.moved = true;
+      payload.noSteal.foreground.stolen = true;
+      payload.noSteal.stolen = true;
+    },
+  ],
+  ["cursor moved with no input", (payload) => movePointer(payload, { input: false })],
+  [
+    "the target took the foreground",
+    (payload) => {
+      payload.foregroundUnchanged = false;
+      payload.noSteal.foreground.after = 4242;
+      payload.noSteal.foreground.afterPid = 4242;
+      payload.noSteal.foreground.afterExe = "fake-fixture.exe";
+      payload.noSteal.foreground.targetIsForeground = true;
+      payload.noSteal.foreground.targetActivated = true;
+      payload.noSteal.foreground.moved = true;
+      payload.noSteal.foreground.stolen = true;
+      payload.noSteal.stolen = true;
+    },
+  ],
+  [
+    "a pointer writer in the import table",
+    (payload) => (payload.noSteal.bannedImports = ["SetCursorPos"]),
+  ],
+  [
+    "an unaudited import table",
+    (payload) => {
+      payload.noSteal.audited = false;
+      payload.noSteal.auditError = "cannot read the executable";
+    },
+  ],
   ["minimized target", (payload) => (payload.window.minimized = true)],
   ["warnings", (payload) => (payload.warnings = [{ code: "quality_ignored" }])],
   ["missing blank check", (payload) => delete payload.capture.blank_check],
@@ -105,6 +210,18 @@ const incompleteCases = [
   ["wrong image size", (payload) => (payload.image.w = 1024)],
   ["wrong source size", (payload) => (payload.source.h = 600)],
   ["scaled image", (payload) => (payload.scale = 1.5)],
+  ["no attribution at all", (payload) => delete payload.noSteal],
+  ["unreadable pointer samples", (payload) => (payload.noSteal.pointer.readable = false)],
+  [
+    "a raw flag that contradicts the samples",
+    (payload) => {
+      payload.cursorUnchanged = false;
+    },
+  ],
+  [
+    "a foreground change that claims neither a steal nor an external window",
+    (payload) => moveForeground(payload, { external: false }),
+  ],
 ];
 
 for (const [name, mutate] of incompleteCases) {

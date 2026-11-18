@@ -25,16 +25,28 @@ internal static class Program
     [StructLayout(LayoutKind.Sequential)]
     private struct POINT { public int X, Y; }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct LASTINPUTINFO { public uint cbSize; public uint dwTime; }
+
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")]
     private static extern bool GetCursorPos(out POINT p);
+    [DllImport("user32.dll")]
+    private static extern bool GetLastInputInfo(ref LASTINPUTINFO info);
     [DllImport("user32.dll")]
     private static extern bool GetWindowRect(IntPtr h, out RECT r);
     [DllImport("user32.dll")]
     private static extern bool GetClientRect(IntPtr h, out RECT r);
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr h);
+
+    private static uint InputTick()
+    {
+        LASTINPUTINFO info = new LASTINPUTINFO();
+        info.cbSize = (uint)Marshal.SizeOf(typeof(LASTINPUTINFO));
+        return GetLastInputInfo(ref info) ? info.dwTime : 0;
+    }
 
     [STAThread]
     private static void Main(string[] args)
@@ -50,6 +62,7 @@ internal static class Program
         POINT cursorBefore;
         GetCursorPos(out cursorBefore);
         long foregroundBefore = GetForegroundWindow().ToInt64();
+        uint inputTickBefore = InputTick();
 
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
@@ -78,6 +91,7 @@ internal static class Program
             POINT cursorAfter;
             GetCursorPos(out cursorAfter);
             long foregroundAfter = GetForegroundWindow().ToInt64();
+            uint inputTickAfter = InputTick();
             RECT rect;
             RECT client;
             GetWindowRect(form.Handle, out rect);
@@ -93,7 +107,9 @@ internal static class Program
                 .Append("\"foregroundBeforeShow\":").Append(foregroundBefore).Append(",")
                 .Append("\"foregroundAfterShow\":").Append(foregroundAfter).Append(",")
                 .Append("\"cursorBeforeShow\":[").Append(cursorBefore.X).Append(",").Append(cursorBefore.Y).Append("],")
-                .Append("\"cursorAfterShow\":[").Append(cursorAfter.X).Append(",").Append(cursorAfter.Y).Append("]")
+                .Append("\"cursorAfterShow\":[").Append(cursorAfter.X).Append(",").Append(cursorAfter.Y).Append("],")
+                .Append("\"inputTickBeforeShow\":").Append(inputTickBefore).Append(",")
+                .Append("\"inputTickAfterShow\":").Append(inputTickAfter)
                 .Append("}")
                 .ToString();
             File.WriteAllText(readyPath, json, new UTF8Encoding(false));

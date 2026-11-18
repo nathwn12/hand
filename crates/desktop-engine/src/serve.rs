@@ -239,8 +239,10 @@ fn call_elements(args: &Map<String, Value>) -> String {
     let fg_before =
         unsafe { windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow() as i64 };
     let mut cur_before = windows_sys::Win32::Foundation::POINT { x: 0, y: 0 };
-    let cur_ok =
-        unsafe { windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut cur_before) != 0 };
+    let cursor_before =
+        unsafe { windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut cur_before) != 0 }
+            .then_some((cur_before.x as i64, cur_before.y as i64));
+    let evidence = crate::no_steal::Evidence::begin(fg_before, cursor_before);
     check_no_extra(
         args,
         &mut errs,
@@ -372,22 +374,15 @@ fn call_elements(args: &Map<String, Value>) -> String {
     );
     let mut o = o;
     // Invariant telemetry: this walk is read-only and must leave the owner's
-    // foreground window and pointer exactly where it found them.
-    let mut cur_after = windows_sys::Win32::Foundation::POINT { x: 0, y: 0 };
-    let cur_ok2 =
-        unsafe { windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut cur_after) != 0 };
-    o.insert(
-        "foregroundUnchanged".to_string(),
-        Value::from(
-            unsafe { windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow() as i64 }
-                == fg_before,
-        ),
-    );
-    o.insert(
-        "cursorUnchanged".to_string(),
-        Value::from(
-            !cur_ok || !cur_ok2 || (cur_after.x == cur_before.x && cur_after.y == cur_before.y),
-        ),
+    // foreground window and pointer exactly where it found them. The raw
+    // booleans stay; `no_steal` attributes any delta and proves this binary
+    // links no pointer/foreground writer.
+    let cur_after = crate::no_steal::Evidence::cursor_now();
+    evidence.finish(
+        unsafe { windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow() as i64 },
+        cur_after,
+        hwnd_r.unwrap() as i64,
+        &mut o,
     );
     wrapped_text(&py_dumps(&Value::Object(o)))
 }

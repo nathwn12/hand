@@ -1493,6 +1493,7 @@ pub mod dxgi;
 pub mod fixture;
 pub mod gate;
 pub mod hidden;
+pub mod no_steal;
 pub mod screen;
 pub mod serve;
 pub mod shot;

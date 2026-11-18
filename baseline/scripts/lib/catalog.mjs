@@ -42,6 +42,11 @@ const DECLARED_OUTPUT_ADDITIONS = {
   browser_select: ["resolved"],
   browser_type: ["resolved"],
   browser_upload: ["resolved"],
+  // hand adds attribution beside the raw before/after booleans: the import
+  // audit and the samples that say whether a pointer/foreground change was the
+  // owner's input or this process's. The legacy fields stay unchanged.
+  desktop_screenshot: ["noSteal"],
+  desktop_elements: ["noSteal"],
 };
 
 /** Remove declared additions from a candidate schema so the rest must match exactly. */

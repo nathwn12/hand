@@ -274,6 +274,35 @@ function handleTool(id, name, toolArgs) {
         },
         foregroundUnchanged: true,
         cursorUnchanged: true,
+        noSteal: {
+          audited: true,
+          bannedImports: [],
+          pointer: {
+            readable: true,
+            before: [0, 0],
+            after: [0, 0],
+            inputTickBefore: 100,
+            inputTickAfter: 100,
+            inputDuringCall: false,
+            moved: false,
+            externalInput: false,
+          },
+          foreground: {
+            before: 77,
+            after: 77,
+            afterPid: 78,
+            afterExe: "owner.exe",
+            afterOwnedByThisProcess: false,
+            target: 4242,
+            targetWasForeground: false,
+            targetIsForeground: false,
+            targetActivated: false,
+            moved: false,
+            externalChange: false,
+            stolen: false,
+          },
+          stolen: false,
+        },
         window: {
           hwnd: 4242,
           pid: 4242,
@@ -289,8 +318,16 @@ function handleTool(id, name, toolArgs) {
       if (defect === "stale") payload.capture.stale = true;
       if (defect === "crop") payload.capture.backend = "desktop-crop:gdi";
       if (defect === "note") payload.capture.note = "PrintWindow refused; desktop crop used";
-      if (defect === "unsafe") payload.foregroundUnchanged = false;
-      if (defect === "cursor") payload.cursorUnchanged = false;
+      if (defect === "unsafe") {
+        payload.foregroundUnchanged = false;
+        payload.noSteal.foreground.after = 88;
+        payload.noSteal.foreground.moved = true;
+      }
+      if (defect === "cursor") {
+        payload.cursorUnchanged = false;
+        payload.noSteal.pointer.after = [1, 0];
+        payload.noSteal.pointer.moved = true;
+      }
       if (defect === "no-window") delete payload.window;
       if (defect === "warnings") payload.warnings = [{ code: "quality_ignored", field: "quality" }];
       if (defect === "minimized") payload.window.minimized = true;

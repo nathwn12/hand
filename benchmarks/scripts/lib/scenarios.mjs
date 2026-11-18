@@ -511,18 +511,136 @@ export function validateCapture(payload, ctx) {
       reason: `capture blank_check max_channel is ${JSON.stringify(blank.max_channel)}; required at least ${Math.max(8, blankThreshold)}`,
     };
   }
-  if (payload.foregroundUnchanged !== true) {
+  // A capture is read-only, but the pointer and the foreground are shared with
+  // every other process and with the owner. `noSteal` carries the attribution:
+  // the raw before/after booleans, the input tick around the call, and this
+  // binary's own import table. A delta with real input in the window is the
+  // owner's; a delta without input, or a foreground this process/target took,
+  // is a defect. The boolean alone is not evidence either way.
+  const noSteal = payload.noSteal;
+  if (!noSteal || typeof noSteal !== "object") {
     return {
       ok: false,
-      unsafe: true,
-      reason: `capture foregroundUnchanged is ${JSON.stringify(payload.foregroundUnchanged)}; required true`,
+      incomplete: true,
+      reason: "capture returned no pointer/foreground attribution (noSteal); the raw flags alone cannot say whose change it was",
     };
   }
-  if (payload.cursorUnchanged !== true) {
+  if (noSteal.audited !== true) {
     return {
       ok: false,
       unsafe: true,
-      reason: `capture cursorUnchanged is ${JSON.stringify(payload.cursorUnchanged)}; required true`,
+      reason: `capture could not audit its own import table: ${noSteal.auditError ?? "no reason recorded"}`,
+    };
+  }
+  if (!Array.isArray(noSteal.bannedImports)) {
+    return { ok: false, incomplete: true, reason: "capture noSteal.bannedImports is missing or not an array" };
+  }
+  if (noSteal.bannedImports.length > 0) {
+    return {
+      ok: false,
+      unsafe: true,
+      reason: `capture links pointer/foreground-writing APIs: ${noSteal.bannedImports.join(", ")}`,
+    };
+  }
+  const pointer = noSteal.pointer;
+  if (!pointer || typeof pointer !== "object") {
+    return { ok: false, incomplete: true, reason: "capture noSteal.pointer is missing" };
+  }
+  if (typeof payload.cursorUnchanged !== "boolean") {
+    return { ok: false, incomplete: true, reason: "capture cursorUnchanged is missing or not boolean" };
+  }
+  if (pointer.readable !== true) {
+    return {
+      ok: false,
+      incomplete: true,
+      reason: "capture could not read the pointer before and after the call",
+    };
+  }
+  if (
+    !Array.isArray(pointer.before) ||
+    pointer.before.length !== 2 ||
+    !Array.isArray(pointer.after) ||
+    pointer.after.length !== 2
+  ) {
+    return { ok: false, incomplete: true, reason: "capture pointer before/after samples are malformed" };
+  }
+  // The samples decide the flags; a response that contradicts itself is not
+  // evidence. The input tick must be present on both sides to attribute.
+  const pointerMoved = pointer.before[0] !== pointer.after[0] || pointer.before[1] !== pointer.after[1];
+  if ((pointer.moved === true) !== pointerMoved) {
+    return { ok: false, incomplete: true, reason: "capture pointer.moved contradicts the before/after samples" };
+  }
+  if ((payload.cursorUnchanged === true) === pointerMoved) {
+    return { ok: false, incomplete: true, reason: "capture cursorUnchanged contradicts the before/after samples" };
+  }
+  const tickReadable =
+    Number.isInteger(pointer.inputTickBefore) && Number.isInteger(pointer.inputTickAfter);
+  const inputAdvanced = tickReadable && pointer.inputTickBefore !== pointer.inputTickAfter;
+  if (pointer.inputDuringCall !== inputAdvanced) {
+    return { ok: false, incomplete: true, reason: "capture pointer.inputDuringCall contradicts the input ticks" };
+  }
+  const cursorExternal = pointerMoved && inputAdvanced;
+  if ((pointer.externalInput === true) !== cursorExternal) {
+    return { ok: false, incomplete: true, reason: "capture pointer.externalInput contradicts the samples" };
+  }
+  if (payload.cursorUnchanged !== true && !cursorExternal) {
+    return {
+      ok: false,
+      unsafe: true,
+      reason: `the pointer moved (${JSON.stringify(pointer.before)} -> ${JSON.stringify(pointer.after)}) with no external input in the window; the capture cannot attribute it`,
+    };
+  }
+
+  const foreground = noSteal.foreground;
+  if (!foreground || typeof foreground !== "object") {
+    return { ok: false, incomplete: true, reason: "capture noSteal.foreground is missing" };
+  }
+  if (typeof payload.foregroundUnchanged !== "boolean") {
+    return { ok: false, incomplete: true, reason: "capture foregroundUnchanged is missing or not boolean" };
+  }
+  if (foreground.target !== ctx.hwnd) {
+    return {
+      ok: false,
+      incomplete: true,
+      reason: `capture noSteal.foreground.target ${JSON.stringify(foreground.target)} does not name the controlled hwnd ${JSON.stringify(ctx.hwnd)}`,
+    };
+  }
+  const foregroundMoved = foreground.before !== foreground.after;
+  if ((foreground.moved === true) !== foregroundMoved) {
+    return { ok: false, incomplete: true, reason: "capture foreground.moved contradicts the before/after handles" };
+  }
+  if ((payload.foregroundUnchanged === true) === foregroundMoved) {
+    return { ok: false, incomplete: true, reason: "capture foregroundUnchanged contradicts the before/after handles" };
+  }
+  const targetActivated =
+    foregroundMoved &&
+    foreground.targetIsForeground === true &&
+    foreground.targetWasForeground === false;
+  if ((foreground.targetActivated === true) !== targetActivated) {
+    return { ok: false, incomplete: true, reason: "capture foreground.targetActivated contradicts the handles" };
+  }
+  const stolen =
+    foregroundMoved &&
+    (foreground.afterOwnedByThisProcess === true || targetActivated);
+  if ((foreground.stolen === true) !== stolen || noSteal.stolen !== stolen) {
+    return { ok: false, incomplete: true, reason: "capture stolen flag contradicts the foreground observation" };
+  }
+  const foregroundExternal = foregroundMoved && !stolen;
+  if ((foreground.externalChange === true) !== foregroundExternal) {
+    return { ok: false, incomplete: true, reason: "capture foreground.externalChange contradicts the observation" };
+  }
+  if (stolen) {
+    return {
+      ok: false,
+      unsafe: true,
+      reason: `the capture's process or target took the foreground (after=${JSON.stringify(foreground.after)}, targetActivated=${JSON.stringify(targetActivated)})`,
+    };
+  }
+  if (payload.foregroundUnchanged !== true && !foregroundExternal) {
+    return {
+      ok: false,
+      unsafe: true,
+      reason: `the foreground changed from ${JSON.stringify(foreground.before)} to ${JSON.stringify(foreground.after)} and is not an external window`,
     };
   }
   if (Array.isArray(payload.warnings) && payload.warnings.length > 0) {
@@ -547,8 +665,11 @@ export function validateCapture(payload, ctx) {
       blank: { verdict: blank.verdict, max_channel: blank.max_channel, threshold: blankThreshold },
       note: capture.note,
       stale: capture.stale,
-      foregroundUnchanged: true,
-      cursorUnchanged: true,
+      foregroundUnchanged: payload.foregroundUnchanged,
+      cursorUnchanged: payload.cursorUnchanged,
+      foregroundExternal,
+      cursorExternal,
+      bannedImports: noSteal.bannedImports,
     },
   };
 }
