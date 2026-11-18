@@ -518,13 +518,66 @@ export function validateCapture(payload, ctx) {
   // owner's; a delta without input, or a foreground this process/target took,
   // is a defect. The boolean alone is not evidence either way.
   const noSteal = payload.noSteal;
-  if (!noSteal || typeof noSteal !== "object") {
-    return {
-      ok: false,
-      incomplete: true,
-      reason: "capture returned no pointer/foreground attribution (noSteal); the raw flags alone cannot say whose change it was",
-    };
-  }
+  const hasAttribution = Boolean(noSteal && typeof noSteal === "object");
+  let cursorExternal = false;
+  let foregroundExternal = false;
+  let baselineProbe = null;
+  if (!hasAttribution) {
+    // A pinned baseline cannot report the attribution hand owns. It is held to
+    // the stricter rule: raw equality, no explanation accepted. hand must
+    // report noSteal, so its own release cannot opt out of the mechanism proof.
+    if (ctx.product === "hand") {
+      return {
+        ok: false,
+        incomplete: true,
+        reason: "hand capture returned no pointer/foreground attribution (noSteal); the raw flags alone cannot say whose change it was",
+      };
+    }
+    const probe = ctx.probe;
+    if (!probe || !probe.before || !probe.after) {
+      return {
+        ok: false,
+        incomplete: true,
+        reason: `the product reports no attribution and the driver's input probe is unavailable${ctx.inputProbeError ? `: ${ctx.inputProbeError}` : ""}`,
+      };
+    }
+    const before = probe.before;
+    const after = probe.after;
+    if (!Array.isArray(before.cursor) || !Array.isArray(after.cursor)) {
+      return {
+        ok: false,
+        incomplete: true,
+        reason: "the driver's input probe could not read the pointer around the call",
+      };
+    }
+    const pointerMoved =
+      before.cursor[0] !== after.cursor[0] || before.cursor[1] !== after.cursor[1];
+    const inputArrived =
+      Number.isInteger(before.inputTick) &&
+      Number.isInteger(after.inputTick) &&
+      before.inputTick !== after.inputTick;
+    baselineProbe = { before, after, pointerMoved, inputArrived };
+    if (payload.cursorUnchanged !== true && !(pointerMoved && inputArrived)) {
+      return {
+        ok: false,
+        unsafe: true,
+        reason: `capture reports the pointer moved (${JSON.stringify(before.cursor)} -> ${JSON.stringify(after.cursor)}) and the driver saw no physical input across the call; the movement is unattributable`,
+      };
+    }
+    if (typeof payload.foregroundUnchanged !== "boolean") {
+      return { ok: false, incomplete: true, reason: "capture foregroundUnchanged is missing or not boolean" };
+    }
+    if (after.foreground === ctx.hwnd && before.foreground !== ctx.hwnd) {
+      return { ok: false, unsafe: true, reason: "the controlled target took the foreground during the capture" };
+    }
+    if (payload.foregroundUnchanged !== true && before.foreground === after.foreground) {
+      return {
+        ok: false,
+        unsafe: true,
+        reason: `capture reports the foreground moved but the driver saw ${JSON.stringify(before.foreground)} -> ${JSON.stringify(after.foreground)}; the claim is unattributable`,
+      };
+    }
+  } else {
   if (noSteal.audited !== true) {
     return {
       ok: false,
@@ -579,7 +632,7 @@ export function validateCapture(payload, ctx) {
   if (pointer.inputDuringCall !== inputAdvanced) {
     return { ok: false, incomplete: true, reason: "capture pointer.inputDuringCall contradicts the input ticks" };
   }
-  const cursorExternal = pointerMoved && inputAdvanced;
+  cursorExternal = pointerMoved && inputAdvanced;
   if ((pointer.externalInput === true) !== cursorExternal) {
     return { ok: false, incomplete: true, reason: "capture pointer.externalInput contradicts the samples" };
   }
@@ -625,7 +678,7 @@ export function validateCapture(payload, ctx) {
   if ((foreground.stolen === true) !== stolen || noSteal.stolen !== stolen) {
     return { ok: false, incomplete: true, reason: "capture stolen flag contradicts the foreground observation" };
   }
-  const foregroundExternal = foregroundMoved && !stolen;
+  foregroundExternal = foregroundMoved && !stolen;
   if ((foreground.externalChange === true) !== foregroundExternal) {
     return { ok: false, incomplete: true, reason: "capture foreground.externalChange contradicts the observation" };
   }
@@ -642,6 +695,7 @@ export function validateCapture(payload, ctx) {
       unsafe: true,
       reason: `the foreground changed from ${JSON.stringify(foreground.before)} to ${JSON.stringify(foreground.after)} and is not an external window`,
     };
+  }
   }
   if (Array.isArray(payload.warnings) && payload.warnings.length > 0) {
     return {
@@ -667,9 +721,11 @@ export function validateCapture(payload, ctx) {
       stale: capture.stale,
       foregroundUnchanged: payload.foregroundUnchanged,
       cursorUnchanged: payload.cursorUnchanged,
+      attribution: hasAttribution ? "noSteal" : "raw",
       foregroundExternal,
       cursorExternal,
-      bannedImports: noSteal.bannedImports,
+      bannedImports: hasAttribution ? noSteal.bannedImports : null,
+      driverProbe: baselineProbe,
     },
   };
 }

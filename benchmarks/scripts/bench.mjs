@@ -31,6 +31,7 @@ import {
   sampleCpu,
 } from "./lib/fingerprint.mjs";
 import { resolveProduct } from "./lib/products.mjs";
+import { startInputProbe } from "./lib/input-probe.mjs";
 import { EXIT_CODES, finalizeReceipt, formatSummary, writeReceipt } from "./lib/receipt.mjs";
 import { PRODUCT_DEFINITIONS, SCENARIOS, resolveScenarioPlan, extractPayload } from "./lib/scenarios.mjs";
 import { summarize } from "./lib/stats.mjs";
@@ -39,6 +40,7 @@ import { BenchClient } from "./lib/stdio.mjs";
 const REPO_ROOT = resolve(import.meta.dirname, "..", "..");
 const DEFAULT_OUT = join(REPO_ROOT, "benchmarks", "receipts");
 const FIXTURE_DIR = join(REPO_ROOT, "fixtures");
+const INPUT_PROBE = join(REPO_ROOT, "benchmarks", "fixtures", "input-probe.ps1");
 const DEFAULT_WARMUP = 10;
 const DEFAULT_MEASURED = 100;
 const DEFAULT_TIMEOUT_MS = 60_000;
@@ -307,6 +309,7 @@ async function main() {
           : {},
     });
     let closed = false;
+    let inputProbe = null;
 
     const closeClient = async () => {
       if (closed) return;
@@ -355,13 +358,26 @@ async function main() {
         });
       }
 
-      const ctx = { origin, target };
+      const ctx = { origin, target, product: productId };
+      // A baseline's raw pointer flags need an outside explanation. hand's own
+      // `noSteal` block does not, so the probe only exists for desktop runs and
+      // only the no-attribution path reads it.
+      if (scenario.domain === "desktop") {
+        inputProbe = await startInputProbe(INPUT_PROBE);
+        ctx.inputProbe = inputProbe;
+        ctx.inputProbeError = inputProbe ? null : "the driver's input probe did not start";
+      }
       const setupSteps = [];
       let setupFailure = null;
       for (const step of plan.prepare) {
+        const probeBefore = inputProbe ? await inputProbe.sample() : null;
         const call = await callOnce(client, { tool: step.tool, params: step.params }, timeoutMs);
+        const probeAfter = inputProbe ? await inputProbe.sample() : null;
         let validation = null;
-        if (call.ok) validation = step.validate(call.payload, ctx);
+        if (call.ok) {
+          ctx.probe = { before: probeBefore, after: probeAfter };
+          validation = step.validate(call.payload, ctx);
+        }
         const stepRecord = {
           name: step.name,
           tool: step.tool,
@@ -443,7 +459,6 @@ async function main() {
       for (let index = 1; index <= measured; index += 1) {
         measuredAttempts.push(await measureOnce(client, plan, ctx, timeoutMs, index));
       }
-
       await closeClient();
       const loadAfter = sampleCpu();
       const { stats, verdict } = summarize(measuredAttempts, { targetP95Ms: scenario.specTargetP95Ms });
@@ -498,6 +513,7 @@ async function main() {
       receipt.verdict = verdict;
       return finish(receipt);
     } finally {
+      if (inputProbe) await inputProbe.close();
       await closeClient();
     }
   } finally {
@@ -510,7 +526,9 @@ async function main() {
 
 async function measureOnce(client, plan, ctx, timeoutMs, index) {
   const request = plan.request();
+  const probeBefore = ctx.inputProbe ? await ctx.inputProbe.sample() : null;
   const call = await callOnce(client, request, timeoutMs);
+  const probeAfter = ctx.inputProbe ? await ctx.inputProbe.sample() : null;
   if (!call.ok) {
     return {
       index,
@@ -520,6 +538,7 @@ async function measureOnce(client, plan, ctx, timeoutMs, index) {
       error: call.error,
     };
   }
+  ctx.probe = { before: probeBefore, after: probeAfter };
   const validation = plan.validate(call.payload, ctx);
   if (!validation.ok) {
     return {

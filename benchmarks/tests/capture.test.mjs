@@ -10,8 +10,10 @@ import assert from "node:assert/strict";
 
 import { validateCapture, MODE_B_NOTE } from "../scripts/lib/scenarios.mjs";
 
-function context() {
+function context(product = "hand", probe = null) {
   return {
+    product,
+    probe,
     target: { titleContains: "hand-bench-fixture" },
     hwnd: 4242,
     matchedWindow: {
@@ -21,6 +23,20 @@ function context() {
       exe: "fake-fixture.exe",
       class: "FakeFixtureWindow",
     },
+  };
+}
+
+function driverProbe({
+  cursorBefore = [640, 360],
+  cursorAfter = [640, 360],
+  foregroundBefore = 111,
+  foregroundAfter = 111,
+  tickBefore = 1000,
+  tickAfter = 1000,
+} = {}) {
+  return {
+    before: { foreground: foregroundBefore, cursor: cursorBefore, inputTick: tickBefore, at: 0 },
+    after: { foreground: foregroundAfter, cursor: cursorAfter, inputTick: tickAfter, at: 1 },
   };
 }
 
@@ -139,6 +155,58 @@ test("a foreground change to a third-party window is attributed as external", ()
   assert.equal(result.ok, true, result.reason);
   assert.equal(result.detail.foregroundUnchanged, false);
   assert.equal(result.detail.foregroundExternal, true);
+});
+
+test("a baseline without attribution is held to raw equality", () => {
+  const payload = validPayload();
+  delete payload.noSteal;
+  const result = validateCapture(payload, context("puppet", driverProbe()));
+  assert.equal(result.ok, true, result.reason);
+  assert.equal(result.detail.attribution, "raw");
+});
+
+test("a baseline's raw pointer move is accepted only when the driver saw input", () => {
+  const payload = validPayload();
+  delete payload.noSteal;
+  payload.cursorUnchanged = false;
+  const moved = driverProbe({ cursorAfter: [700, 400], tickAfter: 1007 });
+  const accepted = validateCapture(payload, context("puppet", moved));
+  assert.equal(accepted.ok, true, accepted.reason);
+  assert.equal(accepted.detail.driverProbe.pointerMoved, true);
+  assert.equal(accepted.detail.driverProbe.inputArrived, true);
+
+  const unexplained = validateCapture(payload, context("puppet", driverProbe({ cursorAfter: [700, 400] })));
+  assert.equal(unexplained.ok, false);
+  assert.equal(unexplained.unsafe, true);
+});
+
+test("a baseline's raw foreground move is accepted only when the driver saw it", () => {
+  const payload = validPayload();
+  delete payload.noSteal;
+  payload.foregroundUnchanged = false;
+  const seen = driverProbe({ foregroundAfter: 222 });
+  assert.equal(validateCapture(payload, context("puppet", seen)).ok, true);
+
+  const unseen = validateCapture(payload, context("puppet", driverProbe()));
+  assert.equal(unseen.ok, false);
+  assert.equal(unseen.unsafe, true);
+});
+
+test("a baseline capture that activates the target is refused", () => {
+  const payload = validPayload();
+  delete payload.noSteal;
+  const activation = driverProbe({ foregroundAfter: 4242 });
+  const result = validateCapture(payload, context("puppet", activation));
+  assert.equal(result.ok, false);
+  assert.equal(result.unsafe, true);
+});
+
+test("a baseline capture with no driver probe fails closed", () => {
+  const payload = validPayload();
+  delete payload.noSteal;
+  const result = validateCapture(payload, context("puppet"));
+  assert.equal(result.ok, false);
+  assert.notEqual(result.unsafe, true);
 });
 
 const unsafeCases = [
