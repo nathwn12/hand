@@ -13,7 +13,7 @@ use tokio::sync::{oneshot, Mutex as AsyncMutex};
 
 use crate::tools::{typed_marker, ToolCode, ToolReason};
 use tokio_tungstenite::{
-    connect_async,
+    connect_async_with_config,
     tungstenite::{
         client::IntoClientRequest, handshake::client::Request as WsRequest,
         http::Uri as TungsteniteHttpUri, Message,
@@ -24,6 +24,26 @@ use tokio_tungstenite::{
 type WsStream = WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>;
 type WsSink = futures_util::stream::SplitSink<WsStream, Message>;
 type WsReader = futures_util::stream::SplitStream<WsStream>;
+
+/// Ceiling for ONE incoming CDP frame/message. CDP replies are not chat
+/// messages: `Accessibility.getFullAXTree` answers a large page in a single
+/// frame (measured on chrome-headless-shell 155: 33,622,919 bytes for 20 000
+/// list items, ~67 MB for 40 000), and a full-page screenshot's base64 rides
+/// the same socket. tungstenite's defaults (16 MiB frame, 64 MiB message)
+/// reject such a reply with `Capacity(MessageTooLong)`, tokio-tungstenite
+/// fuses the stream on ANY error, and the reader's exit then reports a live
+/// engine as dead - so the recovery path reaps a healthy browser because a
+/// legitimately large response arrived. The value below is a memory backstop
+/// for a process this crate spawned itself, not a protocol rule.
+const CDP_MAX_PAYLOAD: usize = 512 << 20;
+
+/// The one WebSocket configuration every CDP connection uses (owned engine
+/// and `GLADIUS_CDP_URL` attach alike): the defaults are too small for CDP.
+fn cdp_ws_config() -> tokio_tungstenite::tungstenite::protocol::WebSocketConfig {
+    tokio_tungstenite::tungstenite::protocol::WebSocketConfig::default()
+        .max_message_size(Some(CDP_MAX_PAYLOAD))
+        .max_frame_size(Some(CDP_MAX_PAYLOAD))
+}
 
 /// A JS dialog the page opened (`alert` / `confirm` / `prompt` /
 /// `beforeunload`), recorded when the reader auto-handles it.
@@ -437,7 +457,7 @@ async fn attach(
 ) -> Result<Inner, String> {
     let ws_url = resolve_ws_url(raw).await?;
     eprintln!("[gladius] backend: external-cdp {ws_url} (attach; engine not owned)");
-    let (ws, _) = connect_async(&ws_url)
+    let (ws, _) = connect_async_with_config(&ws_url, Some(cdp_ws_config()), false)
         .await
         .map_err(|e| format!("ws connect {ws_url}: {e}"))?;
     let (sink, stream) = ws.split();
@@ -3359,6 +3379,9 @@ async fn reader_loop(mut stream: WsReader, shared: Arc<Shared>) {
         let text = match msg {
             Ok(Message::Text(t)) => t.to_string(),
             Ok(Message::Binary(b)) => String::from_utf8_lossy(&b).into_owned(),
+            // A receive error ends the loop on the next poll (tungstenite
+            // terminates a stream it could not frame), so it is not swallowed
+            // here: the exit below is the one death path.
             _ => continue,
         };
         let v: Value = match serde_json::from_str(&text) {
@@ -4058,15 +4081,18 @@ async fn launch_owned_chromium_once(
     let remaining = startup_remaining(start, deadline).ok_or_else(|| {
         format!("timeout waiting for chromium ws connect on {ws_url}: startup budget exhausted")
     })?;
-    let (ws, _) = tokio::time::timeout(remaining, connect_async(ws_request))
-        .await
-        .map_err(|_| {
-            format!(
-                "ws connect {ws_url} timed out after {}ms of remaining startup budget",
-                remaining.as_millis()
-            )
-        })?
-        .map_err(|e| format!("ws connect {ws_url}: {e}"))?;
+    let (ws, _) = tokio::time::timeout(
+        remaining,
+        connect_async_with_config(ws_request, Some(cdp_ws_config()), false),
+    )
+    .await
+    .map_err(|_| {
+        format!(
+            "ws connect {ws_url} timed out after {}ms of remaining startup budget",
+            remaining.as_millis()
+        )
+    })?
+    .map_err(|e| format!("ws connect {ws_url}: {e}"))?;
     // Post-connect child re-check: confinement only checks the advertised
     // host and port, so a squatter on OUR OWN port advertising a same-port
     // loopback URL passes it - the child's liveness is the only remaining
@@ -4820,7 +4846,9 @@ mod tests {
             }
         });
         let url = format!("ws://127.0.0.1:{port}/");
-        let (ws, _) = connect_async(&url).await.expect("ws connect");
+        let (ws, _) = tokio_tungstenite::connect_async(&url)
+            .await
+            .expect("ws connect");
         let (sink, stream) = ws.split();
         let shared = new_shared(sink, no_excluded_contexts());
         let reader = tokio::spawn(reader_loop(stream, shared.clone()));
@@ -4957,7 +4985,9 @@ mod tests {
             }
         });
         let url = format!("ws://127.0.0.1:{port}/");
-        let (ws, _) = connect_async(&url).await.expect("ws connect");
+        let (ws, _) = tokio_tungstenite::connect_async(&url)
+            .await
+            .expect("ws connect");
         let (sink, stream) = ws.split();
         let shared = new_shared(sink, no_excluded_contexts());
         let reader = tokio::spawn(reader_loop(stream, shared.clone()));

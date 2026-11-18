@@ -874,3 +874,71 @@ fn a_cancelled_desktop_call_stays_silent_over_the_wire() {
     let fresh = s.call_id(6002, "desktop_cursor", json!({}));
     assert!(fresh.get("result").is_some(), "new id answers: {fresh}");
 }
+
+// ------------------------------------------------- page size vs transport
+
+/// A CDP reply larger than one WebSocket frame is a big page, not a dead
+/// engine.
+///
+/// `Accessibility.getFullAXTree` answers a large page in ONE frame (measured
+/// on chrome-headless-shell 155: 1 683 bytes of AX JSON per list item). The
+/// transport's default 16 MiB frame ceiling rejected that frame,
+/// tokio-tungstenite fuses the stream on any error, and the reader's exit was
+/// read as engine death - so the recovery path reaped a healthy browser and
+/// the page was lost. The 5 000-item page always survived because its frame
+/// fit and the render was refused by the 8 000-char page cap instead. This
+/// pins the larger page to that same shape: a typed refusal, no transport
+/// death, and the page the engine already had still answering.
+#[test]
+fn a_snapshot_reply_larger_than_one_transport_frame_keeps_the_engine() {
+    let _serial = serial();
+    let mut s = Session::spawn();
+    // 12 000 items is ~20 MB of AX JSON: over the 16 MiB frame default the
+    // defect hit, well under the raised ceiling, and cheap enough for the
+    // suite (a real refusal needs a render, so the whole tree is built).
+    const ITEMS: usize = 12_000;
+    let rows: String = (0..ITEMS).map(|i| format!("<li>row {i}</li>")).collect();
+    let url = format!("data:text/html,<ul>{rows}</ul>");
+    let nav = s.call("browser_navigate", json!({"url": url}));
+    assert!(!is_error(&nav), "navigate: {}", text_of(&nav));
+
+    let snap = s.call("browser_snapshot", json!({}));
+    let prose = text_of(&snap);
+    assert!(
+        !prose.contains("response channel closed"),
+        "a large but valid reply must not read as transport death: {prose}"
+    );
+    assert!(
+        is_error(&snap),
+        "a page one line cannot page is refused, not answered: {prose}"
+    );
+    let sc = structured(&snap);
+    assert_eq!(sc["code"], json!("invalid_args"), "typed refusal: {sc}");
+    assert_eq!(sc["reason"], json!("bad_value"), "typed refusal: {sc}");
+    assert!(
+        prose.contains("page cap"),
+        "the refusal is the same capped error the smaller page gets: {prose}"
+    );
+
+    // The page survived: the engine still holds the document this call
+    // rendered. A relaunched engine would answer 0 from a blank page.
+    let count = s.call(
+        "browser_evaluate",
+        json!({"expression": "document.querySelectorAll('li').length"}),
+    );
+    assert_eq!(
+        structured(&count)["value"],
+        json!(ITEMS),
+        "the rendered page must still be the one answering: {}",
+        text_of(&count)
+    );
+    // And the connection is not a corpse: a browser-level call answers.
+    let tabs = s.call("browser_tabs", json!({"action": "list"}));
+    assert!(!is_error(&tabs), "tabs after the refusal: {}", text_of(&tabs));
+    assert_eq!(
+        structured(&tabs)["tabs"].as_array().map(Vec::len),
+        Some(1),
+        "one tab, the surviving page: {}",
+        text_of(&tabs)
+    );
+}
