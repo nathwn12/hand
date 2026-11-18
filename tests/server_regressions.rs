@@ -14,13 +14,14 @@ use common::{is_error, structured, text_of, Session};
 use serde_json::{json, Value};
 
 /// Mirrors the documented shutdown bounds in `src/server.rs` and `src/main.rs`:
-/// owned EOF drain 5 s + one shared abort settle 1 s + browser close bound 30 s
-/// + runtime teardown 2 s. A test about the drain must not be failed by a slow
+/// owned EOF drain 5 s, one shared abort settle 1 s, browser close bound 30 s,
+/// and runtime teardown 2 s. A test about the drain must not be failed by a slow
 /// close, so it measures the drain from the log timestamp instead; a test about
 /// the whole shutdown asserts against this documented sum.
 const DOCUMENTED_SHUTDOWN_BOUND: Duration = Duration::from_secs(38);
 const OWNED_DRAIN: Duration = Duration::from_secs(5);
 const DRAIN_SLACK: Duration = Duration::from_millis(750);
+#[cfg(debug_assertions)]
 const RUNTIME_EXIT_BOUND: Duration = Duration::from_secs(2);
 
 /// These tests launch real engines and assert timing-sensitive behavior, so
@@ -68,21 +69,13 @@ fn poll_page(s: &mut Session, expression: &str, want: &Value, timeout: Duration)
 /// Read frames until `id` arrives. Any other frame is a defect in the test's
 /// own bookkeeping, not something to skip silently.
 fn recv_for(s: &mut Session, id: i64, timeout: Duration) -> Value {
-    let deadline = Instant::now() + timeout;
-    loop {
-        let left = deadline.saturating_duration_since(Instant::now());
-        assert!(
-            !left.is_zero(),
-            "no response for id {id} within {timeout:?}"
-        );
-        let frame = s
-            .recv_timeout(left)
-            .unwrap_or_else(|| panic!("no response for id {id} within {timeout:?}"));
-        if frame.get("id") == Some(&json!(id)) {
-            return frame;
-        }
-        panic!("unexpected frame while waiting for id {id}: {frame}");
+    let frame = s
+        .recv_timeout(timeout)
+        .unwrap_or_else(|| panic!("no response for id {id} within {timeout:?}"));
+    if frame.get("id") == Some(&json!(id)) {
+        return frame;
     }
+    panic!("unexpected frame while waiting for id {id}: {frame}");
 }
 
 /// A TCP listener that accepts connections and never answers. A page image
@@ -183,20 +176,15 @@ impl RawSession {
     }
 
     fn recv_for(&mut self, id: i64, timeout: Duration) -> Value {
-        let deadline = Instant::now() + timeout;
-        loop {
-            let left = deadline.saturating_duration_since(Instant::now());
-            assert!(!left.is_zero(), "no frame for id {id} within {timeout:?}");
-            let line = self
-                .stdout
-                .recv_timeout(left)
-                .unwrap_or_else(|_| panic!("no frame for id {id} within {timeout:?}"));
-            let frame: Value = serde_json::from_str(&line).expect("frame is JSON");
-            if frame.get("id") == Some(&json!(id)) {
-                return frame;
-            }
-            panic!("unexpected frame while waiting for id {id}: {frame}");
+        let line = self
+            .stdout
+            .recv_timeout(timeout)
+            .unwrap_or_else(|_| panic!("no frame for id {id} within {timeout:?}"));
+        let frame: Value = serde_json::from_str(&line).expect("frame is JSON");
+        if frame.get("id") == Some(&json!(id)) {
+            return frame;
         }
+        panic!("unexpected frame while waiting for id {id}: {frame}");
     }
 
     fn initialize(&mut self) {
@@ -272,6 +260,7 @@ impl RawSession {
 
     /// Read stderr until `needle` appears; return everything read so far so the
     /// caller can append the post-exit remainder to the same log.
+    #[cfg(debug_assertions)]
     fn wait_stderr_contains(&self, needle: &str, timeout: Duration) -> Vec<String> {
         self.wait_stderr_timed(needle, timeout).1
     }
