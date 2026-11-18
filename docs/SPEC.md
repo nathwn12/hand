@@ -387,9 +387,12 @@ measured tradeoffs rather than weaken safety or falsify the benchmark.
     out without reporting success.
 16. Source-level no-steal checks and controlled live fixtures prove no physical
     pointer movement, foreground activation or global keyboard injection by
-    hand. Exercise typed refusal before delivery under both normal and dry-run
-    paths. Verify a blocked elevated window, a locked/secure desktop and a
-    minimized or uncapturable target do not masquerade as empty success.
+    hand. A read-only call reports the raw before/after pointer and foreground
+    samples, its own import table and the input ticks around the call, so a
+    change caused by the owner is attributed to the owner and never counted as
+    hand's movement. Exercise typed refusal before delivery under both normal
+    and dry-run paths. Verify a blocked elevated window, a locked/secure desktop
+    and a minimized or uncapturable target do not masquerade as empty success.
 17. Scroll a nested browser container and verify its actual offsets; test
     frame-scoped references, partial form failure and a local HTTP 404 with
     observed status. Verify an unsupported frame never acts on the main page.

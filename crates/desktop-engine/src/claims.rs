@@ -159,6 +159,10 @@ pub const LIMITS: &[(&str, &str)] = &[
         "the pointer is never in the pixels - neither capture backend composites it; `cursor{x,y}` is a position report",
     ),
     (
+        "attribution",
+        "`foregroundUnchanged`/`cursorUnchanged` are raw before/after samples, not a verdict: the same payload's `noSteal` block carries the executable's import table (no pointer or foreground writer), the `GetLastInputInfo` ticks around the call, and whether a new foreground belongs to this process or the locked target. A pointer or foreground delta with real input behind it is the owner's; a delta with no input is unattributable and must be read as a defect",
+    ),
+    (
         "ime",
         "IME, dead-key and AltGr composition are not supported: there is no composition path on posted WM_CHAR",
     ),
