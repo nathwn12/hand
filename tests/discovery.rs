@@ -1,16 +1,18 @@
 //! Slice 1: one MCP server, both engine catalogs, honest availability.
 //!
 //! These tests use the real executable over stdio and compare every published
-//! tool body against the engine's own catalog. The only allowed difference is
-//! the domain prefix; a changed schema, description, annotation or output
-//! schema fails here.
+//! floor tool body against the committed baseline (`baseline/hand-catalog.json`).
+//! The only allowed differences are the domain prefix, the properties listed
+//! under `inputSchema`/`outputSchema` in `baseline/declared-additions.json`, and
+//! the descriptions listed under `metadata.description` there. A changed schema,
+//! annotation, title or undeclared description fails here.
 
 mod common;
 
 use common::{text_of, tool, Session};
 use serde_json::{json, Value};
 
-const BROWSER_TOOLS: [&str; 26] = [
+const BROWSER_TOOLS: [&str; 28] = [
     "navigate",
     "snapshot",
     "screenshot",
@@ -37,6 +39,8 @@ const BROWSER_TOOLS: [&str; 26] = [
     "close",
     "fetch_text",
     "context",
+    "wheel",
+    "drag",
 ];
 
 const DESKTOP_TOOLS: [&str; 7] = [
@@ -75,7 +79,15 @@ fn initialize_identifies_version_platform_and_both_engines() {
     assert_eq!(browser["engine"].as_str(), Some("gladius"));
     assert_eq!(browser["sourcePin"].as_str(), Some("59c6d77"));
     assert_eq!(browser["version"].as_str(), Some("0.8.0"));
-    assert_eq!(browser["toolCount"].as_u64(), Some(25));
+    // `browser_context` is published from `browser_engine::contexts::tool_schema()`
+    // beside the engine's own `list()`, so the engine's own count is one below the
+    // number of `browser_*` bodies on the wire. Both numbers are asserted so a
+    // dropped body cannot pass as a smaller count.
+    assert_eq!(
+        browser["toolCount"].as_u64(),
+        Some((BROWSER_TOOLS.len() - 1) as u64),
+        "the browser engine counts its own list, one below the published browser_* bodies"
+    );
     assert!(
         browser["backend"].is_string(),
         "browser backend must be named: {browser}"
@@ -103,7 +115,7 @@ fn initialize_identifies_version_platform_and_both_engines() {
 }
 
 #[test]
-fn catalog_is_exactly_the_32_prefixed_tools() {
+fn catalog_is_the_floor_plus_hand_additions() {
     let mut s = Session::spawn();
     let tools = s.list_tools();
     let expected = BROWSER_TOOLS.len() + DESKTOP_TOOLS.len();
@@ -142,31 +154,182 @@ fn catalog_is_exactly_the_32_prefixed_tools() {
     );
 }
 
-/// Every field of every tool body is the engine's, unchanged, except `name`.
-/// This is the executable compatibility inventory for the catalog.
+/// The pinned compatibility floor as committed by the baseline generator, and
+/// the one machine-readable list of properties `hand` adds on purpose. The
+/// executable gate reads the same two files as `baseline/scripts/compare-catalog.mjs`,
+/// so the script and the test cannot disagree about what is allowed.
+const FLOOR_CATALOG: &str = include_str!("../baseline/hand-catalog.json");
+const DECLARED_ADDITIONS: &str = include_str!("../baseline/declared-additions.json");
+
+fn declared_paths(declared: &Value, schema: &str, tool: &str) -> Vec<String> {
+    declared[schema][tool]
+        .as_array()
+        .map(|paths| {
+            paths
+                .iter()
+                .filter_map(|path| path.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Tool names whose `description` this tree deliberately rewrote, as declared
+/// under `metadata.description`. A declared name must DIFFER from the pin: the
+/// declaration says the rewrite happened, so an unchanged string is stale.
+fn declared_descriptions(declared: &Value) -> Vec<String> {
+    declared["metadata"]["description"]
+        .as_array()
+        .map(|names| {
+            names
+                .iter()
+                .filter_map(|name| name.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// True when the dotted path resolves to a key that exists in `schema`.
+fn has_path(schema: &Value, path: &str) -> bool {
+    let mut node = schema;
+    for segment in path.split('.') {
+        match node.get(segment) {
+            Some(next) => node = next,
+            None => return false,
+        }
+    }
+    true
+}
+
+fn chain_mut<'a>(mut node: &'a mut Value, segments: &[&str]) -> Option<&'a mut Value> {
+    for segment in segments {
+        node = node.as_object_mut()?.get_mut(*segment)?;
+    }
+    Some(node)
+}
+
+/// Remove one declared addition from a copy of the published schema.
+fn strip_path(schema: &mut Value, path: &str) {
+    let segments: Vec<&str> = path.split('.').collect();
+    let Some((key, parents)) = segments.split_last() else {
+        return;
+    };
+    if let Some(parent) = chain_mut(schema, parents) {
+        if let Some(object) = parent.as_object_mut() {
+            object.remove(*key);
+        }
+    }
+    // A declared property can also be listed in `required`; that entry has to go
+    // with it, or the strip leaves a name the pin never carried.
+    if parents.last() == Some(&"properties") {
+        if let Some(holder) = chain_mut(schema, &parents[..parents.len() - 1]) {
+            if let Some(required) = holder.get_mut("required").and_then(|value| value.as_array_mut()) {
+                required.retain(|entry| entry.as_str() != Some(*key));
+            }
+        }
+    }
+}
+
+/// Every field of every floor tool body is the pinned one, except `name` (which
+/// gained the prefix), the properties listed under `inputSchema`/`outputSchema`
+/// in `baseline/declared-additions.json`, and the descriptions listed under
+/// `metadata.description` there. This is the executable compatibility inventory
+/// for the catalog.
+///
+/// The reference is the committed floor, not `browser_engine::list()`: the
+/// engine is the same source that publishes hand's bodies, so it cannot go red
+/// on a schema change. The floor can, and a deleted allowance must.
 #[test]
 fn tool_bodies_are_engine_bodies_under_the_prefix() {
     let mut s = Session::spawn();
     let published = s.list_tools();
 
-    let browser = browser_engine::list();
-    for legacy in browser["tools"].as_array().expect("browser tools") {
-        let legacy_name = legacy["name"].as_str().expect("browser tool name");
-        let name = format!("browser_{legacy_name}");
-        let got = Value::Object(tool(&published, &name).clone());
-        let mut want = legacy.clone();
-        want["name"] = Value::String(name.clone());
-        assert_eq!(got, want, "browser_{legacy_name} body drifted");
+    let floor: Value = serde_json::from_str(FLOOR_CATALOG).expect("baseline/hand-catalog.json parses");
+    let declared: Value =
+        serde_json::from_str(DECLARED_ADDITIONS).expect("baseline/declared-additions.json parses");
+    assert_eq!(declared["version"], json!(1), "the allowance file is versioned");
+
+    // `title` has no declared exceptions at all, so a `title` allowance would
+    // silently turn this gate into a different one. `description` is the only
+    // metadata key the file may name.
+    if let Some(metadata) = declared["metadata"].as_object() {
+        for key in metadata.keys() {
+            assert_eq!(
+                key, "description",
+                "baseline/declared-additions.json: metadata may only declare description"
+            );
+        }
+    }
+    let declared_descriptions = declared_descriptions(&declared);
+
+    let floor_tools = floor["tools"].as_array().expect("floor tools");
+    assert_eq!(floor_tools.len(), 32, "the committed floor is 32 tools");
+
+    for want in floor_tools {
+        let name = want["name"].as_str().expect("floor tool name");
+        let got = tool(&published, name);
+        assert_eq!(got["name"].as_str(), Some(name), "{name} body drifted: name");
+
+        for key in ["inputSchema", "outputSchema"] {
+            let paths = declared_paths(&declared, key, name);
+            // Presence first: a declared addition that was deleted or renamed is
+            // a failure, exactly as an undeclared one is.
+            for path in &paths {
+                assert!(
+                    has_path(&got[key], path),
+                    "{name} {key}: {path} is declared in baseline/declared-additions.json \
+                     but absent from the published body"
+                );
+            }
+            let mut stripped = got[key].clone();
+            for path in &paths {
+                strip_path(&mut stripped, path);
+            }
+            assert_eq!(
+                stripped, want[key],
+                "{name} {key} drifted from baseline/hand-catalog.json beyond the declared additions"
+            );
+        }
+
+        assert_eq!(
+            got["annotations"], want["annotations"],
+            "{name} annotations drifted"
+        );
+        assert_eq!(
+            got["title"], want["title"],
+            "{name} title drifted from baseline/hand-catalog.json: title has no declared exceptions"
+        );
+
+        // A description is a failing comparison by default, exactly like a schema.
+        // A declared tool is the one exception, and it must actually differ: the
+        // declaration says this one was rewritten, so the pin's own string is a
+        // stale declaration rather than a satisfied one.
+        if declared_descriptions.iter().any(|declared| declared == name) {
+            assert_ne!(
+                got["description"], want["description"],
+                "{name} description is declared as rewritten in \
+                 baseline/declared-additions.json but is identical to the pin: a stale declaration"
+            );
+        } else {
+            assert_eq!(
+                got["description"], want["description"],
+                "{name} description drifted from baseline/hand-catalog.json and is not \
+                 declared in baseline/declared-additions.json"
+            );
+        }
     }
 
-    let desktop = desktop_engine::tools_list();
-    for legacy in desktop["tools"].as_array().expect("desktop tools") {
-        let legacy_name = legacy["name"].as_str().expect("desktop tool name");
-        let name = format!("desktop_{legacy_name}");
-        let got = Value::Object(tool(&published, &name).clone());
-        let mut want = legacy.clone();
-        want["name"] = Value::String(name.clone());
-        assert_eq!(got, want, "desktop_{legacy_name} body drifted");
+    // A declared name that is not a floor tool is never reached by the loop
+    // above, so it is checked here: a declaration that no longer names a
+    // published floor tool is stale too.
+    let floor_names: Vec<&str> = floor_tools
+        .iter()
+        .filter_map(|tool| tool["name"].as_str())
+        .collect();
+    for name in &declared_descriptions {
+        assert!(
+            floor_names.contains(&name.as_str()),
+            "{name} is declared as a rewritten description but is not a floor tool"
+        );
     }
 }
 

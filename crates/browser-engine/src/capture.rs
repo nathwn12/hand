@@ -299,12 +299,81 @@ async fn live_metrics(browser: &Browser) -> Value {
         .unwrap_or(Value::Null)
 }
 
+/// The image encoding a capture asks for. `Png` is the historic default and
+/// stays byte-identical: no `quality` is ever sent with it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum Format {
+    #[default]
+    Png,
+    Jpeg,
+    WebP,
+}
+
+impl Format {
+    /// The `Page.captureScreenshot` `format` value.
+    pub fn name(self) -> &'static str {
+        match self {
+            Format::Png => "png",
+            Format::Jpeg => "jpeg",
+            Format::WebP => "webp",
+        }
+    }
+
+    /// The MIME type the reply advertises for exactly these bytes.
+    pub fn mime(self) -> &'static str {
+        match self {
+            Format::Png => "image/png",
+            Format::Jpeg => "image/jpeg",
+            Format::WebP => "image/webp",
+        }
+    }
+
+    /// Does this encoding take a `quality` (0-100)? PNG is lossless and its
+    /// `quality` parameter is meaningless, so a caller that sends one is
+    /// refused by name instead of having it silently dropped.
+    pub fn takes_quality(self) -> bool {
+        matches!(self, Format::Jpeg | Format::WebP)
+    }
+}
+
+/// A capture region in PAGE coordinates (CSS px from the document origin) -
+/// the same space `DOM.getBoxModel` reports and `browser_layout` returns, so a
+/// box measured there can be captured here without a conversion. `scale: 1`
+/// is always sent, so the pixels are CSS px at the page's device scale factor.
+#[derive(Clone, Copy, Debug)]
+pub struct Clip {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
 /// One capture, either plain (the historic behaviour) or deterministic.
 pub struct Options {
     pub full_page: bool,
     pub deterministic: bool,
     pub width: Option<i64>,
     pub height: Option<i64>,
+    /// Capture only this page-space region. Mutually exclusive with
+    /// `full_page`; the tool refuses both together rather than picking one.
+    pub clip: Option<Clip>,
+    pub format: Format,
+    /// 0-100, only for the encodings that take one (`Format::takes_quality`).
+    pub quality: Option<u8>,
+}
+
+impl Default for Options {
+    fn default() -> Self {
+        Options {
+            full_page: false,
+            deterministic: false,
+            width: None,
+            height: None,
+            clip: None,
+            format: Format::Png,
+            quality: None,
+        }
+    }
 }
 
 /// A decoded capture plus the metadata that makes it auditable.
@@ -321,6 +390,9 @@ pub struct Capture {
     pub dsf: f64,
     pub url: String,
     pub deterministic: bool,
+    /// The encoding of `bytes` - the reply's `mimeType` and `format` are this,
+    /// never assumed PNG.
+    pub format: Format,
     /// True when this engine actually emulated `prefers-reduced-motion`
     /// (`Emulation.setEmulatedMedia` implemented). False on the pinned
     /// `chrome-headless-shell`, where the preference stays the host's and only
@@ -344,12 +416,15 @@ impl Capture {
     /// Deterministic metadata block (view n/a when `deterministic` is false).
     pub fn meta(&self) -> Value {
         let mut m = serde_json::Map::new();
-        m.insert("mimeType".to_string(), json!("image/png"));
+        m.insert("mimeType".to_string(), json!(self.format.mime()));
+        m.insert("format".to_string(), json!(self.format.name()));
         m.insert("bytes".to_string(), json!(self.bytes.len() as i64));
-        m.insert(
-            "size".to_string(),
-            json!({"width": self.png_width, "height": self.png_height}),
-        );
+        if self.png_width > 0 {
+            m.insert(
+                "size".to_string(),
+                json!({"width": self.png_width, "height": self.png_height}),
+            );
+        }
         if self.deterministic {
             m.insert("deterministic".to_string(), json!(true));
             m.insert(
@@ -539,15 +614,33 @@ pub fn checksum(bytes: &[u8]) -> String {
     format!("{h:016x}")
 }
 
-fn plain_params(full_page: bool) -> Value {
-    if full_page {
-        json!({"format": "png", "captureBeyondViewport": true, "fromSurface": true})
-    } else {
-        json!({"format": "png", "fromSurface": true})
+/// The `Page.captureScreenshot` params for this capture. PNG without a clip
+/// keeps the historic key order and set exactly (`format`, then
+/// `captureBeyondViewport` for a full page, then `fromSurface`).
+fn shot_params(opts: &Options) -> Value {
+    let mut p = serde_json::Map::new();
+    p.insert("format".to_string(), json!(opts.format.name()));
+    if let Some(c) = opts.clip {
+        p.insert(
+            "clip".to_string(),
+            json!({"x": c.x, "y": c.y, "width": c.width, "height": c.height, "scale": 1}),
+        );
+        // A clip outside the live viewport (a tall page's lower half) is only
+        // rendered when the capture is allowed past the viewport.
+        p.insert("captureBeyondViewport".to_string(), json!(true));
+    } else if opts.full_page {
+        p.insert("captureBeyondViewport".to_string(), json!(true));
     }
+    p.insert("fromSurface".to_string(), json!(true));
+    if opts.format.takes_quality() {
+        if let Some(q) = opts.quality {
+            p.insert("quality".to_string(), json!(q));
+        }
+    }
+    Value::Object(p)
 }
 
-fn decode(r: &Value, deterministic: bool) -> Result<Capture, String> {
+fn decode(r: &Value, deterministic: bool, format: Format) -> Result<Capture, String> {
     let data = r
         .get("data")
         .and_then(|v| v.as_str())
@@ -569,6 +662,7 @@ fn decode(r: &Value, deterministic: bool) -> Result<Capture, String> {
         dsf: 1.0,
         url: String::new(),
         deterministic,
+        format,
         reduced_motion_emulated: false,
         settled: true,
         settle_timeouts: Vec::new(),
@@ -633,9 +727,9 @@ pub async fn capture(browser: &Browser, opts: &Options) -> Result<Capture, Strin
         .map_err(|e| format!("screenshot: {e}"))?;
     if !opts.deterministic {
         let r = browser
-            .command("Page.captureScreenshot", plain_params(opts.full_page), true)
+            .command("Page.captureScreenshot", shot_params(opts), true)
             .await?;
-        return decode(&r, false);
+        return decode(&r, false, opts.format);
     }
 
     // Prior override we must put back. Read BEFORE we overwrite anything.
@@ -733,7 +827,7 @@ pub async fn capture(browser: &Browser, opts: &Options) -> Result<Capture, Strin
     }
     let live = live_metrics(browser).await;
     let shot = browser
-        .command("Page.captureScreenshot", plain_params(opts.full_page), true)
+        .command("Page.captureScreenshot", shot_params(opts), true)
         .await;
 
     // Restore on every path, capture success or not: undo the freeze walk in
@@ -797,7 +891,7 @@ pub async fn capture(browser: &Browser, opts: &Options) -> Result<Capture, Strin
         }
     }
 
-    let mut cap = decode(&shot?, true)?;
+    let mut cap = decode(&shot?, true, opts.format)?;
     cap.reduced_motion_emulated = media_emulated;
     cap.settled = settle_timeouts.is_empty();
     cap.settle_timeouts = settle_timeouts;

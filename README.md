@@ -34,9 +34,9 @@ The client spawns `hand` and speaks newline-delimited JSON-RPC 2.0 on stdio. std
 
 ## Use it
 
-One connection, two domains, one budget, one shutdown. Browser tools carry the `browser_` prefix, desktop tools `desktop_`, and every legacy Gladius and Puppet tool keeps its pinned `inputSchema`, `outputSchema`, `description` and `annotations` — only the name gained a prefix. `tests/discovery.rs` asserts that field for field, and `baseline/scripts/compare-catalog.mjs` recaptures the legacy catalog independently. That is the 32-tool compatibility floor served unchanged, with `browser_context` added on top.
+One connection, two domains, one budget, one shutdown. Browser tools carry the `browser_` prefix, desktop tools `desktop_`, and every legacy Gladius and Puppet tool body is the pin's, except the schema additions and the seven description rewrites declared in `baseline/declared-additions.json`: the name gained the prefix, the properties listed there were added (element and clip screenshots, right/double click, `resolved`, `noSteal`), and those seven descriptions were rewritten to document them. Any other body, title or description change fails. `tests/discovery.rs` asserts that against the committed floor, and `baseline/scripts/compare-catalog.mjs` recaptures the legacy catalog independently. That is the 32-tool compatibility floor, with hand's own `browser_context`, `browser_wheel` and `browser_drag` added on top - 35 tools live, and `baseline/hand-catalog.json` records both halves (`counts` for the floor, `live` for what this build publishes).
 
-- Browser, 25 tools: `browser_navigate`, `browser_snapshot`, then a tool that acts on an `@eN` ref — click, type, hover, select, key, upload. Read with `browser_evaluate`, `browser_console`, `browser_network`, `browser_fetch_text`. Prove layout with `browser_wait_for`, `browser_assert_layout`, `browser_layout`; take pixels with `browser_screenshot`, `browser_visual`; keep state with `browser_storage`; reach the protocol through `browser_cdp`.
+- Browser, 28 tools: `browser_navigate`, `browser_snapshot`, then a tool that acts on an `@eN` ref - click (with `button` and `clickCount` for right, middle and double clicks), type, hover, select, key, upload - plus `browser_wheel` and `browser_drag` for a trusted scroll and a trusted drag. Read with `browser_evaluate`, `browser_console`, `browser_network`, `browser_fetch_text`. Prove layout with `browser_wait_for`, `browser_assert_layout`, `browser_layout`; take pixels with `browser_screenshot` (whole page, one element, or a clip rectangle, as png/jpeg/webp), `browser_visual`; keep state with `browser_storage`; reach the protocol through `browser_cdp`.
 - Desktop, Puppet's seven, `desktop_screenshot` through `desktop_elements`: Win32 plus UI Automation, reading or acting only on an explicitly selected window.
 - Isolation: `browser_context` creates and selects named contexts so cookies and storage stay apart; a hidden desktop launch runs in a job object that dies with the server.
 
@@ -75,6 +75,10 @@ The live browser test starts a loopback fixture and drives inspect, act and veri
 ## Status
 
 **Experimental** — pre-release; interfaces may change.
+
+Three commits in this history carried the local harness seed: `a0bdbe5`, `3295432` and `f1013fa`. They remain reachable objects. Leaving them was deliberate: they contain no secret, and a copy of the seed is kept in the harness archive.
+
+That decision expires on publication. If this repository becomes public, or the npm gate passes, the history must be dealt with before the release goes out.
 
 ## Links
 

@@ -712,6 +712,7 @@ pub async fn save(browser: &Browser, name: &str, full_page: bool) -> Result<Valu
             deterministic: true,
             width: None,
             height: None,
+            ..Default::default()
         },
     )
     .await
@@ -1386,6 +1387,7 @@ pub async fn compare(browser: &Browser, name: &str, opts: &DiffOpts) -> Result<V
             deterministic: true,
             width: None,
             height: None,
+            ..Default::default()
         },
     )
     .await?;

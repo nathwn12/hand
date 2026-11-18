@@ -7,16 +7,24 @@
 //
 // Default baseline is `hand` (`hand-catalog.json`): the candidate must expose
 // all 32 spec-required `browser_*` / `desktop_*` tools, and each one's
-// inputSchema, outputSchema and annotations must be structurally identical to
-// the pinned legacy tool it is named after. Additional hand tools are reported,
-// not rejected: the pinned legacy catalog is a floor, not a complete suite.
+// inputSchema, outputSchema, annotations, title and description must be
+// structurally identical to the pinned legacy tool it is named after - except
+// for the allowances listed in `baseline/declared-additions.json`. Schema
+// properties there must be present and are removed before the comparison; a
+// tool listed under `metadata.description` has a deliberately rewritten
+// description, and an identical one fails as a stale declaration. Additional
+// hand tools are reported, not rejected: the pinned legacy catalog is a floor,
+// not a complete suite.
 //
 // `--baseline gladius|puppet` compares against the raw legacy catalogue with
 // the exact legacy names and every field as contract. That is the re-capture
 // check: it proves a pinned binary still emits what is committed here.
 //
 // Exit codes: 0 pass, 1 mismatch, 2 usage or transport error.
-// `--strict-metadata` additionally fails on a title/description change.
+// Metadata is strict by default in both profiles: any title difference fails,
+// and any description difference fails unless the tool is declared as rewritten
+// in `baseline/declared-additions.json`. `--strict-metadata` is therefore a
+// no-op kept for CLI compatibility; it changes no verdict.
 // `--json` prints the machine report; `--out <file>` also writes it.
 
 import { readFileSync, writeFileSync } from "node:fs";
@@ -65,7 +73,8 @@ export async function runComparison(options) {
     baseline,
     candidate: { tools: candidate },
     profile,
-    strictMetadata: options.strictMetadata ?? false,
+    // `--strict-metadata` is parsed for CLI compatibility and passed nowhere:
+    // metadata has no relaxed mode, so the option cannot change a verdict.
   });
   report.baseline = { name: baselineName, path: baselinePath, tools: baseline.tools.length };
   report.candidate = {
@@ -90,14 +99,19 @@ function printReport(report) {
       console.log(`             ${diff.path}: ${diff.kind} left=${diff.left} right=${diff.right}`);
     }
   }
-  console.log(`  metadata   ${report.metadataDrift.length} title/description difference(s)${report.strictMetadata ? " (strict: failure)" : " (allowed unless --strict-metadata)"}`);
+  console.log(`  metadata   ${report.metadataDrift.length} title/description difference(s) (strict: on)`);
   for (const entry of report.metadataDrift.slice(0, 10)) {
     console.log(`             ${entry.tool} ${entry.kind}`);
   }
+  if (report.declaredMissing?.length) {
+    for (const entry of report.declaredMissing) {
+      console.log(`  MISSING-ADDITION ${entry.tool} ${entry.kind}: ${entry.paths.join(", ")} declared in baseline/declared-additions.json but absent from the candidate`);
+    }
+  }
   if (report.declaredAdditions?.length) {
-    console.log(`  declared   ${report.declaredAdditions.length} output-schema addition(s) allowed by DECLARED_OUTPUT_ADDITIONS:`);
+    console.log(`  declared   ${report.declaredAdditions.length} addition group(s) allowed by baseline/declared-additions.json:`);
     for (const entry of report.declaredAdditions) {
-      console.log(`             ${entry.tool} += ${entry.properties.join(", ")}`);
+      console.log(`             ${entry.tool} ${entry.kind} += ${entry.paths.join(", ")}`);
     }
   }
   for (const warning of report.warnings) console.log(`  WARN       ${warning}`);
@@ -116,7 +130,12 @@ function parseArgs(argv) {
     else if (token === "--json") options.json = true;
     else if (token === "--strict-metadata") options.strictMetadata = true;
     else if (token === "--help" || token === "-h") {
-      console.log("usage: compare-catalog.mjs (--serve <exe> [--serve-arg <a>] | --candidate <json>) [--baseline hand|gladius|puppet] [--pin <commit>] [--strict-metadata] [--json] [--out <file>]");
+      console.log("usage: compare-catalog.mjs (--serve <exe> [--serve-arg <a>] | --candidate <json>) [--baseline hand|gladius|puppet] [--pin <commit>] [--json] [--out <file>]");
+      console.log("       metadata is strict by default in both profiles: any title difference fails, and a");
+      console.log("       description difference fails unless the tool is declared as rewritten under");
+      console.log("       metadata.description in baseline/declared-additions.json.");
+      console.log("       --strict-metadata is still accepted and changes nothing: it is a no-op kept for");
+      console.log("       CLI compatibility, not an extra failure mode.");
       process.exit(0);
     } else throw new Error(`unknown argument: ${token}`);
   }

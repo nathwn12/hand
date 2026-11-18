@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>OOPIF child</title>
+</head>
+<body>
+<h1>Child frame</h1>
+<button id="child-btn" type="button">Child action</button>
+<p id="child-out">idle</p>
+</body>
+<script>
+  document.getElementById('child-btn').addEventListener('click', () => {
+    document.getElementById('child-out').textContent = 'clicked';
+  });
+</script>
+</html>

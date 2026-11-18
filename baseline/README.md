@@ -11,6 +11,13 @@ reproduce, taken from the revisions the specification pins:
 32 tools in total, which is the specification's first-release floor
 ([specification](../docs/SPEC.md), "Initial public surface and lifecycle").
 
+The floor is what `hand` must serve; it is not the whole surface. The current
+build publishes **35** tools — those 32 plus `browser_context`,
+`browser_wheel` and `browser_drag` — and `hand-catalog.json` records both
+halves: `counts` is the derived floor, `live` is what the binary answered
+`tools/list` with. Quoting `counts.total` as "the catalogue" is the mistake the
+`live` block exists to prevent.
+
 This directory captures catalog evidence and provides a compatibility gate. It
 does not by itself prove the implementation's behavior or the complete suite.
 
@@ -41,6 +48,35 @@ difference, not a normalization artifact. Its `blockers` and `notes` fields
 record the derivation run: blockers are pinned-capture disagreements, notes are
 tools captured beyond the required floor.
 
+### The `live` block
+
+`--serve` also asks the built server what it publishes, so the file stops
+implying that 32 is everything:
+
+| Field | Content |
+|---|---|
+| `counts.total` / `browser` / `desktop` | the derived floor, 32 = 25 + 7 pinned legacy tools |
+| `counts.live` | how many tools the served binary published (35 today) |
+| `live.names` | every name the server answered with, sorted |
+| `live.extra` | the names above the floor, sorted (`browser_context`, `browser_drag`, `browser_wheel`) |
+| `live.toolCount` | `live.names.length` |
+| `live.protocolVersion` | the version the server negotiated for a `2025-11-25` request |
+| `live.capture` | the executable path, its SHA-256, and the binary's own `--version` line |
+
+That capture is provenance, not a log: `live.capture` carries exactly those
+three keys — no timestamp, no environment, no build directory — so two runs
+against the same binary produce the same bytes. A live name above the floor is
+a note. A live block that contradicts itself is an `ISSUE` and exits 1: a count
+that disagrees with its names, names out of order, a repeated name, a floor name
+the server does not serve, an `extra` list that is not exactly the difference,
+or an unexpected `capture` field.
+
+Without `--serve` nothing about a running server is claimed: no `live` block, no
+`counts.live`, no `live:` notes, and the derived file stays reproducible from
+the captures alone. The two halves are separate facts for that reason — the
+floor is derived and pinned, the live block is measured from one binary, and
+that binary is identified only by its hash and version, never by a date.
+
 ## Why the capture is the pinned catalogue
 
 The committed catalogues were captured from the release binaries already on
@@ -62,11 +98,14 @@ touching the worktree, index or refs.
 ## Commands
 
 ```powershell
-# integrity + comparator self-checks (18 tests, includes a live re-capture)
+# integrity + comparator self-checks (20 tests, includes a live re-capture)
 node --test baseline/test/
 
-# derive the hand catalogue from the two captures
+# derive the hand catalogue from the two captures (no live block: the floor only)
 node baseline/scripts/build-hand-catalog.mjs
+
+# derive it and record what a built server publishes: counts.live and live
+node baseline/scripts/build-hand-catalog.mjs --serve Q:\path\to\hand.exe
 
 # compare a candidate server against the hand baseline
 node baseline/scripts/compare-catalog.mjs --serve Q:\path\to\hand.exe
@@ -81,15 +120,22 @@ node baseline/scripts/capture-mcp-catalog.mjs --cmd Q:\PROJECTS\PERSONAL\puppet\
 ```
 
 Exit codes: `compare-catalog.mjs` returns 0 pass, 1 mismatch, 2 usage or
-transport error. `build-hand-catalog.mjs` returns 1 when a blocker is recorded
-and still writes the file, because the baseline records what was captured rather
-than what was hoped for. A blocker is a disagreement with the pinned capture: a
-tool count, version or canonical hash that does not match `pins.json`, a
-required tool missing from the capture, or a duplicate name. A tool captured
-*beyond* the required floor is a note instead — printed as `NOTE`, recorded in
-`hand-catalog.json` under `notes`, and not an exit-code change. It is not a
-blocker because the 32 names are a floor; extra upstream capability does not
-make the capture wrong.
+transport error. `build-hand-catalog.mjs` returns 1 when a blocker or a live
+block inconsistency is recorded and still writes the file, because the baseline
+records what was captured rather than what was hoped for. A blocker is a
+disagreement with the pinned capture: a tool count, version or canonical hash
+that does not match `pins.json`, a required tool missing from the capture, or a
+duplicate name. A tool captured *beyond* the required floor is a note instead —
+printed as `NOTE`, recorded in `hand-catalog.json` under `notes`, and not an
+exit-code change. It is not a blocker because the 32 names are a floor; extra
+upstream capability does not make the capture wrong. The same rule covers a live
+tool above the floor, while a live block that contradicts its own count, its
+ordering or the floor is an `ISSUE` and exits 1. A live server that never
+answers `tools/list` exits 2 and leaves the committed file untouched.
+
+`compare-catalog.mjs` reads only the derived floor: `live` and `counts.live` are
+provenance for what one binary publishes and are not part of the gate, which is
+why an addition above the floor is reported as `extra` and passes.
 
 The live tests skip rather than pass when a binary is absent; set
 `HAND_BASELINE_SKIP_LIVE=1` to skip them deliberately.
@@ -100,7 +146,7 @@ The live tests skip rather than pass when a binary is absent; set
 |---|---|---|
 | name | must be `browser_<legacy>` / `desktop_<legacy>` | exact legacy name |
 | `inputSchema`, `outputSchema`, `annotations` | structural equality, deep and key-order independent | structural equality |
-| `title`, `description` | drift reported, fails only with `--strict-metadata` | failure |
+| `title`, `description` | pinned; a `description` difference fails unless the tool is listed under `metadata.description` in `declared-additions.json`, and a listed description that still matches the pin fails as stale | failure |
 | tool set | all 32 required names must be present; a missing one fails, an additional one is reported as `extra` and passes | exact set: a missing or an additional name fails |
 
 A missing required tool, a duplicate name, a relaxed schema (for example a
@@ -138,7 +184,9 @@ the gate cannot pass vacuously.
 - 32 tools is the floor, not the product: the additional capabilities in the
   specification (isolated contexts, interception, clock/viewport control,
   private-desktop launch, semantic paging, visual-change waits, and the rest)
-  are not in either catalogue and are not implied by this baseline.
+  are not in either catalogue and are not implied by this baseline. The `live`
+  block records only what one build already adds — today `browser_context`,
+  `browser_wheel` and `browser_drag` — and says nothing about the rest.
 - The capture says nothing about whether either binary passes its own tests on
   this machine in this session.
 - `ping`, `initialize` and `server/discover` results are captured for

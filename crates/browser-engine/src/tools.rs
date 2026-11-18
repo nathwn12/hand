@@ -13,7 +13,7 @@ pub fn list() -> Value {
             "required": ["url", "title"], "additionalProperties": false},
          "annotations": {"readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": true}},
         {"name": "snapshot", "title": "Snapshot",
-         "description": "Snapshot: one line per node with a stable ref (@eN, unique per snapshot), role/name/value, plus page text. Default is the real Accessibility tree of the page itself: open shadow roots are included, iframe content is NOT part of this tree (snapshot the frame with frame= to see inside it), and hidden/ignored subtrees are excluded. mode:\"legacy\" keeps the old DOM heuristic (the only path that stamps an attribute into the page); mode:\"text\" is text-only. frame=<CDP frameId> from targets scopes the snapshot to that iframe (same-process first; OOPIF is a follow-up). AX refs resolve by backend node id, so a shadow ref is actionable exactly like a light-DOM ref. Paging: pass the snapshotId from the offset:0 render with offset>0 (required; paging slices that render and never re-renders).",
+         "description": "Snapshot: one line per node with a stable ref (@eN, unique per snapshot), role/name/value, plus page text. Default is the real Accessibility tree of the page itself: open shadow roots are included, iframe content is NOT part of this tree (snapshot the frame with frame= to see inside it), and hidden/ignored subtrees are excluded. mode:\"legacy\" keeps the old DOM heuristic (the only path that stamps an attribute into the page); mode:\"text\" is text-only. frame=<CDP frameId> from targets scopes the snapshot to that iframe: a same-process frame is read on the page session, a mapped out-of-process frame (OOPIF) is read on its own session, and an OOPIF with no mapped session is a typed error rather than the page's tree. AX refs resolve by backend node id, so a shadow ref is actionable exactly like a light-DOM ref. Paging: pass the snapshotId from the offset:0 render with offset>0 (required; paging slices that render and never re-renders).",
          "inputSchema": {"type": "object", "properties": {"mode": {"type": "string", "enum": ["ax", "legacy", "text"]}, "frame": {"type": "string"}, "offset": {"type": "integer", "minimum": 0, "default": 0}, "snapshotId": {"type": "string", "description": "required when offset > 0: the id returned by the offset:0 render"}}, "additionalProperties": false},
          "outputSchema": {"type": "object",
             "properties": {
@@ -34,15 +34,24 @@ pub fn list() -> Value {
             "anyOf": [{"required": ["url", "title", "truncated", "nodes", "snapshotId", "totalLines", "nextOffset"]}, {"required": ["mode", "text"]}]},
          "annotations": {"readOnlyHint": true, "destructiveHint": false, "idempotentHint": false, "openWorldHint": false}},
         {"name": "screenshot", "title": "Screenshot",
-         "description": "PNG screenshot of the active page (unavailable with GLADIUS_BACKEND_CAPS=dom-only: no rendering pipeline). Optional path: an ABSOLUTE filesystem path the decoded PNG is also written to (missing parent directories are created; a failed write is a typed error, never a silent success). There is no allowlisted screenshot root: only absolute paths are accepted, and a relative path is rejected. When path is absent the reply shape is unchanged. deterministic:true pins the capture: device metrics fixed (current viewport, or width/height; deviceScaleFactor 1, mobile false) and restored afterwards, prefers-reduced-motion:reduce while the capture runs, cleared back to the engine/host default afterwards (a host that asks for reduced motion reports reduce again, so the guarantee is unchanged-from-baseline; reducedMotionEmulated reports whether the emulation was applied at all, and the freeze stylesheet is what stops CSS animation), a temporary style element freezing animation/transition/caret-color/scrollbars, applied by a walk that reaches the main document, every same-process descendant frame and every OPEN shadow root, and that pauses WAAPI animations, SVG SMIL timelines and media playback (each pinned to its start, because a pause at a wall-clock position is not reproducible); a realm the walk cannot reach is named in freeze.skipped, then `document.fonts.status === 'loaded'` plus every `FontFace` reaching `loaded` or `error` (a face still loading at the budget is counted in `fontsPending` and named in `settleTimeouts`), every img complete and two animation-frame ticks before Page.captureScreenshot({format:png, fromSurface:true, captureBeyondViewport for full page}). The reply then carries viewport, deviceScaleFactor, url, byte length, a cheap content checksum, reducedMotionEmulated, settled, settleTimeouts, fontsPending, freezeMode and freeze. deterministic pins the capture so two captures of the same page in the same engine produce the same PNG bytes; the scope of the freeze is the main document, same-process frames, open shadow roots, CSS animation, WAAPI, SMIL and media (see freeze). Canvas, WebGL, video frames and cross-process iframes are sampled, not frozen. Everything rides CDP: no OS cursor, no OS keyboard, no window, no foreground tab.",
+         "description": "PNG screenshot of the active page (unavailable with GLADIUS_BACKEND_CAPS=dom-only: no rendering pipeline). Optional path: an ABSOLUTE filesystem path the decoded PNG is also written to (missing parent directories are created; a failed write is a typed error, never a silent success). There is no allowlisted screenshot root: only absolute paths are accepted, and a relative path is rejected. When path is absent the reply shape is unchanged. deterministic:true pins the capture: device metrics fixed (current viewport, or width/height; deviceScaleFactor 1, mobile false) and restored afterwards, prefers-reduced-motion:reduce while the capture runs, cleared back to the engine/host default afterwards (a host that asks for reduced motion reports reduce again, so the guarantee is unchanged-from-baseline; reducedMotionEmulated reports whether the emulation was applied at all, and the freeze stylesheet is what stops CSS animation), a temporary style element freezing animation/transition/caret-color/scrollbars, applied by a walk that reaches the main document, every same-process descendant frame and every OPEN shadow root, and that pauses WAAPI animations, SVG SMIL timelines and media playback (each pinned to its start, because a pause at a wall-clock position is not reproducible); a realm the walk cannot reach is named in freeze.skipped, then `document.fonts.status === 'loaded'` plus every `FontFace` reaching `loaded` or `error` (a face still loading at the budget is counted in `fontsPending` and named in `settleTimeouts`), every img complete and two animation-frame ticks before Page.captureScreenshot({format:png, fromSurface:true, captureBeyondViewport for full page}). The reply then carries viewport, deviceScaleFactor, url, byte length, a cheap content checksum, reducedMotionEmulated, settled, settleTimeouts, fontsPending, freezeMode and freeze. deterministic pins the capture so two captures of the same page in the same engine produce the same PNG bytes; the scope of the freeze is the main document, same-process frames, open shadow roots, CSS animation, WAAPI, SMIL and media (see freeze). Canvas, WebGL, video frames and cross-process iframes are sampled, not frozen. Everything rides CDP: no OS cursor, no OS keyboard, no window, no foreground tab. Scope: element= (a CSS selector or an @eN ref from browser_snapshot) captures exactly that element's border box, and clip={x,y,width,height} captures a page-coordinate region (the same space browser_layout's box reports); both ride Page.captureScreenshot's clip, so the pixel size is the box size at deviceScaleFactor 1, and an element with no layout box (display:none, detached) is a typed not_actionable/hidden refusal rather than an empty image. An unknown ref is a typed stale_ref. fullPage and clip together are refused. format=png (default)|jpeg|webp sets the encoding and the reply's mimeType; quality=0-100 applies to jpeg/webp only and is refused with png instead of being silently ignored. The default capture (no element, no clip, no format) is byte-for-byte the historic PNG.",
          "inputSchema": {"type": "object", "properties": {
              "fullPage": {"type": "boolean"}, "path": {"type": "string"},
              "deterministic": {"type": "boolean"},
-             "width": {"type": "integer"}, "height": {"type": "integer"}},
+             "width": {"type": "integer"}, "height": {"type": "integer"},
+             "element": {"type": "string", "description": "CSS selector or @eN ref: capture that element's box"},
+             "clip": {"type": "object", "description": "page-coordinate region to capture",
+                 "properties": {"x": {"type": "number"}, "y": {"type": "number"},
+                     "width": {"type": "number", "exclusiveMinimum": 0},
+                     "height": {"type": "number", "exclusiveMinimum": 0}},
+                 "required": ["x", "y", "width", "height"], "additionalProperties": false},
+             "format": {"type": "string", "enum": ["png", "jpeg", "webp"], "default": "png"},
+             "quality": {"type": "integer", "minimum": 0, "maximum": 100}},
              "additionalProperties": false},
          "outputSchema": {"type": "object",
-            "properties": {"mimeType": {"type": "string"}, "bytes": {"type": "integer", "minimum": 0},
+            "properties": {"mimeType": {"type": "string"}, "format": {"type": "string"}, "bytes": {"type": "integer", "minimum": 0},
                 "path": {"type": "string"}, "deterministic": {"type": "boolean"},
+                "element": {"type": "string"}, "clip": {"type": "object"},
                 "viewport": {"type": "object"}, "deviceScaleFactor": {"type": "number"},
                 "size": {"type": "object", "properties": {"width": {"type": "integer"}, "height": {"type": "integer"}}, "required": ["width", "height"]},
                 "url": {"type": "string"}, "checksum": {"type": "string"},
@@ -53,8 +62,8 @@ pub fn list() -> Value {
             "required": ["mimeType", "bytes"], "additionalProperties": false},
          "annotations": {"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}},
         {"name": "click", "title": "Click",
-         "description": "Click an element by CSS selector (first match) or AX ref (@eN from snapshot; exact). AX selector forms are also accepted and are uniqueness-mandatory: role=<role>, role=<role>[name=\"<accessible name>\"], name=\"<accessible name>\", text=\"<text>\" (exact visible text inside one element; when nested elements contain exactly that text the innermost one is the match) and label=\"<label text>\" (form control by its associated <label>). They are resolved fresh at action time on the accessibility tree browser_snapshot renders for the page itself (like a CSS selector, so a re-rendered element keeps answering while a snapshot-bound @eN would go stale; iframe content is not part of that tree - pass frame= to search inside a frame); names and text are whitespace-normalised and compared case-insensitively, and text= reads visible text while name=/label= read the accessible name. Zero matches is invalid_target/not_found naming the selector; more than one is invalid_target/ambiguous listing every candidate as @eN plus role and name - the first match is never taken. Every reply adds resolved {selector, ref, role, name}, where ref is that element's @eN in the current snapshot (null when the snapshot holds none). resolved.name is the name browser_snapshot prints for it (capped at 80 characters, or the fallback name of an unlabeled control), so a name copied out of a snapshot resolves. resolved.name is the name browser_snapshot prints for it (capped at 80 characters, or the fallback name of an unlabeled control). role= takes an ARIA role string such as button, generic, StaticText or Iframe (capital I), never a tag name; quote values with double quotes and escape an inner double quote as \". The click is exactly two CDP events at the element's exact float box centre: mousePressed then mouseReleased - no mouseMoved, no hover, no movement loop, no interpolation. hoverFirst:true sends ONE mouseMoved at that same point first, for pages whose handlers read hover state; the default is false. frame=<CDP frameId> from targets scopes to that iframe (same-process CSS selectors; a frame-scoped AX selector is resolved inside that frame's own accessibility tree and never against the page; refs are main-frame only - with frame= use a CSS or AX selector; OOPIF without a mapped target is a typed error, never a main-frame click)",
-         "inputSchema": {"type": "object", "properties": {"element": {"type": "string"}, "frame": {"type": "string"}, "hoverFirst": {"type": "boolean"}}, "required": ["element"], "additionalProperties": false},
+         "description": "Click an element by CSS selector (first match) or AX ref (@eN from snapshot; exact). AX selector forms are also accepted and are uniqueness-mandatory: role=<role>, role=<role>[name=\"<accessible name>\"], name=\"<accessible name>\", text=\"<text>\" (exact visible text inside one element; when nested elements contain exactly that text the innermost one is the match) and label=\"<label text>\" (form control by its associated <label>). They are resolved fresh at action time on the accessibility tree browser_snapshot renders for the page itself (like a CSS selector, so a re-rendered element keeps answering while a snapshot-bound @eN would go stale; iframe content is not part of that tree - pass frame= to search inside a frame); names and text are whitespace-normalised and compared case-insensitively, and text= reads visible text while name=/label= read the accessible name. Zero matches is invalid_target/not_found naming the selector; more than one is invalid_target/ambiguous listing every candidate as @eN plus role and name - the first match is never taken. Every reply adds resolved {selector, ref, role, name}, where ref is that element's @eN in the current snapshot (null when the snapshot holds none). resolved.name is the name browser_snapshot prints for it (capped at 80 characters, or the fallback name of an unlabeled control), so a name copied out of a snapshot resolves. resolved.name is the name browser_snapshot prints for it (capped at 80 characters, or the fallback name of an unlabeled control). role= takes an ARIA role string such as button, generic, StaticText or Iframe (capital I), never a tag name; quote values with double quotes and escape an inner double quote as \". The click is exactly two CDP events at the element's exact float box centre: mousePressed then mouseReleased - no mouseMoved, no hover, no movement loop, no interpolation (with frame= pointing at a cross-process OOPIF, ONE positioning mouseMoved precedes the press, because the browser routes pointer input to a child renderer only after a move at that position; that is routing, not hover). hoverFirst:true sends ONE mouseMoved at that same point first, for pages whose handlers read hover state; the default is false. frame=<CDP frameId> from targets scopes to that iframe (same-process CSS selectors; a frame-scoped AX selector is resolved inside that frame's own accessibility tree and never against the page; a ref is actionable only in the frame whose own snapshot minted it (main-frame refs stay main-frame); an out-of-process frame with no mapped session is a typed error, never a main-frame click. button=left (default)|right|middle chooses the pointer button; a right click raises the engine's own contextmenu, and the page's menu (a DOM node it shows) is what the next snapshot reports. clickCount (default 1) is passed to the engine: 2 is a DOUBLE click, so the engine raises dblclick on the second press - no synthetic DOM event, no second-guessing. Existing calls are unchanged: no button and no clickCount is exactly the historic press+release pair with left/1)",
+         "inputSchema": {"type": "object", "properties": {"element": {"type": "string"}, "frame": {"type": "string"}, "hoverFirst": {"type": "boolean"}, "button": {"type": "string", "enum": ["left", "right", "middle"], "default": "left"}, "clickCount": {"type": "integer", "minimum": 1, "maximum": 3, "default": 1}}, "required": ["element"], "additionalProperties": false},
          "outputSchema": {"type": "object",
             "properties": {"ok": {"type": "boolean"}, "dialog": {"type": "object"}, "note": {"type": "string"},
                 "resolved": {"type": "object",
@@ -362,6 +371,37 @@ pub fn list() -> Value {
                  "maxDiffRatio": {"type": "number"}, "fullPage": {"type": "boolean"}},
              "required": ["ok", "action"], "additionalProperties": false},
           "annotations": {"readOnlyHint": false, "destructiveHint": true, "idempotentHint": false, "openWorldHint": false}}));
+        // Pointer completeness: a drag and a wheel are distinct primitives, so
+        // they are distinct tools (the click tool gained button/clickCount
+        // parameters instead of a second click tool).
+        tools.insert(at + 3, json!({"name": "drag", "title": "Drag",
+          "description": "Drag from one element (or point) to another with real trusted input: one positioning Input.dispatchMouseEvent mouseMoved at the source, one mousePressed there, `steps` interpolated mouseMoved events with buttons:1, then mouseReleased at the target. The opening move is what routes pointer input to the renderer that owns the source (a cross-process frame receives nothing without it - measured), and the move at the source is also what starts a drag. from/to are a CSS selector (first match), an @eN ref from snapshot, or an AX selector (role=/name=/text=/label=); fromPoint/toPoint {x,y} in viewport CSS px stand in for an element on either side, so a drag between bare coordinates needs no DOM at all. Both endpoints run the same visibility/occlusion preflight click uses: a hidden or occluded endpoint is a typed not_actionable refusal and NOTHING is dispatched. Every event is trusted, so the engine's own HTML5 drag-and-drop machinery and the page's pointer handlers both fire - no synthetic DragEvent, no DataTransfer construction, no .value writes. steps (default 8, 2-64) splits the path into that many move events. Reply: the two points, the events dispatched and the step count. frame=<CDP frameId> resolves from/to inside that iframe (CSS or AX selectors; refs are main-frame only) and the dispatch point is mapped to main-viewport coordinates.",
+          "inputSchema": {"type": "object", "properties": {
+              "from": {"type": "string"}, "to": {"type": "string"},
+              "fromPoint": {"type": "object", "properties": {"x": {"type": "number"}, "y": {"type": "number"}}, "required": ["x", "y"], "additionalProperties": false},
+              "toPoint": {"type": "object", "properties": {"x": {"type": "number"}, "y": {"type": "number"}}, "required": ["x", "y"], "additionalProperties": false},
+              "steps": {"type": "integer", "minimum": 2, "maximum": 64, "default": 8},
+              "frame": {"type": "string"}},
+              "additionalProperties": false},
+          "outputSchema": {"type": "object",
+             "properties": {"ok": {"type": "boolean"},
+                 "from": {"type": "object"}, "to": {"type": "object"},
+                 "events": {"type": "integer", "minimum": 0},
+                 "steps": {"type": "integer", "minimum": 0}},
+             "required": ["ok", "from", "to", "events", "steps"], "additionalProperties": false},
+          "annotations": {"readOnlyHint": false, "destructiveHint": true, "idempotentHint": false, "openWorldHint": true}}));
+        tools.insert(at + 4, json!({"name": "wheel", "title": "Wheel",
+          "description": "Scroll with real trusted input: ONE Input.dispatchMouseEvent of type mouseWheel at (x,y) - viewport CSS px, default the viewport centre - carrying deltaX/deltaY in pixels. The page's own scroll machinery runs (smooth scrolling, scroll listeners, nested scroll containers, whatever the page uses), so this is not window.scrollBy and not a synthetic WheelEvent. The reply reads scrollX/scrollY back after a bounded settle and reports them with `moved`, so 'it scrolled' is measured rather than assumed: a delta aimed at an element that cannot scroll reports moved:false and the same offsets, never a false success. Coordinates are main-viewport CSS px; pass them from browser_layout when a specific scroller must receive the wheel.",
+          "inputSchema": {"type": "object", "properties": {
+              "deltaY": {"type": "number"}, "deltaX": {"type": "number"},
+              "x": {"type": "number"}, "y": {"type": "number"}},
+              "required": ["deltaY"], "additionalProperties": false},
+          "outputSchema": {"type": "object",
+             "properties": {"ok": {"type": "boolean"}, "moved": {"type": "boolean"},
+                 "scroll": {"type": "object"}, "at": {"type": "object"},
+                 "deltaX": {"type": "number"}, "deltaY": {"type": "number"}},
+             "required": ["ok", "moved", "scroll", "at"], "additionalProperties": false},
+          "annotations": {"readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": false}}));
     }
     listed
 }
@@ -833,7 +873,17 @@ pub async fn call(name: &str, args: &Value, browser: &Browser) -> Value {
             if let Err(e) = check_unknown(
                 "screenshot",
                 args,
-                &["fullPage", "path", "deterministic", "width", "height"],
+                &[
+                    "fullPage",
+                    "path",
+                    "deterministic",
+                    "width",
+                    "height",
+                    "element",
+                    "clip",
+                    "format",
+                    "quality",
+                ],
             ) {
                 return e.envelope();
             }
@@ -848,6 +898,44 @@ pub async fn call(name: &str, args: &Value, browser: &Browser) -> Value {
                 .unwrap_or(false);
             let width = args.get("width").and_then(|v| v.as_i64());
             let height = args.get("height").and_then(|v| v.as_i64());
+            let element = args
+                .get("element")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let format = match args.get("format").and_then(|v| v.as_str()) {
+                None | Some("png") => crate::capture::Format::Png,
+                Some("jpeg") => crate::capture::Format::Jpeg,
+                Some("webp") => crate::capture::Format::WebP,
+                Some(other) => {
+                    return ToolErr::typed(
+                        format!("screenshot: unknown 'format' '{other}' (png, jpeg, webp)"),
+                        json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "screenshot", "arg": "format"}),
+                    )
+                    .envelope()
+                }
+            };
+            let quality = match args.get("quality") {
+                None => None,
+                Some(v) => match v.as_u64() {
+                    Some(q) if q <= 100 => Some(q as u8),
+                    _ => {
+                        return ToolErr::typed(
+                            "screenshot: 'quality' must be an integer 0-100".to_string(),
+                            json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "screenshot", "arg": "quality"}),
+                        )
+                        .envelope()
+                    }
+                },
+            };
+            // A quality on a lossless encoding would be silently dropped by
+            // the engine, so it is refused by name instead.
+            if quality.is_some() && !format.takes_quality() {
+                return ToolErr::typed(
+                    "screenshot: 'quality' applies to format jpeg/webp only (png is lossless)".to_string(),
+                    json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "screenshot", "arg": "quality"}),
+                )
+                .envelope();
+            }
             // Metric overrides only mean something under a pinned
             // capture; accept them otherwise and they would silently do
             // nothing, so refuse instead.
@@ -858,7 +946,58 @@ pub async fn call(name: &str, args: &Value, browser: &Browser) -> Value {
                     )
                     .envelope();
             }
-            tool_screenshot(browser, full, path, deterministic, width, height).await
+            // Two different framings: full page or one region. Picking one
+            // silently would capture something the caller did not ask for.
+            if full && (element.is_some() || args.get("clip").is_some()) {
+                return ToolErr::typed(
+                    "screenshot: 'fullPage' cannot be combined with 'element'/'clip' (capture one or the other)".to_string(),
+                    json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "screenshot", "arg": "fullPage"}),
+                )
+                .envelope();
+            }
+            if element.is_some() && args.get("clip").is_some() {
+                return ToolErr::typed(
+                    "screenshot: 'element' and 'clip' are two framings of one capture; pass one".to_string(),
+                    json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "screenshot", "arg": "clip"}),
+                )
+                .envelope();
+            }
+            let clip = match args.get("clip") {
+                None => None,
+                Some(v) => {
+                    let pick = |k: &str| v.get(k).and_then(|x| x.as_f64());
+                    match (pick("x"), pick("y"), pick("width"), pick("height")) {
+                        (Some(x), Some(y), Some(w), Some(h)) if w > 0.0 && h > 0.0 => {
+                            Some(crate::capture::Clip {
+                                x,
+                                y,
+                                width: w,
+                                height: h,
+                            })
+                        }
+                        _ => {
+                            return ToolErr::typed(
+                                "screenshot: 'clip' needs finite x, y and positive width/height".to_string(),
+                                json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "screenshot", "arg": "clip"}),
+                            )
+                            .envelope()
+                        }
+                    }
+                }
+            };
+            tool_screenshot(
+                browser,
+                full,
+                path,
+                deterministic,
+                width,
+                height,
+                element.as_deref(),
+                clip,
+                format,
+                quality,
+            )
+            .await
         }
         "assert_layout" => {
             // Boxed on purpose: the geometry body would otherwise be
@@ -870,7 +1009,11 @@ pub async fn call(name: &str, args: &Value, browser: &Browser) -> Value {
         "layout" => Box::pin(tool_layout(browser, args)).await,
         "visual" => Box::pin(tool_visual(browser, args)).await,
         "click" => {
-            if let Err(e) = check_unknown("click", args, &["element", "frame", "hoverFirst"]) {
+            if let Err(e) = check_unknown(
+                "click",
+                args,
+                &["element", "frame", "hoverFirst", "button", "clickCount"],
+            ) {
                 return e.envelope();
             }
             let el =
@@ -892,7 +1035,163 @@ pub async fn call(name: &str, args: &Value, browser: &Browser) -> Value {
                 .get("hoverFirst")
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
-            tool_click(browser, &el, frame.as_deref(), hover_first).await
+            // Pointer completeness rides the same press/release path: the
+            // button and the click count are CDP's own parameters, so right,
+            // middle and double clicks need no second tool and no synthetic
+            // event. An unknown button is a typed refusal, never a default.
+            let button = match args.get("button").and_then(|v| v.as_str()) {
+                None | Some("left") => "left",
+                Some("right") => "right",
+                Some("middle") => "middle",
+                Some(other) => {
+                    return ToolErr::typed(
+                        format!("click: unknown 'button' '{other}' (left, right, middle)"),
+                        json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "click", "arg": "button"}),
+                    )
+                    .envelope()
+                }
+            };
+            let click_count = match args.get("clickCount") {
+                None => 1i64,
+                Some(v) => match v.as_i64() {
+                    Some(n) if (1..=3).contains(&n) => n,
+                    _ => {
+                        return ToolErr::typed(
+                            "click: 'clickCount' must be 1, 2 (double click) or 3".to_string(),
+                            json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "click", "arg": "clickCount"}),
+                        )
+                        .envelope()
+                    }
+                },
+            };
+            tool_click(
+                browser,
+                &el,
+                frame.as_deref(),
+                hover_first,
+                button,
+                click_count,
+            )
+            .await
+        }
+        "wheel" => {
+            if let Err(e) = check_unknown("wheel", args, &["deltaY", "deltaX", "x", "y"]) {
+                return e.envelope();
+            }
+            let delta_y = match args.get("deltaY").and_then(|v| v.as_f64()) {
+                Some(d) => d,
+                None => {
+                    return ToolErr::typed(
+                        "wheel: missing required numeric arg 'deltaY'".to_string(),
+                        json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::MissingArg.as_str(), "tool": "wheel"}),
+                    )
+                    .envelope()
+                }
+            };
+            let delta_x = args
+                .get("deltaX")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(0.0);
+            if !delta_x.is_finite() || !delta_y.is_finite() {
+                return ToolErr::typed(
+                    "wheel: 'deltaX'/'deltaY' must be finite numbers".to_string(),
+                    json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "wheel", "arg": "deltaY"}),
+                )
+                .envelope();
+            }
+            let point = match (args.get("x"), args.get("y")) {
+                (None, None) => None,
+                (Some(x), Some(y)) => match (x.as_f64(), y.as_f64()) {
+                    (Some(x), Some(y)) => Some((x, y)),
+                    _ => {
+                        return ToolErr::typed(
+                            "wheel: 'x'/'y' must be numbers when given".to_string(),
+                            json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "wheel", "arg": "x"}),
+                        )
+                        .envelope()
+                    }
+                },
+                _ => {
+                    return ToolErr::typed(
+                        "wheel: pass both 'x' and 'y', or neither (the viewport centre)"
+                            .to_string(),
+                        json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "wheel", "arg": "y"}),
+                    )
+                    .envelope()
+                }
+            };
+            tool_wheel(browser, delta_x, delta_y, point).await
+        }
+        "drag" => {
+            if let Err(e) = check_unknown(
+                "drag",
+                args,
+                &["from", "to", "fromPoint", "toPoint", "steps", "frame"],
+            ) {
+                return e.envelope();
+            }
+            let steps = match args.get("steps") {
+                None => 8usize,
+                Some(v) => match v.as_u64() {
+                    Some(n) if (2..=64).contains(&n) => n as usize,
+                    _ => {
+                        return ToolErr::typed(
+                            "drag: 'steps' must be an integer 2-64".to_string(),
+                            json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "drag", "arg": "steps"}),
+                        )
+                        .envelope()
+                    }
+                },
+            };
+            let point = |key: &str| -> Result<Option<(f64, f64)>, ToolErr> {
+                match args.get(key) {
+                    None => Ok(None),
+                    Some(v) => match (
+                        v.get("x").and_then(|x| x.as_f64()),
+                        v.get("y").and_then(|y| y.as_f64()),
+                    ) {
+                        (Some(x), Some(y)) => Ok(Some((x, y))),
+                        _ => Err(ToolErr::typed(
+                            format!("drag: '{key}' needs numeric x and y"),
+                            json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "drag", "arg": key}),
+                        )),
+                    },
+                }
+            };
+            let from_point = match point("fromPoint") {
+                Ok(p) => p,
+                Err(e) => return e.envelope(),
+            };
+            let to_point = match point("toPoint") {
+                Ok(p) => p,
+                Err(e) => return e.envelope(),
+            };
+            let from = args.get("from").and_then(|v| v.as_str());
+            let to = args.get("to").and_then(|v| v.as_str());
+            let frame = args.get("frame").and_then(|v| v.as_str());
+            // Each endpoint needs exactly one addressing form; neither is a
+            // typed refusal because a drag with no source or no target is not
+            // a smaller drag, it is a missing instruction.
+            let endpoint = |name: &str, el: Option<&str>, pt: Option<(f64, f64)>| {
+                match (el, pt) {
+                    (Some(_), Some(_)) => Err(ToolErr::typed(
+                        format!("drag: '{name}' and '{name}Point' are two addresses for one endpoint; pass one"),
+                        json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "drag", "arg": name}),
+                    )),
+                    (None, None) => Err(ToolErr::typed(
+                        format!("drag: missing '{name}' (an element) or '{name}Point' (x/y)"),
+                        json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::MissingArg.as_str(), "tool": "drag", "arg": name}),
+                    )),
+                    _ => Ok(()),
+                }
+            };
+            if let Err(e) = endpoint("from", from, from_point) {
+                return e.envelope();
+            }
+            if let Err(e) = endpoint("to", to, to_point) {
+                return e.envelope();
+            }
+            tool_drag(browser, from, to, from_point, to_point, steps, frame).await
         }
         "type" => {
             if let Err(e) = check_unknown("type", args, &["element", "text", "submit", "frame"]) {
@@ -1596,6 +1895,9 @@ struct AxHit {
     role: String,
     name: String,
     at: Option<String>,
+    /// The child session that owns `backend` when the frame is a mapped OOPIF;
+    /// every object read and call for this hit must run there.
+    session: Option<String>,
 }
 
 impl AxHit {
@@ -1631,6 +1933,57 @@ fn ax_name_from_label(node: &Value) -> bool {
     })
 }
 
+/// The accessibility tree for `frame`, and the child session that owns it when
+/// the frame is a mapped OOPIF.
+///
+/// Policy, in order:
+/// 1. The page session answers (`ax_tree`): a same-process frame or the page
+///    itself. No session.
+/// 2. The page session refuses and the frame has a mapped OOPIF session: the
+///    tree is read from THAT session, and every backend id in it is resolved
+///    there too (a backend id belongs to the renderer that issued it).
+/// 3. The page session refuses and no session owns the frame: typed
+///    `invalid_target`/`not_found` for an unknown frame, typed
+///    `invalid_target`/`unreachable` for a detached or unmapped out-of-process
+///    frame. The page's own tree is NEVER substituted for the frame's.
+async fn frame_ax_tree(
+    browser: &Browser,
+    tool: &str,
+    fid: Option<&str>,
+) -> Result<(Value, Option<String>), ToolErr> {
+    match browser.ax_tree(fid).await {
+        Ok(t) => Ok((t, None)),
+        Err(e) => {
+            let l = e.to_lowercase();
+            if l.contains("no frame with id")
+                || l.contains("no such frame")
+                || l.contains("cannot find")
+            {
+                return Err(frame_lookup_err(tool, fid.unwrap_or(""), e));
+            }
+            let Some(f) = fid else {
+                return Err(ToolErr::from(e));
+            };
+            if let Some((target, sid)) = browser.oop_session_for_frame(f).await {
+                return match browser.ax_tree_in_session(&sid, None).await {
+                    Ok(t) => Ok((t, Some(sid))),
+                    Err(e2) => Err(ToolErr::typed(
+                        format!("{tool}: frame '{f}' is out-of-process (target {target}) and has no AX tree readable from this session ({e2}); nothing was resolved and the page was not searched instead"),
+                        json!({"code": ToolCode::InvalidTarget.as_str(), "reason": ToolReason::Unreachable.as_str(), "tool": tool, "frame": f, "target": target}),
+                    )),
+                };
+            }
+            // Unmapped OOPIF or a detached frame: say what it is. A silent
+            // main-frame action here would be the one failure this policy
+            // exists to prevent.
+            Err(ToolErr::typed(
+                format!("{tool}: frame '{f}' has no AX tree readable from this session ({e}); nothing was resolved and the page was not searched instead - the frame is detached or out of process with no mapped session, and retrying this call cannot help; re-read targets for a live frameId, or address an element on the page"),
+                json!({"code": ToolCode::InvalidTarget.as_str(), "reason": ToolReason::Unreachable.as_str(), "tool": tool, "frame": f}),
+            ))
+        }
+    }
+}
+
 /// Resolve one AX selector form against the accessibility tree the snapshot
 /// renders (`Accessibility.getFullAXTree`), scoped to `frame` when the caller
 /// named one. Zero matches and more than one match are both typed refusals:
@@ -1647,42 +2000,7 @@ async fn ax_resolve(
     raw: &str,
     fid: Option<&str>,
 ) -> Result<AxHit, ToolErr> {
-    let tree = match browser.ax_tree(fid).await {
-        Ok(t) => t,
-        Err(e) => {
-            let l = e.to_lowercase();
-            if l.contains("no frame with id")
-                || l.contains("no such frame")
-                || l.contains("cannot find")
-            {
-                return Err(frame_lookup_err(tool, fid.unwrap_or(""), e));
-            }
-            if let Some(f) = fid {
-                // A frame whose AX tree this session cannot read is a typed
-                // unreachable: the page is NOT searched instead, and retrying
-                // the same call cannot help, so the prose says so. Measured
-                // shapes: a detached frame ("Frame with the given frameId is
-                // not found") and an out-of-process frame, whose tree lives on
-                // its own session.
-                return Err(ToolErr::typed(
-                    format!("{tool}: frame '{f}' has no AX tree readable from this session ({e}); nothing was resolved and the page was not searched instead - the frame is detached or out of process, and retrying this call cannot help; re-read targets for a live frameId, or address an element on the page"),
-                    json!({"code": ToolCode::InvalidTarget.as_str(), "reason": ToolReason::Unreachable.as_str(), "tool": tool, "frame": f, "element": raw}),
-                ));
-            }
-            return Err(ToolErr::from(e));
-        }
-    };
-    if let Some(f) = fid {
-        // A frame the engine already knows is out-of-process: its nodes are
-        // not on this page session, so resolving one would look like a
-        // detached node. Say what it is instead.
-        if let Some(target) = browser.oop_target_for_frame(f).await {
-            return Err(ToolErr::typed(
-                format!("{tool}: frame '{f}' is out-of-process (target {target}), so its accessibility tree is not on this page session; nothing was resolved - act on that target directly, or use a frame the page session can read"),
-                json!({"code": ToolCode::InvalidTarget.as_str(), "reason": ToolReason::Unreachable.as_str(), "tool": tool, "frame": f, "element": raw, "target": target}),
-            ));
-        }
-    }
+    let (tree, session) = frame_ax_tree(browser, tool, fid).await?;
     let empty = Vec::new();
     let raw_nodes = tree
         .get("nodes")
@@ -1850,6 +2168,7 @@ async fn ax_resolve(
                 .cloned()
                 .unwrap_or_else(|| ax_cap(&nodes[i].name)),
             at,
+            session: session.clone(),
         });
     }
     if cands.len() > 1 {
@@ -1982,14 +2301,20 @@ async fn ax_object(
                    "tool": tool, "element": element, "role": hit.role, "name": hit.name}),
         )
     };
-    match browser
-        .command(
-            "DOM.resolveNode",
-            json!({"backendNodeId": hit.backend}),
-            true,
-        )
-        .await
-    {
+    match match hit.session.as_deref() {
+        // An out-of-process node's backend id is only meaningful in the
+        // renderer that issued it, so the resolve runs on that session.
+        Some(sid) => browser.resolve_node_in_session(sid, hit.backend).await,
+        None => {
+            browser
+                .command(
+                    "DOM.resolveNode",
+                    json!({"backendNodeId": hit.backend}),
+                    true,
+                )
+                .await
+        }
+    } {
         Ok(v) => v
             .get("object")
             .and_then(|o| o.get("objectId"))
@@ -2130,10 +2455,19 @@ pub(crate) async fn resolve_ref_object(
     let Some(backend) = browser.ref_backend(id).await else {
         return Ok(None);
     };
-    match browser
-        .command("DOM.resolveNode", json!({"backendNodeId": backend}), true)
-        .await
-    {
+    // A ref minted in a mapped OOPIF resolves in its own session: its backend
+    // id is meaningless to the page session, and asking there would read as a
+    // detached node.
+    let session = browser.ref_session(id).await;
+    let resolved = match session.as_deref() {
+        Some(sid) => browser.resolve_node_in_session(sid, backend).await,
+        None => {
+            browser
+                .command("DOM.resolveNode", json!({"backendNodeId": backend}), true)
+                .await
+        }
+    };
+    match resolved {
         Ok(v) => match v
             .get("object")
             .and_then(|o| o.get("objectId"))
@@ -2164,12 +2498,24 @@ pub(crate) async fn call_on_object(
     func: &str,
     args: Vec<Value>,
 ) -> Result<Value, ToolErr> {
+    call_on_object_in(browser, None, object_id, func, args).await
+}
+
+/// `call_on_object` with an explicit child session: object ids are
+/// session-scoped in CDP, so a node resolved out of an OOPIF must be called on
+/// that session and never on the page one.
+pub(crate) async fn call_on_object_in(
+    browser: &Browser,
+    session: Option<&str>,
+    object_id: &str,
+    func: &str,
+    args: Vec<Value>,
+) -> Result<Value, ToolErr> {
     let r = browser
-        .command(
-            "Runtime.callFunctionOn",
+        .call_function_on_in_session(
+            session,
             json!({"objectId": object_id, "functionDeclaration": func,
                    "returnByValue": true, "awaitPromise": true, "arguments": args}),
-            true,
         )
         .await
         .map_err(ToolErr::fallback)?;
@@ -2222,7 +2568,7 @@ fn type_reply(typed: &str, value_length: Option<u64>) -> Value {
 /// resolver is unsupported, so the typed rejection stands either way.
 fn ref_in_frame(tool: &str, element: &str, frame: &str) -> ToolErr {
     ToolErr::typed(
-        format!("{tool}: refs (@eN) are main-frame only; with frame= use a CSS selector or an AX selector (role=/name=/text=/label=) (got ref '{element}' with frame '{frame}'; take a frame snapshot for names, then act with the selector)"),
+        format!("{tool}: ref '{element}' was minted by a snapshot of a different frame than '{frame}'; a ref is actionable only in the frame whose own snapshot minted it - take a snapshot with frame='{frame}' for its refs, or use a CSS or AX selector"),
         json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": tool, "arg": "frame", "frame": frame, "element": element}),
     )
 }
@@ -2777,6 +3123,8 @@ async fn tool_snapshot_legacy(
                 crate::browser::RefEntry {
                     label: format!("{role} {name}"),
                     backend: None,
+                    frame: None,
+                    session: None,
                 },
             );
         }
@@ -2856,6 +3204,12 @@ const ENRICH_FN: &str = r#"function(...rest) {
 /// neighbours. Values keep the input order; a singleton that still fails is
 /// `Null` and takes the masked fallback.
 async fn enrich_objects(browser: &Browser, ids: &[String]) -> Vec<Value> {
+    enrich_objects_in(browser, None, ids).await
+}
+
+/// `enrich_objects` on an explicit child session, for object ids that session
+/// issued (an OOPIF's own nodes). Object ids do not cross sessions.
+async fn enrich_objects_in(browser: &Browser, session: Option<&str>, ids: &[String]) -> Vec<Value> {
     let mut vals: Vec<Value> = vec![Value::Null; ids.len()];
     let mut pending: Vec<(usize, usize)> = (0..ids.len())
         .step_by(100)
@@ -2869,11 +3223,10 @@ async fn enrich_objects(browser: &Browser, ids: &[String]) -> Vec<Value> {
         };
         let args: Vec<Value> = rest.iter().map(|id| json!({"objectId": id})).collect();
         let got = browser
-            .command(
-                "Runtime.callFunctionOn",
+            .call_function_on_in_session(
+                session,
                 json!({"objectId": receiver, "functionDeclaration": ENRICH_FN,
                        "returnByValue": true, "arguments": args}),
-                true,
             )
             .await
             .ok()
@@ -2967,17 +3320,10 @@ async fn tool_snapshot_ax(
 ) -> Result<Value, ToolErr> {
     let _snap_guard = browser.lock_snapshot().await;
     let start = browser.ref_start();
-    let tree = browser.ax_tree(frame).await.map_err(|e| {
-        let l = e.to_lowercase();
-        if frame.is_some() && (l.contains("frame") || l.contains("no frame") || l.contains("no such")) {
-            ToolErr::typed(
-                format!("snapshot: no frame with id '{}'", frame.unwrap_or("")),
-                json!({"code": ToolCode::InvalidTarget.as_str(), "reason": ToolReason::NotFound.as_str(), "tool": "snapshot", "frame": frame.unwrap_or("")}),
-            )
-        } else {
-            ToolErr::from(e)
-        }
-    })?;
+    // The page session for a same-process frame; the frame's OWN session for a
+    // mapped OOPIF. An unmapped out-of-process frame is a typed error here and
+    // never falls back to the page's tree.
+    let (tree, frame_session) = frame_ax_tree(browser, "snapshot", frame).await?;
     let empty_nodes = Vec::new();
     let ax_nodes = tree
         .get("nodes")
@@ -3062,9 +3408,23 @@ async fn tool_snapshot_ax(
     // DOM.resolveNode pierces open shadow roots - which is why a shadow ref
     // is now actionable with the same resolver as a light-DOM ref.
     browser.command("DOM.enable", json!({}), true).await?;
-    let resolves = cands
-        .iter()
-        .map(|c| browser.command("DOM.resolveNode", json!({"backendNodeId": c.backend}), true));
+    // Each resolve happens on the session that owns the node: the page session
+    // for a same-process frame, the frame's own session for an OOPIF.
+    let mut resolves = Vec::with_capacity(cands.len());
+    for c in cands.iter() {
+        let backend = c.backend;
+        let sid = frame_session.clone();
+        resolves.push(async move {
+            match sid.as_deref() {
+                Some(s) => browser.resolve_node_in_session(s, backend).await,
+                None => {
+                    browser
+                        .command("DOM.resolveNode", json!({"backendNodeId": backend}), true)
+                        .await
+                }
+            }
+        });
+    }
     let resolved = futures_util::future::join_all(resolves).await;
     let mut items: Vec<Value> = Vec::new();
     let mut object_ids: Vec<String> = Vec::new();
@@ -3090,7 +3450,7 @@ async fn tool_snapshot_ax(
     // themselves (shadow included). The first object of each chunk is the
     // receiver so every call stays in that node's execution context; a chunk
     // that mixes worlds is split rather than nulled (see `enrich_objects`).
-    let enrich_vals: Vec<Value> = enrich_objects(browser, &object_ids).await;
+    let enrich_vals: Vec<Value> = enrich_objects_in(browser, frame_session.as_deref(), &object_ids).await;
     let enrich_map: serde_json::Map<String, Value> = items
         .iter()
         .zip(enrich_vals.into_iter())
@@ -3169,13 +3529,19 @@ async fn tool_snapshot_ax(
             }
         }
     }
-    // url/title/text: the frame's own when scoped, else the main page.
+    // url/title/text: the frame's own when scoped, else the main page. A
+    // frame-scoped read goes through the frame's realm resolver, so an OOPIF
+    // is read from its own session instead of failing on the page one.
     let (url, title, text) = match frame {
         Some(fid) => {
-            let pair = browser
-                .eval_in_frame(fid, "[window.location.href, document.title]")
-                .await
-                .ok();
+            let pair = frame_realm_eval(
+                browser,
+                "snapshot",
+                fid,
+                "[window.location.href, document.title]",
+            )
+            .await
+            .ok();
             let u = pair
                 .as_ref()
                 .and_then(|v| v.get(0))
@@ -3188,15 +3554,16 @@ async fn tool_snapshot_ax(
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
-            let tv = browser
-                .eval_in_frame(
-                    fid,
-                    "((((document.body && document.body.innerText) || (document.documentElement && document.documentElement.innerText) || '')) + '').slice(0, 12000)",
-                )
-                .await
-                .ok()
-                .and_then(|x| x.as_str().map(|s| s.to_string()))
-                .unwrap_or_default();
+            let tv = frame_realm_eval(
+                browser,
+                "snapshot",
+                fid,
+                "((((document.body && document.body.innerText) || (document.documentElement && document.documentElement.innerText) || '')) + '').slice(0, 12000)",
+            )
+            .await
+            .ok()
+            .and_then(|x| x.as_str().map(|s| s.to_string()))
+            .unwrap_or_default();
             let tx = tv.split_whitespace().collect::<Vec<_>>().join(" ");
             (u, t, tx)
         }
@@ -3221,7 +3588,10 @@ async fn tool_snapshot_ax(
         }
     };
     // Store the ref table (label + backend node id) for exact resolution,
-    // shadow actionability, and stale detection.
+    // shadow actionability, and stale detection. A frame-scoped snapshot
+    // records the frame and the owning session per ref, because a backend id
+    // only resolves in the renderer that issued it; the staleness URL stays the
+    // PAGE's, since that is what a later action compares against.
     let mut table = std::collections::HashMap::new();
     for it in items.iter() {
         if let (Some(r), role, name) = (
@@ -3234,11 +3604,22 @@ async fn tool_snapshot_ax(
                 crate::browser::RefEntry {
                     label: format!("{role} {name}"),
                     backend: it.get("backend").and_then(|b| b.as_i64()),
+                    frame: frame.map(str::to_string),
+                    session: frame_session.clone(),
                 },
             );
         }
     }
-    browser.store_refs(url.clone(), table).await;
+    let snap_url = match frame {
+        Some(_) => browser
+            .eval("window.location.href")
+            .await
+            .ok()
+            .and_then(|v| v.as_str().map(str::to_string))
+            .unwrap_or_default(),
+        None => url.clone(),
+    };
+    browser.store_refs(snap_url, table).await;
     let total = items.len();
     browser.ref_advance(total);
     let mut text = text;
@@ -3327,6 +3708,135 @@ fn write_screenshot_file(path: &str, png: &[u8]) -> Result<(), ToolErr> {
     Ok(())
 }
 
+/// Resolve an element target (`@eN` ref, AX selector form, or CSS selector) to
+/// its border box in PAGE coordinates, for a clipped capture. The box comes
+/// from `DOM.getBoxModel` - the same engine measurement `browser_layout`
+/// reports - so a capture of `element` is exactly the box layout names, and a
+/// node with no layout box is a typed refusal instead of an empty image.
+async fn screenshot_element_box(
+    browser: &Browser,
+    element: &str,
+) -> Result<crate::capture::Clip, ToolErr> {
+    let node_id: i64 = if let Some(id) = parse_ref(element) {
+        let _at = guard_ref(browser, "screenshot", element, &id).await?;
+        let backend = browser.ref_backend(&id).await.ok_or_else(|| {
+            ToolErr::typed(
+                format!("screenshot: ref @{id} has no backend node id (take a fresh snapshot)"),
+                json!({"code": ToolCode::StaleRef.as_str(), "reason": ToolReason::Unknown.as_str(), "tool": "screenshot", "ref": format!("@{id}")}),
+            )
+        })?;
+        push_backend_node(browser, "screenshot", element, backend).await?
+    } else if let Some(sel) = ax_sel_parse("screenshot", element)? {
+        let hit = ax_resolve(browser, "screenshot", &sel, element, None).await?;
+        push_backend_node(browser, "screenshot", element, hit.backend).await?
+    } else {
+        browser.command("DOM.enable", json!({}), true).await?;
+        let doc = browser
+            .command("DOM.getDocument", json!({"depth": 0, "pierce": true}), true)
+            .await?;
+        let root = doc
+            .get("root")
+            .and_then(|r| r.get("nodeId"))
+            .and_then(|n| n.as_i64())
+            .unwrap_or(0);
+        let found = browser
+            .command(
+                "DOM.querySelector",
+                json!({"nodeId": root, "selector": element}),
+                true,
+            )
+            .await?;
+        let nid = found.get("nodeId").and_then(|n| n.as_i64()).unwrap_or(0);
+        if nid == 0 {
+            return Err(ToolErr::typed(
+                format!("screenshot: element not found: {element}"),
+                json!({"code": ToolCode::InvalidTarget.as_str(), "reason": ToolReason::NotFound.as_str(), "tool": "screenshot", "element": element}),
+            ));
+        }
+        nid
+    };
+    let bm = match browser
+        .command("DOM.getBoxModel", json!({"nodeId": node_id}), true)
+        .await
+    {
+        Ok(v) => v,
+        Err(e)
+            if e.contains("Could not compute box model")
+                || e.contains("no layout object")
+                || e.contains("No node") =>
+        {
+            return Err(ToolErr::typed(
+                format!("screenshot: element has no layout box (not rendered, so nothing to capture): {element}"),
+                json!({"code": ToolCode::NotActionable.as_str(), "reason": ToolReason::Hidden.as_str(), "tool": "screenshot", "element": element}),
+            ))
+        }
+        Err(e) => return Err(ToolErr::fallback(e)),
+    };
+    let quad = bm
+        .get("model")
+        .and_then(|m| m.get("border"))
+        .and_then(|q| q.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let nums: Vec<f64> = quad.iter().filter_map(|v| v.as_f64()).collect();
+    if nums.len() < 8 {
+        return Err(ToolErr::typed(
+            format!("screenshot: element has no measurable border box: {element}"),
+            json!({"code": ToolCode::NotActionable.as_str(), "reason": ToolReason::Hidden.as_str(), "tool": "screenshot", "element": element}),
+        ));
+    }
+    let xs: Vec<f64> = nums.iter().step_by(2).copied().collect();
+    let ys: Vec<f64> = nums.iter().skip(1).step_by(2).copied().collect();
+    let min = |v: &[f64]| v.iter().copied().fold(f64::INFINITY, f64::min);
+    let max = |v: &[f64]| v.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    let (x, y) = (min(&xs), min(&ys));
+    let (w, h) = (max(&xs) - x, max(&ys) - y);
+    if w <= 0.0 || h <= 0.0 {
+        return Err(ToolErr::typed(
+            format!("screenshot: element box is empty ({w}x{h} CSS px): {element}"),
+            json!({"code": ToolCode::NotActionable.as_str(), "reason": ToolReason::Hidden.as_str(), "tool": "screenshot", "element": element}),
+        ));
+    }
+    Ok(crate::capture::Clip {
+        x,
+        y,
+        width: w,
+        height: h,
+    })
+}
+
+/// Frontend node id for a backend node id, or a typed stale-node refusal. The
+/// bridge the snapshot path uses (`DOM.pushNodesByBackendIdsToFrontend`).
+async fn push_backend_node(
+    browser: &Browser,
+    tool: &str,
+    element: &str,
+    backend: i64,
+) -> Result<i64, ToolErr> {
+    browser.command("DOM.enable", json!({}), true).await?;
+    let pushed = browser
+        .command(
+            "DOM.pushNodesByBackendIdsToFrontend",
+            json!({"backendNodeIds": [backend]}),
+            true,
+        )
+        .await
+        .map_err(ToolErr::fallback)?;
+    let nid = pushed
+        .get("nodeIds")
+        .and_then(|v| v.as_array())
+        .and_then(|a| a.first())
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0);
+    if nid == 0 {
+        return Err(ToolErr::typed(
+            format!("{tool}: node no longer resolves (stale element; take a fresh snapshot): {element}"),
+            json!({"code": ToolCode::StaleRef.as_str(), "reason": ToolReason::NodeGone.as_str(), "tool": tool, "element": element}),
+        ));
+    }
+    Ok(nid)
+}
+
 async fn tool_screenshot(
     browser: &Browser,
     full_page: bool,
@@ -3334,6 +3844,10 @@ async fn tool_screenshot(
     deterministic: bool,
     width: Option<i64>,
     height: Option<i64>,
+    element: Option<&str>,
+    clip: Option<crate::capture::Clip>,
+    format: crate::capture::Format,
+    quality: Option<u8>,
 ) -> Result<Value, ToolErr> {
     // Capability gate: a dom-only backend has no rendering pipeline, so
     // there are no pixels to capture. Refuse with the backend and the
@@ -3363,6 +3877,13 @@ async fn tool_screenshot(
     } else {
         Some(browser.active_target_id().await)
     };
+    // Element framing resolves to a page-space box BEFORE the capture, so a
+    // bad ref or an unrendered node is a typed error and never a shot of
+    // something else.
+    let clip = match element {
+        Some(el) => Some(screenshot_element_box(browser, el).await?),
+        None => clip,
+    };
     let cap = crate::capture::capture(
         browser,
         &crate::capture::Options {
@@ -3370,6 +3891,9 @@ async fn tool_screenshot(
             deterministic,
             width,
             height,
+            clip,
+            format,
+            quality,
         },
     )
     .await?;
@@ -3397,9 +3921,18 @@ async fn tool_screenshot(
     if let Some(p) = path {
         meta.insert("path".to_string(), json!(p));
     }
+    if let Some(el) = element {
+        meta.insert("element".to_string(), json!(el));
+    }
+    if let Some(c) = clip {
+        meta.insert(
+            "clip".to_string(),
+            json!({"x": c.x, "y": c.y, "width": c.width, "height": c.height}),
+        );
+    }
     let meta = Value::Object(meta);
     Ok(
-        json!({"content": [{"type": "image", "data": cap.base64, "mimeType": "image/png"},
+        json!({"content": [{"type": "image", "data": cap.base64, "mimeType": cap.format.mime()},
                           {"type": "text", "text": meta.to_string()}],
               "structuredContent": meta}),
     )
@@ -3840,11 +4373,25 @@ async fn click_dispatch(
     y: f64,
     h0: &str,
     hover_first: bool,
+    button: &str,
+    click_count: i64,
+    cross_process_frame: bool,
 ) -> Result<String, ToolErr> {
-    browser
-        .mouse_click(x, y, hover_first)
-        .await
-        .map_err(ToolErr::from)?;
+    // The button and the click count are CDP's own parameters: a right,
+    // middle or double click is the same trusted press/release pair, never a
+    // synthetic DOM event. A cross-process frame click additionally positions
+    // the pointer first, because that is the only way the browser routes input
+    // into the child renderer.
+    let sent = if cross_process_frame {
+        browser
+            .mouse_click_cross_process(x, y, button, click_count)
+            .await
+    } else {
+        browser
+            .mouse_click_button(x, y, button, click_count, hover_first)
+            .await
+    };
+    sent.map_err(ToolErr::from)?;
     let live = browser.eval("[location.href, document.readyState]").await?;
     let h1 = live.get(0).and_then(|v| v.as_str()).unwrap_or(h0);
     let rs = live.get(1).and_then(|v| v.as_str()).unwrap_or("complete");
@@ -3857,23 +4404,40 @@ async fn tool_click(
     element: &str,
     frame: Option<&str>,
     hover_first: bool,
+    button: &str,
+    click_count: i64,
 ) -> Result<Value, ToolErr> {
     // Drain any earlier dialog record so one found below belongs to THIS click.
     browser.take_dialog().await;
     let fid = frame_id_ok("click", frame)?;
+
     // Additive AX selector forms (role=/name=/text=/label=) resolve on the AX
     // tree first and act on that exact node. Legacy strings (CSS, @eN) skip
     // this and keep their path byte-for-byte.
     if let Some(sel) = ax_sel_parse("click", element)? {
         let hit = ax_resolve(browser, "click", &sel, element, fid.as_deref()).await?;
-        return ax_click(browser, element, &hit, fid.as_deref(), hover_first).await;
+        return ax_click(browser, element, &hit, fid.as_deref(), hover_first, button, click_count).await;
     }
-    if let Some(ref f) = fid {
-        // Frame policy: refs cannot resolve safely in a frame realm.
-        if parse_ref(element).is_some() {
+    if let Some(f) = fid.as_deref() {
+        // Frame policy: a ref is actionable only in the frame whose own
+        // snapshot minted it. A main-frame ref, or another frame's ref, is a
+        // typed `invalid_args` (never a silent main-frame click).
+        if let Some(id) = parse_ref(element) {
+            if browser.ref_frame(&id).await.as_deref() == Some(f) {
+                return ref_click_frame(
+                    browser,
+                    element,
+                    &id,
+                    f,
+                    hover_first,
+                    button,
+                    click_count,
+                )
+                .await;
+            }
             return Err(ref_in_frame("click", element, f));
         }
-        return tool_click_frame(browser, element, f, hover_first).await;
+        return tool_click_frame(browser, element, f, hover_first, button, click_count).await;
     }
     if let Some(id) = parse_ref(element) {
         let at_id = guard_ref(browser, "click", element, &id).await?;
@@ -3905,7 +4469,7 @@ async fn tool_click(
                     .and_then(|n| n.as_str())
                     .unwrap_or("")
                     .to_string();
-                let st = click_dispatch(browser, x, y, &h0, hover_first).await?;
+                let st = click_dispatch(browser, x, y, &h0, hover_first, button, click_count, false).await?;
                 click_settle(browser, &st).await;
                 Ok(click_ok(browser).await)
             }
@@ -3971,7 +4535,7 @@ async fn tool_click(
                 .and_then(|n| n.as_str())
                 .unwrap_or("")
                 .to_string();
-            let st = click_dispatch(browser, x, y, &h0, hover_first).await?;
+            let st = click_dispatch(browser, x, y, &h0, hover_first, button, click_count, false).await?;
             click_settle(browser, &st).await;
             Ok(click_ok(browser).await)
         }
@@ -4013,9 +4577,11 @@ async fn ax_click(
     hit: &AxHit,
     fid: Option<&str>,
     hover_first: bool,
+    button: &str,
+    click_count: i64,
 ) -> Result<Value, ToolErr> {
     let oid = ax_object(browser, "click", element, hit).await?;
-    let v = call_on_object(browser, &oid, click_preflight_fn(), vec![]).await?;
+    let v = call_on_object_in(browser, hit.session.as_deref(), &oid, click_preflight_fn(), vec![]).await?;
     let (x, y, h0) = match v.as_str() {
         Some(s) if s.starts_with("GLADIUS_FALLBACK:") => {
             click_settle(browser, &s["GLADIUS_FALLBACK:".len()..]).await;
@@ -4062,7 +4628,17 @@ async fn ax_click(
         }
         None => (x, y, h0),
     };
-    let st = click_dispatch(browser, x, y, &h0, hover_first).await?;
+    let st = click_dispatch(
+        browser,
+        x,
+        y,
+        &h0,
+        hover_first,
+        button,
+        click_count,
+        hit.session.is_some(),
+    )
+    .await?;
     click_settle(browser, &st).await;
     Ok(with_resolved(click_ok(browser).await, element, hit))
 }
@@ -4076,7 +4652,7 @@ async fn ax_hover(
     fid: Option<&str>,
 ) -> Result<Value, ToolErr> {
     let oid = ax_object(browser, "hover", element, hit).await?;
-    let v = call_on_object(browser, &oid, hover_preflight_fn(), vec![]).await?;
+    let v = call_on_object_in(browser, hit.session.as_deref(), &oid, hover_preflight_fn(), vec![]).await?;
     // The preflight answers a JSON STRING (`{"x":..,"y":..}`) on success and a
     // `GLADIUS_*` marker on failure, exactly like the CSS frame path: parse it
     // as text, never as an object value.
@@ -4119,7 +4695,7 @@ async fn ax_type(
     submit: bool,
 ) -> Result<Value, ToolErr> {
     let oid = ax_object(browser, "type", element, hit).await?;
-    let v = call_on_object(browser, &oid, type_preflight_fn(), vec![]).await?;
+    let v = call_on_object_in(browser, hit.session.as_deref(), &oid, type_preflight_fn(), vec![]).await?;
     if v.as_str() != Some("GLADIUS_READY") {
         return Err(ax_status_err("type", element, hit, v.as_str()).unwrap_or_else(|| {
             ToolErr::typed(
@@ -4157,7 +4733,7 @@ async fn ax_upload(
 ) -> Result<Value, ToolErr> {
     let oid = ax_object(browser, "upload", element, hit).await?;
     let probe = r#"function() { const el = this; if (!el || !el.isConnected) return 'GLADIUS_NOTFOUND'; if (el.disabled) return 'GLADIUS_DISABLED'; if (el.tagName !== 'INPUT' || (el.type || '').toLowerCase() !== 'file') return 'GLADIUS_NOTFILE'; return 'GLADIUS_OK'; }"#;
-    let v = call_on_object(browser, &oid, probe, vec![]).await?;
+    let v = call_on_object_in(browser, hit.session.as_deref(), &oid, probe, vec![]).await?;
     if v.as_str() != Some("GLADIUS_OK") {
         return Err(ax_status_err("upload", element, hit, v.as_str()).unwrap_or_else(|| {
             ToolErr::typed(
@@ -4200,8 +4776,9 @@ async fn ax_select(
         None => "null".to_string(),
     };
     let oid = ax_object(browser, "select", element, hit).await?;
-    let v = call_on_object(
+    let v = call_on_object_in(
         browser,
+        hit.session.as_deref(),
         &oid,
         &select_preflight_fn(&val_lit, &txt_lit),
         vec![],
@@ -4245,6 +4822,8 @@ async fn tool_click_frame(
     element: &str,
     fid: &str,
     hover_first: bool,
+    button: &str,
+    click_count: i64,
 ) -> Result<Value, ToolErr> {
     let sel = serde_json::to_string(element).map_err(|e| e.to_string())?;
     // Bounded presence wait inside the frame realm (same 3s cap shape as main).
@@ -4298,7 +4877,9 @@ async fn tool_click_frame(
             // at ANY level is typed occluded, never a click into the wrong
             // surface.
             let (mx, my) = frame_owner_hit_ok(browser, "click", element, fid, lx, ly).await?;
-            let st = click_dispatch(browser, mx, my, &h0, hover_first).await?;
+            let cross = browser.oop_session_for_frame(fid).await.is_some();
+            let st = click_dispatch(browser, mx, my, &h0, hover_first, button, click_count, cross)
+                .await?;
             click_settle(browser, &st).await;
             Ok(click_ok(browser).await)
         }
@@ -4321,6 +4902,333 @@ async fn tool_click_frame(
             json!({"code": ToolCode::NotActionable.as_str(), "reason": ToolReason::Hidden.as_str(), "tool": "click", "element": element, "frame": fid}),
         )),
     }
+}
+
+/// Preflight for a DRAG endpoint: the same liveness, visibility, disabled,
+/// box and occlusion checks a click runs, but it NEVER scrolls. A drag has two
+/// endpoints in one viewport, and scrolling one into view moves the other, so
+/// an endpoint that is off screen is a typed refusal that says to bring it on
+/// screen first - never a silent scroll that makes the pair disagree.
+fn drag_preflight_fn() -> &'static str {
+    r#"function() { const el = this; if (!el || !el.isConnected) return 'GLADIUS_NOTFOUND'; const cs = getComputedStyle(el); if (cs.display === 'none' || cs.visibility === 'hidden' || cs.visibility === 'collapse') return 'GLADIUS_HIDDEN'; if (el.disabled) return 'GLADIUS_DISABLED'; const r = el.getBoundingClientRect(); if (!r || r.width === 0 || r.height === 0) return 'GLADIUS_HIDDEN'; const cx = r.left + r.width / 2, cy = r.top + r.height / 2; if (cx < 0 || cy < 0 || cx > window.innerWidth || cy > window.innerHeight) return 'GLADIUS_OFFSCREEN'; let hit = null; try { const root = el.getRootNode ? el.getRootNode() : document; hit = (root.elementFromPoint || document.elementFromPoint).call(root, cx, cy); } catch (e) { return 'GLADIUS_OCCLUDED'; } if (!hit || (hit !== el && !el.contains(hit))) return 'GLADIUS_OCCLUDED'; return 'GLADIUS_POINT:' + JSON.stringify({x: cx, y: cy}); }"#
+}
+
+/// The same drag preflight, by CSS selector, for the main realm and a frame
+/// realm (the element is looked up in the realm the expression runs in).
+fn drag_preflight_sel(sel: &str) -> String {
+    format!(
+        "(() => {{ const el = document.querySelector({sel}); if (!el) return 'GLADIUS_NOTFOUND'; const cs = getComputedStyle(el); if (cs.display === 'none' || cs.visibility === 'hidden' || cs.visibility === 'collapse') return 'GLADIUS_HIDDEN'; if (el.disabled) return 'GLADIUS_DISABLED'; const r = el.getBoundingClientRect(); if (!r || r.width === 0 || r.height === 0) return 'GLADIUS_HIDDEN'; const cx = r.left + r.width / 2, cy = r.top + r.height / 2; if (cx < 0 || cy < 0 || cx > window.innerWidth || cy > window.innerHeight) return 'GLADIUS_OFFSCREEN'; let hit = null; try {{ hit = document.elementFromPoint(cx, cy); }} catch (e) {{ return 'GLADIUS_OCCLUDED'; }} if (!hit || (hit !== el && !el.contains(hit))) return 'GLADIUS_OCCLUDED'; return 'GLADIUS_POINT:' + JSON.stringify({{x: cx, y: cy}}); }})()"
+    )
+}
+
+/// Turn a click-preflight result into a viewport point, or the same typed
+/// refusal `click` would give. `<option>` has no pointer box, so it cannot be
+/// an endpoint of a drag: that is a typed refusal, never a guess.
+fn preflight_point(v: &Value, tool: &str, element: &str) -> Result<(f64, f64), ToolErr> {
+    match v.as_str() {
+        Some(s) if s.starts_with("GLADIUS_POINT:") => {
+            let pt: Value = serde_json::from_str(&s["GLADIUS_POINT:".len()..])
+                .map_err(|_| ToolErr::fallback(format!("{tool}: no layout point")))?;
+            Ok((
+                pt.get("x").and_then(|n| n.as_f64()).unwrap_or(0.0),
+                pt.get("y").and_then(|n| n.as_f64()).unwrap_or(0.0),
+            ))
+        }
+        Some(s) if s.starts_with("GLADIUS_FALLBACK") => Err(ToolErr::typed(
+            format!("{tool}: element has no pointer box (a native <option> cannot be dragged): {element}"),
+            json!({"code": ToolCode::NotActionable.as_str(), "reason": ToolReason::Hidden.as_str(), "tool": tool, "element": element}),
+        )),
+        Some("GLADIUS_NOTFOUND") => Err(ToolErr::typed(
+            format!("{tool}: element not found: {element}"),
+            json!({"code": ToolCode::InvalidTarget.as_str(), "reason": ToolReason::NotFound.as_str(), "tool": tool, "element": element}),
+        )),
+        Some("GLADIUS_DISABLED") => Err(ToolErr::typed(
+            format!("{tool}: element is disabled: {element}"),
+            json!({"code": ToolCode::NotActionable.as_str(), "reason": ToolReason::Disabled.as_str(), "tool": tool, "element": element}),
+        )),
+        Some("GLADIUS_OCCLUDED") => Err(ToolErr::typed(
+            format!("{tool}: element is occluded by another element (no {tool} dispatched): {element}"),
+            json!({"code": ToolCode::NotActionable.as_str(), "reason": ToolReason::Occluded.as_str(), "tool": tool, "element": element}),
+        )),
+        Some("GLADIUS_OFFSCREEN") => Err(ToolErr::typed(
+            format!("{tool}: element is not inside the viewport; scroll it into view first (browser_wheel, or evaluate scrollIntoView) - a drag never scrolls, because scrolling one endpoint moves the other: {element}"),
+            json!({"code": ToolCode::NotActionable.as_str(), "reason": ToolReason::Hidden.as_str(), "tool": tool, "element": element, "offscreen": true}),
+        )),
+        _ => Err(ToolErr::typed(
+            format!("{tool}: element not visible or not actionable: {element}"),
+            json!({"code": ToolCode::NotActionable.as_str(), "reason": ToolReason::Hidden.as_str(), "tool": tool, "element": element}),
+        )),
+    }
+}
+
+/// Resolve one drag endpoint to a MAIN-VIEWPORT point, running the same
+/// visibility/occlusion preflight `click` runs: an endpoint a click could not
+/// land on is a typed refusal here too, and nothing is dispatched. Ref, AX
+/// selector and CSS selector are all accepted; with `fid` the endpoint is
+/// resolved inside that frame's realm and its point mapped through the owner
+/// chain exactly like a frame click.
+async fn drag_point(
+    browser: &Browser,
+    tool: &str,
+    element: &str,
+    fid: Option<&str>,
+) -> Result<(f64, f64), ToolErr> {
+    if let Some(sel) = ax_sel_parse(tool, element)? {
+        let hit = ax_resolve(browser, tool, &sel, element, fid).await?;
+        let oid = ax_object(browser, tool, element, &hit).await?;
+        let v = call_on_object_in(browser, hit.session.as_deref(), &oid, drag_preflight_fn(), vec![]).await?;
+        let (lx, ly) = preflight_point(&v, tool, element)?;
+        return match fid {
+            Some(f) => frame_owner_hit_ok(browser, tool, element, f, lx, ly).await,
+            None => Ok((lx, ly)),
+        };
+    }
+    if let Some(f) = fid {
+        if parse_ref(element).is_some() {
+            return Err(ref_in_frame(tool, element, f));
+        }
+        let sel = serde_json::to_string(element).map_err(|e| ToolErr::fallback(e.to_string()))?;
+        let v = frame_realm_eval(browser, tool, f, &drag_preflight_sel(&sel)).await?;
+        let (lx, ly) = preflight_point(&v, tool, element)?;
+        return frame_owner_hit_ok(browser, tool, element, f, lx, ly).await;
+    }
+    if let Some(id) = parse_ref(element) {
+        let _at = guard_ref(browser, tool, element, &id).await?;
+        let session = browser.ref_session(&id).await;
+        let v = match resolve_ref_object(browser, tool, &id).await? {
+            Some(oid) => call_on_object_in(browser, session.as_deref(), &oid, drag_preflight_fn(), vec![]).await?,
+            None => {
+                let (expr, _) = click_preflight_ref(&id);
+                browser.eval(&expr).await?
+            }
+        };
+        return preflight_point(&v, tool, element);
+    }
+    let sel = serde_json::to_string(element).map_err(|e| ToolErr::fallback(e.to_string()))?;
+    let v = browser.eval(&drag_preflight_sel(&sel)).await?;
+    preflight_point(&v, tool, element)
+}
+
+/// Refuse an explicit pointer point outside the live viewport: an event there
+/// lands on nothing, so accepting it would report a success that did nothing.
+async fn point_in_viewport(
+    browser: &Browser,
+    tool: &str,
+    arg: &str,
+    x: f64,
+    y: f64,
+) -> Result<(), ToolErr> {
+    let (w, h, _) = browser.viewport_readback().await.map_err(ToolErr::from)?;
+    if x >= 0.0 && y >= 0.0 && x <= w as f64 && y <= h as f64 {
+        return Ok(());
+    }
+    Err(ToolErr::typed(
+        format!("{tool}: '{arg}' ({x}, {y}) is outside the {w}x{h} viewport; a pointer event there lands on nothing"),
+        json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(),
+               "tool": tool, "arg": arg, "viewport": {"width": w, "height": h}}),
+    ))
+}
+
+/// Read the document scroll offsets (the effect a wheel is supposed to have).
+async fn scroll_offsets(browser: &Browser) -> Option<(f64, f64)> {
+    let v = browser.eval("[window.scrollX, window.scrollY]").await.ok()?;
+    Some((
+        v.get(0).and_then(|x| x.as_f64()).unwrap_or(0.0),
+        v.get(1).and_then(|x| x.as_f64()).unwrap_or(0.0),
+    ))
+}
+
+/// Wheel: one trusted `mouseWheel` at the point (viewport centre by default),
+/// then read the offsets back until they settle. `moved` is measured, not
+/// claimed: a wheel over a non-scrolling surface reports the same offsets.
+async fn tool_wheel(
+    browser: &Browser,
+    dx: f64,
+    dy: f64,
+    point: Option<(f64, f64)>,
+) -> Result<Value, ToolErr> {
+    let (x, y) = match point {
+        Some(p) => p,
+        None => {
+            let (w, h, _) = browser.viewport_readback().await.map_err(ToolErr::from)?;
+            (w as f64 / 2.0, h as f64 / 2.0)
+        }
+    };
+    if point.is_some() {
+        point_in_viewport(browser, "wheel", "x/y", x, y).await?;
+    }
+    let before = scroll_offsets(browser).await.unwrap_or((0.0, 0.0));
+    browser
+        .mouse_wheel(x, y, dx, dy)
+        .await
+        .map_err(ToolErr::from)?;
+    // Bounded settle: scrolling can be delegated to the compositor and eased,
+    // so read until the offset stops moving (or the budget ends). The LAST
+    // read is the reply, never the first.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(1200);
+    let mut last = before;
+    let mut stable = 0u32;
+    loop {
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let cur = scroll_offsets(browser).await.unwrap_or(last);
+        if cur == last {
+            stable += 1;
+            if stable >= 2 {
+                break;
+            }
+        } else {
+            stable = 0;
+        }
+        last = cur;
+        if std::time::Instant::now() >= deadline {
+            break;
+        }
+    }
+    let after = last;
+    Ok(ok_text(
+        json!({
+            "ok": true,
+            "moved": after != before,
+            "scroll": {"x": after.0, "y": after.1},
+            "at": {"x": x, "y": y},
+            "deltaX": dx,
+            "deltaY": dy,
+        })
+        .to_string(),
+    ))
+}
+
+/// Drag: resolve both endpoints (with the click preflight's occlusion guard),
+/// then dispatch the trusted press/move/release sequence. Every event is
+/// `Input.dispatchMouseEvent`; no DOM event is synthesised and no `.value` or
+/// `DataTransfer` is touched.
+async fn tool_drag(
+    browser: &Browser,
+    from: Option<&str>,
+    to: Option<&str>,
+    from_point: Option<(f64, f64)>,
+    to_point: Option<(f64, f64)>,
+    steps: usize,
+    frame: Option<&str>,
+) -> Result<Value, ToolErr> {
+    let fid = frame_id_ok("drag", frame)?;
+    let from_pt = match from_point {
+        Some(p) => {
+            point_in_viewport(browser, "drag", "fromPoint", p.0, p.1).await?;
+            p
+        }
+        None => drag_point(browser, "drag", from.unwrap_or(""), fid.as_deref()).await?,
+    };
+    let to_pt = match to_point {
+        Some(p) => {
+            point_in_viewport(browser, "drag", "toPoint", p.0, p.1).await?;
+            p
+        }
+        None => drag_point(browser, "drag", to.unwrap_or(""), fid.as_deref()).await?,
+    };
+    let events = browser
+        .mouse_drag(from_pt, to_pt, steps)
+        .await
+        .map_err(ToolErr::from)?;
+    // Give the page's own handlers a turn before the caller reads the DOM:
+    // the drop logic runs in the release task, not in the CDP acknowledgement.
+    tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+    Ok(ok_text(
+        json!({
+            "ok": true,
+            "from": {"x": from_pt.0, "y": from_pt.1},
+            "to": {"x": to_pt.0, "y": to_pt.1},
+            "events": events,
+            "steps": steps,
+        })
+        .to_string(),
+    ))
+}
+
+/// Click a ref that a frame-scoped snapshot minted, inside that frame. The
+/// node is resolved through its recorded session (an OOPIF's own session, or
+/// the page session for a same-process frame), the preflight runs on that
+/// node, and the point is mapped through the owner chain to main-viewport
+/// coordinates before dispatch - exactly the frame CSS path, on a node
+/// identity instead of a selector.
+async fn ref_click_frame(
+    browser: &Browser,
+    element: &str,
+    id: &str,
+    fid: &str,
+    hover_first: bool,
+    button: &str,
+    click_count: i64,
+) -> Result<Value, ToolErr> {
+    let at_id = guard_ref(browser, "click", element, id).await?;
+    let session = browser.ref_session(id).await;
+    let v = match resolve_ref_object(browser, "click", id).await? {
+        Some(oid) => {
+            call_on_object_in(browser, session.as_deref(), &oid, click_preflight_fn(), vec![]).await?
+        }
+        None => {
+            let (expr, _) = click_preflight_ref(id);
+            frame_realm_eval(browser, "click", fid, &expr).await?
+        }
+    };
+    let (lx, ly) = match v.as_str() {
+        Some("GLADIUS_FALLBACK") | Some("GLADIUS_FALLBACK:") => {
+            click_settle(browser, "").await;
+            return Ok(click_ok(browser).await);
+        }
+        Some(s) if s.starts_with("GLADIUS_FALLBACK:") => {
+            click_settle(browser, "").await;
+            return Ok(click_ok(browser).await);
+        }
+        Some(s) if s.starts_with("GLADIUS_POINT:") => {
+            let pt: Value = serde_json::from_str(&s["GLADIUS_POINT:".len()..])
+                .map_err(|_| ToolErr::fallback("click: no layout point".to_string()))?;
+            (
+                pt.get("x").and_then(|n| n.as_f64()).unwrap_or(0.0),
+                pt.get("y").and_then(|n| n.as_f64()).unwrap_or(0.0),
+            )
+        }
+        Some("GLADIUS_NOTFOUND") => return Err(stale_gone("click", element, id)),
+        Some("GLADIUS_DISABLED") => {
+            return Err(ToolErr::typed(
+                format!("click: {at_id} is disabled"),
+                json!({"code": ToolCode::NotActionable.as_str(), "reason": ToolReason::Disabled.as_str(), "tool": "click", "ref": at_id, "frame": fid}),
+            ))
+        }
+        Some("GLADIUS_OCCLUDED") => {
+            return Err(ToolErr::typed(
+                format!("click: {at_id} is occluded by another element (no click dispatched)"),
+                json!({"code": ToolCode::NotActionable.as_str(), "reason": ToolReason::Occluded.as_str(), "tool": "click", "ref": at_id, "frame": fid}),
+            ))
+        }
+        _ => {
+            return Err(ToolErr::typed(
+                format!("click: {at_id} not visible or not clickable"),
+                json!({"code": ToolCode::NotActionable.as_str(), "reason": ToolReason::Hidden.as_str(), "tool": "click", "ref": at_id, "frame": fid}),
+            ))
+        }
+    };
+    let (mx, my) = frame_owner_hit_ok(browser, "click", element, fid, lx, ly).await?;
+    // Settle against the MAIN href: the leaf realm's own href never matches.
+    let h0 = browser
+        .eval("window.location.href")
+        .await
+        .ok()
+        .and_then(|v| v.as_str().map(|s| s.to_string()))
+        .unwrap_or_default();
+    let st = click_dispatch(
+        browser,
+        mx,
+        my,
+        &h0,
+        hover_first,
+        button,
+        click_count,
+        session.is_some(),
+    )
+    .await?;
+    click_settle(browser, &st).await;
+    Ok(click_ok(browser).await)
 }
 
 /// Settle a click that navigates (measured H2H form-02: submit click
@@ -4696,7 +5604,15 @@ async fn tool_evaluate(
     browser.take_dialog().await;
     let v = match (target, frame) {
         (Some(tid), None) => browser.eval_in_target(tid, expression).await?,
-        (None, Some(fid)) => browser.eval_in_frame(fid, expression).await?,
+        // A frame routinely means an OOPIF, whose realm is only reachable on
+        // its own session; `frame_realm_eval` prefers that session and falls
+        // back to the page-session frame realm for a same-process iframe.
+        (None, Some(fid)) => match frame_realm_eval(browser, "evaluate", fid, expression).await {
+            Ok(v) => v,
+            // The realm router reports a frame-shape failure as a String from
+            // the session; keep it typed here.
+            Err(e) => return Err(e),
+        },
         (None, None) => browser.eval(expression).await?,
         _ => unreachable!(),
     };

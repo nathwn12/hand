@@ -18,13 +18,45 @@ codes and result bodies are compiled in.
 Executable check:
 
 ```powershell
-node baseline/scripts/compare-catalog.mjs --serve target\debug\hand.exe --baseline hand
+node baseline/scripts/compare-catalog.mjs --serve <path-to-hand.exe> --baseline hand
 ```
 
-Observed: `PASS hand baseline: 32 baseline tools vs 33 candidate tools`,
-`compared 32 tools`, `extra 1: browser_context`,
-`0 title/description difference(s)` under `--strict-metadata`. The floor is
-unchanged; `browser_context` is hand's addition and is the only extra.
+Observed on a release build of this tree, quoted verbatim:
+
+```text
+PASS hand baseline: 32 baseline tools vs 35 candidate tools
+  compared   32 tools
+  extra      3: browser_drag, browser_wheel, browser_context
+  metadata   0 title/description difference(s) (strict: on)
+  declared   17 addition group(s) allowed by baseline/declared-additions.json:
+             browser_snapshot metadata.description += description
+             browser_screenshot inputSchema += properties.clip, properties.element, properties.format, properties.quality
+             browser_screenshot outputSchema += properties.clip, properties.element, properties.format
+             browser_screenshot metadata.description += description
+             browser_click inputSchema += properties.button, properties.clickCount
+             browser_click outputSchema += properties.resolved
+             browser_click metadata.description += description
+             browser_type outputSchema += properties.resolved
+             browser_type metadata.description += description
+             browser_upload outputSchema += properties.resolved
+             browser_upload metadata.description += description
+             browser_hover outputSchema += properties.resolved
+             browser_hover metadata.description += description
+             browser_select outputSchema += properties.resolved
+             browser_select metadata.description += description
+             desktop_screenshot outputSchema += properties.noSteal
+             desktop_elements outputSchema += properties.noSteal
+```
+
+The 32-name floor is served **with exactly the allowances declared in
+`baseline/declared-additions.json` and no other difference**: two input schemas
+and eight output-schema groups carry the properties listed there, seven tool
+descriptions are rewritten there, and every other property, `required` list,
+annotation, `title`, description and name is the pin's. The three extras above
+are hand's own tools, not legacy bodies. The file is not a relaxed mode: an
+undeclared description or any title difference fails, and so does a declared
+description that still matches the pin, because the declaration says that one
+was rewritten.
 
 ## Name mapping
 
@@ -32,14 +64,23 @@ The only catalog change is the prefix. A client migrates one-to-one:
 
 - Gladius `navigate` → `browser_navigate` … `fetch_text` → `browser_fetch_text`
 - Puppet `screenshot` → `desktop_screenshot` … `elements` → `desktop_elements`
-- hand adds one browser tool with no legacy counterpart: `browser_context`
-  (isolated named contexts). Its schema is the only new body in the catalog, so
-  a migration stays one-to-one for every legacy name.
+- hand adds three browser tools with no legacy counterpart: `browser_context`
+  (isolated named contexts), `browser_wheel` and `browser_drag` (trusted pointer
+  primitives). Their bodies are new; a migration stays one-to-one for every
+  legacy name.
 
-`tests/discovery.rs::tool_bodies_are_engine_bodies_under_the_prefix` compares
-every published tool object with the engine's own catalog, asserting equality of
-every field except `name`. `tests/discovery.rs::catalog_is_exactly_the_32_prefixed_tools`
-asserts count, uniqueness and namespacing.
+`tests/discovery.rs::tool_bodies_are_engine_bodies_under_the_prefix` parses the
+committed floor (`baseline/hand-catalog.json`) and `baseline/declared-additions.json`,
+asserts every declared addition is present, removes exactly those paths and
+requires structural equality with the floor for everything else — name,
+`annotations`, `title`, every pinned property, and every description that is not
+declared as rewritten. A declared description must **differ** from the pin: the
+declaration says that one was rewritten, so an identical one is stale. The
+reference is the floor on disk, not `browser_engine::list()`: the engine is the
+same source that publishes hand's bodies, so it cannot go red on a schema change,
+and a deleted allowance entry must.
+`tests/discovery.rs::catalog_is_the_floor_plus_hand_additions` asserts count,
+uniqueness and namespacing.
 
 Prefixes are a breaking client change by design. The old products are not
 modified or retired; no drop-in compatibility is claimed.
@@ -81,17 +122,21 @@ modified or retired; no drop-in compatibility is claimed.
   "platform": "windows-x64",
   "engines": {
     "browser": {"engine": "gladius", "sourcePin": "59c6d77", "version": "0.8.0",
-                 "backend": "chromium", "caps": "render", "cdpUrl": null, "toolCount": 25},
+                 "backend": "chromium", "caps": "render", "cdpUrl": null, "toolCount": 27},
     "desktop": {"engine": "puppet", "sourcePin": "0f790be", "version": "8.0.0",
                  "available": true, "backend": "uia+win32", "toolCount": 7}
   },
-  "count": 33,
+  "count": 35,
   "isolatedContexts": {"tool": "browser_context", "available": true, "…": "…"}
 }
 ```
 
 `browser.backend`/`caps`/`cdpUrl` are the browser engine's own `backend_info()`,
 so an attached or capability-restricted engine is described as it really is.
+`engines.browser.toolCount` is the engine's own `list()` (25 pinned plus
+`wheel` and `drag`). `browser_context` is published from the engine's context
+module beside that list, so the wire carries 28 `browser_*` bodies and 35 tools
+in total.
 
 ## Preserved behavior
 
@@ -129,7 +174,9 @@ so an attached or capability-restricted engine is described as it really is.
    arriving between dispatch and execution is never lost to a re-registration.
 
 3. **One initialize.** The old servers each described themselves; hand answers
-   once with both engines under `engines`. Tool bodies are unchanged.
+   once with both engines under `engines`. Tool bodies and descriptions are the
+   pinned ones, except the schema additions and the seven description rewrites
+   declared in `baseline/declared-additions.json`.
 
 4. **Budget environment.** `_budgetMs` is the browser contract. The default also
    reads `HAND_TOOL_BUDGET_MS` first, then `GLADIUS_TOOL_BUDGET_MS` for
@@ -164,15 +211,53 @@ so an attached or capability-restricted engine is described as it really is.
    - Puppet's fixture self-test floor is 15 files instead of 20 because the
      library crate carries no integration `tests/` tree; its scans still cover
      every file present.
-9. **Five browser tools add one output property, `resolved`.** `click`, `type`,
-   `hover`, `select` and `upload` return `{selector, ref, role, name}` when the
-   element argument used one of the accessibility forms, so the caller can see
-   which element answered. The property is additive; every other field, the input
-   schemas and all 32 legacy bodies are unchanged. `baseline/scripts/lib/catalog.mjs`
-   holds it as a declared list (`DECLARED_OUTPUT_ADDITIONS`) and strips exactly
-   those properties before the deep comparison, so any other schema drift still
-   fails. Removing one entry from that list turns `compare-catalog` red —
-   verified, not assumed.
+9. **The declared allowances are one versioned file.** `baseline/declared-additions.json`
+   (version 1) is the only place a legacy tool may differ, and
+   `baseline/scripts/lib/catalog.mjs` is its only reader. Schema paths are dotted
+   and relative to the schema object, so a top-level property is
+   `properties.<name>`; a metadata entry is a bare tool name.
+   - `outputSchema`: `click`, `type`, `hover`, `select` and `upload` add
+     `properties.resolved` — `{selector, ref, role, name}` when the element
+     argument used one of the accessibility forms, so the caller can see which
+     element answered. `browser_screenshot` adds `properties.format`,
+     `properties.element` and `properties.clip`, which state how the pixels were
+     encoded and what box they cover. `desktop_screenshot` and
+     `desktop_elements` add `properties.noSteal`: attribution beside the raw
+     before/after booleans that says whether a pointer or foreground change was
+     the owner's input or this process's. The legacy fields stay unchanged.
+   - `inputSchema`: `browser_click` adds `properties.button` and
+     `properties.clickCount` (right/middle button, double click) and
+     `browser_screenshot` adds `properties.clip`, `properties.element`,
+     `properties.format` and `properties.quality` (region or element capture,
+     jpeg/webp encoding and its quality). A call that passes none of them is the
+     historic call.
+   - `metadata.description`: `browser_click`, `browser_type`, `browser_upload`,
+     `browser_hover`, `browser_select`, `browser_snapshot` and
+     `browser_screenshot` have a rewritten description, because each one now
+     names the parameters or the result field this tree added to it. A
+     description is a failing comparison by default, exactly like a schema: the
+     file is the only place one may differ, and a listed tool whose description
+     still equals the pin fails as a stale declaration. `title` has no declared
+     exceptions at all, and no section may name a tool outside the floor.
+
+   For every listed path the gate checks presence first — a listed addition that
+   is missing or renamed fails — then removes exactly those paths, and requires
+   structural equality with the pin for everything else, `required` lists
+   included. An unlisted addition fails, any change to a pinned property fails,
+   and an undeclared or stale description fails. The `legacy` re-capture profile
+   never reads the file: a pinned binary must still emit what is committed, byte
+   for byte.
+
+   Proven both ways in `baseline/test/declared-additions.test.mjs`, through the
+   real comparator and its exit code: red on an undeclared `properties.bogus`,
+   red on a deleted `properties.clickCount`, red on an eighth tool's rewritten
+   description, red on a declared description restored to the pin, green on the
+   declared set. The two description directions also turn
+   `tests/discovery.rs::tool_bodies_are_engine_bodies_under_the_prefix` red: with
+   `browser_snapshot` dropped from `metadata.description` it fails with
+   "description drifted … and is not declared", and with `browser_navigate` added
+   it fails with "identical to the pin: a stale declaration". Both were run, not
+   assumed.
 
 ## External CDP engines
 

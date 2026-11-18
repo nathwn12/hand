@@ -19,12 +19,15 @@ not to be claimed.
 | Capability | Evidence |
 |---|---|
 | One executable, one stdio MCP connection | `tests/discovery.rs` (7 tests): initialize, ping, tools/list, tools/call, server/discover, version gate |
-| Both catalogs plus `browser_context`, exact legacy bodies | `catalog_is_exactly_the_32_prefixed_tools`, `tool_bodies_are_engine_bodies_under_the_prefix`; independent `baseline/scripts/compare-catalog.mjs` PASS: 32/32 legacy tools compared, 0 metadata differences, `browser_context` reported as the only extra |
+| Both catalogs plus hand's own tools, legacy bodies byte-identical except the declared additions in `baseline/declared-additions.json` | `catalog_is_the_floor_plus_hand_additions`, `tool_bodies_are_engine_bodies_under_the_prefix` (compares each published body with `baseline/hand-catalog.json` after the declared paths are checked present and stripped; `baseline/test/declared-additions.test.mjs` proves it red on an undeclared addition and on a deleted one); independent `baseline/scripts/compare-catalog.mjs` PASS: 32/32 legacy tools compared, 3 extras, 10 declared addition groups, 7 description differences. The live catalog is **35** tools: the 32-name compatibility floor plus `browser_context`, `browser_wheel` and `browser_drag`, which hand adds on top and which `baseline/hand-catalog.json` records under `live` |
 | Isolated, named browser contexts over the real MCP route | `tests/context_wire.rs`: published schema; two contexts with separate cookie jars; legacy page and legacy tab space untouched; `targets select` refuses a context page; typed errors; shutdown disposes only hand's contexts (two clients attached to one external engine, the other's context, page and cookie survive) |
 | Browser backend identity and availability | `initialize_identifies_version_platform_and_both_engines`: `gladius` pin, `puppet` pin, platform, counts, instructions |
 | Live headless browser inspect → act → verify | `tests/browser_live.rs`: loopback fixture; navigate, AX snapshot, click by `@eN`, DOM effect proven by evaluate, type into a labelled field and read back |
 | Deterministic browser screenshot | same test: `deterministic:true`, PNG > 1000 bytes, checksum present |
 | Navigation invalidates refs; stale ref refused | same test: old ref after navigation returns typed `stale_ref` (prose names staleness), engine stays healthy |
+| Pointer completeness: right/middle click, double click, wheel with read-back, drag | `tests/pointer_frames.rs`: right click raises the page's own `contextmenu` and the menu appears as `menu`/`menuitem` nodes in the next snapshot; `clickCount:2` raises exactly one `dblclick`; a 400 px wheel scrolls (`scrollY` 400) and the reply reports the measured offset, `moved:false` over a page that cannot scroll; a drag reorders the DOM with `isTrusted:true` pointer events (no synthetic DragEvent) and dispatches one positioning move, press, the moves and the release |
+| Element and clip screenshot, format passthrough | same test: `element` captures the element's border box (PNG IHDR width equals `browser_layout`'s box width), two `deterministic:true` captures share a checksum, `jpeg`/`webp` with `quality` answer their own `mimeType`, `png` + `quality` is refused by name, an unknown ref is typed `stale_ref` |
+| Out-of-process frame scoping | same test: a cross-site iframe (`127.0.0.1` vs `localhost`, site isolation on) is addressable by its frame id - `browser_snapshot frame=` returns that frame's nodes and `browser_click frame=` lands inside it (proven by the child's own DOM); a frame id no session owns is typed `invalid_target` from snapshot, click and evaluate, never a main-frame action |
 | Desktop window enumeration | `tests/desktop_live.rs`: real `EnumWindows` rows with hwnd, pid, exe, rects, dpi, flags |
 | Desktop semantic inspection of a background window | same test: `desktop_elements` on a real non-foreground window, backend named, `rect_space: "screen"`, explicit empty/UIA state |
 | Desktop typed missing-target refusal | same test: unknown `titleContains` → tool error containing `target_gone`/`bad_target` |
@@ -64,9 +67,13 @@ These are not implemented, not exercised, or not safe to claim from this slice.
   crash boundary; IndexedDB and HTTP-cache separation expected but unverified;
   no per-context permissions; no dialog auto-handling in a context page; a hard
   kill of hand is not a cleanup path for an attached engine.
-- Same-origin/OOPIF frame-scoped acting beyond the engine's existing `frame`
-  parameters: no new frame capability was added or tested here.
-- Scroll-with-read-back, double/right-click, drag/drop, downloads.
+- Frame-scoped acting beyond `snapshot`, `click`, `evaluate`, `type`, `hover`,
+  `select` and `upload`: those cover same-process frames and mapped OOPIFs; a
+  frame-scoped snapshot's refs are actionable only with the same `frame=`.
+  `layout`, `assert_layout` and `visual` remain main-frame only.
+- Downloads, and HTML5 `dragstart`/`drop` as a distinct primitive: `browser_drag`
+  sends one trusted pointer path, which the engine's own drag machinery sees on
+  a page that uses it, but no test pins a native `DataTransfer` drop here.
 - Ordered form batches with per-step partial failure reporting.
 - Extended navigation result with observed HTTP status and a versioned
   interface (the legacy `navigate` result is unchanged).
@@ -101,7 +108,7 @@ existing target takes precedence over the hidden-launch request.
 
 ### Lifecycle and distribution
 
-- `oc-hand` OpenCode wiring: live at `C:\Users\nathan\.local\bin\hand.exe`, 33
+- `oc-hand` OpenCode wiring: live at `C:\Users\nathan\.local\bin\hand.exe`, 35
   tools. Private remote `github.com/nathwn12/hand`. No npm package and nothing
   published; the npm name `hand-mcp` is reserved by intent only.
 - Product and executable are `hand`; the repo, crate and binary were renamed
