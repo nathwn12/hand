@@ -1,0 +1,1506 @@
+{
+  "schema": "hand-mcp.benchmark.receipt/v1",
+  "driverVersion": "1.0.0",
+  "generatedAtUtc": "2026-11-18T00:42:05.527Z",
+  "testOnly": false,
+  "evidence": "measured against the resolved product binary on this machine",
+  "product": {
+    "id": "puppet",
+    "label": "Puppet baseline",
+    "command": "Q:\\PROJECTS\\PERSONAL\\puppet\\target\\release\\puppet.exe",
+    "args": [],
+    "cwd": "Q:\\PROJECTS\\PERSONAL\\hand",
+    "source": "known build path",
+    "testFixture": false,
+    "resolved": true,
+    "executable": {
+      "path": "Q:\\PROJECTS\\PERSONAL\\puppet\\target\\release\\puppet.exe",
+      "bytes": 2460672,
+      "sha256": "sha256:ff935556b0f0d7175d514005b431fa4ce6db5aaf61d0866da103ec91ed61e212"
+    },
+    "version": {
+      "status": 0,
+      "stdout": "puppet 8.0.0 (6334393c8e670be7f9c06678267a375f4c22b699)",
+      "stderr": ""
+    },
+    "entrypoint": null,
+    "releaseIdentity": {
+      "claimed": null,
+      "verified": false,
+      "basis": "embedded-build-metadata",
+      "embedded": {
+        "sha": "6334393c8e670be7f9c06678267a375f4c22b699",
+        "dirty": false,
+        "profile": null
+      },
+      "reason": "the binary embeds commit 6334393c8e670be7f9c06678267a375f4c22b699 and profile null; a self-report is not an attestation, so compare.mjs re-checks it against a recorded --release build receipt and artifact hash"
+    }
+  },
+  "scenario": {
+    "id": "desktop-enumerate",
+    "title": "desktop window enumeration including the controlled fixture",
+    "domain": "desktop",
+    "specTargetP95Ms": 250,
+    "tool": "list_windows",
+    "method": null,
+    "params": {},
+    "paramsHash": "sha256:5fc53b1db4dd60939ba704590e7f0b109710b8d826a25e1c51c663e29aea504c"
+  },
+  "protocol": {
+    "warmup": 10,
+    "measured": 100,
+    "sequential": true,
+    "timeoutMs": 60000,
+    "framing": "newline-delimited JSON-RPC",
+    "latencyBasis": "stdin write to complete response frame; validation happens after the measurement"
+  },
+  "fingerprint": {
+    "machine": {
+      "hostname": "NECESSE",
+      "platform": "win32",
+      "release": "10.0.26300",
+      "version": "Windows 11 Pro",
+      "arch": "x64",
+      "cpu": {
+        "model": "AMD Ryzen 7 5800X 8-Core Processor",
+        "logicalCores": 16,
+        "speedMHz": 4392
+      },
+      "memoryTotalBytes": 34276126720,
+      "display": {
+        "width": 2560,
+        "height": 1440,
+        "dpi": 96,
+        "scaleFactor": 1
+      },
+      "displayProbe": {
+        "ok": true
+      },
+      "node": {
+        "version": "v26.13.1",
+        "arch": "x64",
+        "execPath": "C:\\Users\\nathan\\scoop\\apps\\nodejs-lts\\current\\node.exe"
+      },
+      "hash": "sha256:993049499f61bbe0fe2f531d589535b0ae7e89934300b1cf01c6669a49ae22a7"
+    },
+    "browser": null,
+    "fixture": null,
+    "desktopTarget": {
+      "matcher": {
+        "titleContains": "hand-bench-desktop-1280x720-26036"
+      },
+      "identity": {
+        "title": "hand-bench-desktop-1280x720-26036",
+        "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+        "class": "WindowsForms10.Window.8.app.0.34f5582_r6_ad1",
+        "clientRect": [
+          100,
+          100,
+          1380,
+          820
+        ],
+        "rect": [
+          100,
+          100,
+          1380,
+          820
+        ],
+        "dpi": 96,
+        "minimized": false
+      },
+      "hwnd": 7209972,
+      "hash": "sha256:d51c56b4d0de0d663f725e064a2d3805f4fbf4a65e9659a3a4e7e0a08c943a2d"
+    }
+  },
+  "samples": {
+    "warmup": {
+      "attempts": [
+        {
+          "index": 1,
+          "ok": true,
+          "elapsedMs": 1.752,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 2,
+          "ok": true,
+          "elapsedMs": 1.674,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 3,
+          "ok": true,
+          "elapsedMs": 1.753,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 4,
+          "ok": true,
+          "elapsedMs": 1.538,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 5,
+          "ok": true,
+          "elapsedMs": 1.654,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 6,
+          "ok": true,
+          "elapsedMs": 1.661,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 7,
+          "ok": true,
+          "elapsedMs": 1.607,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 8,
+          "ok": true,
+          "elapsedMs": 1.728,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 9,
+          "ok": true,
+          "elapsedMs": 1.631,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 10,
+          "ok": true,
+          "elapsedMs": 1.672,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        }
+      ],
+      "failures": 0
+    },
+    "measured": {
+      "attempts": [
+        {
+          "index": 1,
+          "ok": true,
+          "elapsedMs": 1.52,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 2,
+          "ok": true,
+          "elapsedMs": 1.568,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 3,
+          "ok": true,
+          "elapsedMs": 1.546,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 4,
+          "ok": true,
+          "elapsedMs": 1.522,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 5,
+          "ok": true,
+          "elapsedMs": 1.527,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 6,
+          "ok": true,
+          "elapsedMs": 1.755,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 7,
+          "ok": true,
+          "elapsedMs": 1.537,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 8,
+          "ok": true,
+          "elapsedMs": 1.548,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 9,
+          "ok": true,
+          "elapsedMs": 1.553,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 10,
+          "ok": true,
+          "elapsedMs": 1.531,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 11,
+          "ok": true,
+          "elapsedMs": 1.556,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 12,
+          "ok": true,
+          "elapsedMs": 1.553,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 13,
+          "ok": true,
+          "elapsedMs": 1.503,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 14,
+          "ok": true,
+          "elapsedMs": 1.547,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 15,
+          "ok": true,
+          "elapsedMs": 1.599,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 16,
+          "ok": true,
+          "elapsedMs": 1.518,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 17,
+          "ok": true,
+          "elapsedMs": 1.538,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 18,
+          "ok": true,
+          "elapsedMs": 1.625,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 19,
+          "ok": true,
+          "elapsedMs": 1.615,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 20,
+          "ok": true,
+          "elapsedMs": 1.587,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 21,
+          "ok": true,
+          "elapsedMs": 1.616,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 22,
+          "ok": true,
+          "elapsedMs": 1.596,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 23,
+          "ok": true,
+          "elapsedMs": 1.567,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 24,
+          "ok": true,
+          "elapsedMs": 1.582,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 25,
+          "ok": true,
+          "elapsedMs": 1.567,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 26,
+          "ok": true,
+          "elapsedMs": 1.478,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 27,
+          "ok": true,
+          "elapsedMs": 1.644,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 28,
+          "ok": true,
+          "elapsedMs": 1.519,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 29,
+          "ok": true,
+          "elapsedMs": 1.731,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 30,
+          "ok": true,
+          "elapsedMs": 1.548,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 31,
+          "ok": true,
+          "elapsedMs": 1.663,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 32,
+          "ok": true,
+          "elapsedMs": 1.53,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 33,
+          "ok": true,
+          "elapsedMs": 1.614,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 34,
+          "ok": true,
+          "elapsedMs": 1.545,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 35,
+          "ok": true,
+          "elapsedMs": 1.644,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 36,
+          "ok": true,
+          "elapsedMs": 1.557,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 37,
+          "ok": true,
+          "elapsedMs": 1.512,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 38,
+          "ok": true,
+          "elapsedMs": 1.495,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 39,
+          "ok": true,
+          "elapsedMs": 1.486,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 40,
+          "ok": true,
+          "elapsedMs": 1.591,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 41,
+          "ok": true,
+          "elapsedMs": 1.575,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 42,
+          "ok": true,
+          "elapsedMs": 1.496,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 43,
+          "ok": true,
+          "elapsedMs": 1.522,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 44,
+          "ok": true,
+          "elapsedMs": 1.472,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 45,
+          "ok": true,
+          "elapsedMs": 1.565,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 46,
+          "ok": true,
+          "elapsedMs": 1.559,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 47,
+          "ok": true,
+          "elapsedMs": 1.664,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 48,
+          "ok": true,
+          "elapsedMs": 1.536,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 49,
+          "ok": true,
+          "elapsedMs": 1.53,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 50,
+          "ok": true,
+          "elapsedMs": 1.557,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 51,
+          "ok": true,
+          "elapsedMs": 1.539,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 52,
+          "ok": true,
+          "elapsedMs": 1.553,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 53,
+          "ok": true,
+          "elapsedMs": 1.543,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 54,
+          "ok": true,
+          "elapsedMs": 1.476,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 55,
+          "ok": true,
+          "elapsedMs": 1.479,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 56,
+          "ok": true,
+          "elapsedMs": 1.451,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 57,
+          "ok": true,
+          "elapsedMs": 1.556,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 58,
+          "ok": true,
+          "elapsedMs": 1.636,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 59,
+          "ok": true,
+          "elapsedMs": 1.534,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 60,
+          "ok": true,
+          "elapsedMs": 1.46,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 61,
+          "ok": true,
+          "elapsedMs": 1.618,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 62,
+          "ok": true,
+          "elapsedMs": 1.514,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 63,
+          "ok": true,
+          "elapsedMs": 1.461,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 64,
+          "ok": true,
+          "elapsedMs": 1.551,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 65,
+          "ok": true,
+          "elapsedMs": 1.543,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 66,
+          "ok": true,
+          "elapsedMs": 1.488,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 67,
+          "ok": true,
+          "elapsedMs": 1.474,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 68,
+          "ok": true,
+          "elapsedMs": 1.516,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 69,
+          "ok": true,
+          "elapsedMs": 1.536,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 70,
+          "ok": true,
+          "elapsedMs": 1.517,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 71,
+          "ok": true,
+          "elapsedMs": 1.611,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 72,
+          "ok": true,
+          "elapsedMs": 1.56,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 73,
+          "ok": true,
+          "elapsedMs": 1.556,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 74,
+          "ok": true,
+          "elapsedMs": 1.601,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 75,
+          "ok": true,
+          "elapsedMs": 1.557,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 76,
+          "ok": true,
+          "elapsedMs": 1.936,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 77,
+          "ok": true,
+          "elapsedMs": 1.511,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 78,
+          "ok": true,
+          "elapsedMs": 1.501,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 79,
+          "ok": true,
+          "elapsedMs": 1.525,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 80,
+          "ok": true,
+          "elapsedMs": 1.555,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 81,
+          "ok": true,
+          "elapsedMs": 1.561,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 82,
+          "ok": true,
+          "elapsedMs": 1.497,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 83,
+          "ok": true,
+          "elapsedMs": 1.472,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 84,
+          "ok": true,
+          "elapsedMs": 1.516,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 85,
+          "ok": true,
+          "elapsedMs": 1.493,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 86,
+          "ok": true,
+          "elapsedMs": 1.48,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 87,
+          "ok": true,
+          "elapsedMs": 1.57,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 88,
+          "ok": true,
+          "elapsedMs": 1.689,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 89,
+          "ok": true,
+          "elapsedMs": 1.521,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 90,
+          "ok": true,
+          "elapsedMs": 1.45,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 91,
+          "ok": true,
+          "elapsedMs": 1.438,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 92,
+          "ok": true,
+          "elapsedMs": 1.478,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 93,
+          "ok": true,
+          "elapsedMs": 1.49,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 94,
+          "ok": true,
+          "elapsedMs": 1.615,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 95,
+          "ok": true,
+          "elapsedMs": 1.54,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 96,
+          "ok": true,
+          "elapsedMs": 1.519,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 97,
+          "ok": true,
+          "elapsedMs": 1.529,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 98,
+          "ok": true,
+          "elapsedMs": 1.497,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 99,
+          "ok": true,
+          "elapsedMs": 1.599,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        },
+        {
+          "index": 100,
+          "ok": true,
+          "elapsedMs": 1.57,
+          "dispatched": true,
+          "detail": {
+            "hwnd": 7209972,
+            "title": "hand-bench-desktop-1280x720-26036",
+            "windows": 19
+          }
+        }
+      ],
+      "failures": 0
+    }
+  },
+  "setup": {
+    "ok": true,
+    "steps": [
+      {
+        "name": "resolve controlled fixture window",
+        "tool": "list_windows",
+        "params": {},
+        "ok": true,
+        "elapsedMs": 2.304,
+        "error": null,
+        "detail": {
+          "hwnd": 7209972,
+          "title": "hand-bench-desktop-1280x720-26036",
+          "windows": 19
+        }
+      }
+    ],
+    "failure": null,
+    "controlledTarget": {
+      "identity": {
+        "title": "hand-bench-desktop-1280x720-26036",
+        "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+        "class": "WindowsForms10.Window.8.app.0.34f5582_r6_ad1",
+        "clientRect": [
+          100,
+          100,
+          1380,
+          820
+        ],
+        "rect": [
+          100,
+          100,
+          1380,
+          820
+        ],
+        "dpi": 96,
+        "minimized": false
+      },
+      "hwnd": 7209972,
+      "hash": "sha256:d51c56b4d0de0d663f725e064a2d3805f4fbf4a65e9659a3a4e7e0a08c943a2d"
+    }
+  },
+  "coldStart": {
+    "ok": true,
+    "spawnToInitializeMs": 12.04,
+    "initializeRoundTripMs": 6.866,
+    "error": null
+  },
+  "catalog": {
+    "toolCount": 7,
+    "sha256": "sha256:63d3c26745ad9727fca968ae6f8c6c583747b05d14bb830b1c44a7def1fa5370",
+    "names": [
+      "screenshot",
+      "diff",
+      "list_windows",
+      "window",
+      "do",
+      "cursor",
+      "elements"
+    ]
+  },
+  "load": {
+    "sampling": "whole-machine os.cpus() idle/total delta across the run; free memory at start/end; no per-request sampling",
+    "cpuBusyPercent": 17.39,
+    "freeMemoryBytesStart": 19165384704,
+    "freeMemoryBytesEnd": 19104387072,
+    "sequential": true,
+    "maxConcurrentRequests": 1,
+    "unrelatedLoad": "not externally audited; concurrent work on this machine would appear in cpuBusyPercent. The driver issues one request at a time."
+  },
+  "stats": {
+    "attempted": 100,
+    "observed": 100,
+    "passed": 100,
+    "failed": 0,
+    "percentileMethod": "nearest-rank",
+    "percentileBase": {
+      "observed": 100,
+      "attempted": 100
+    },
+    "minMs": 1.438,
+    "p50Ms": 1.543,
+    "p95Ms": 1.663,
+    "maxMs": 1.936,
+    "meanMs": 1.551,
+    "sumMs": 155.091
+  },
+  "phases": [
+    {
+      "name": "cold server start (spawn to initialize reply)",
+      "kind": "setup",
+      "elapsedMs": 12.04,
+      "notThresholded": true
+    },
+    {
+      "name": "initialize round trip",
+      "kind": "setup",
+      "elapsedMs": 6.866,
+      "notThresholded": true
+    },
+    {
+      "name": "setup: resolve controlled fixture window",
+      "kind": "setup",
+      "elapsedMs": 2.304,
+      "ok": true,
+      "notThresholded": true,
+      "note": null
+    },
+    {
+      "name": "warm samples",
+      "kind": "warmup",
+      "attempts": 10,
+      "failures": 0,
+      "notThresholded": true
+    },
+    {
+      "name": "measured desktop window enumeration including the controlled fixture",
+      "kind": "measured",
+      "attempts": 100,
+      "failures": 0,
+      "targetP95Ms": 250,
+      "p50Ms": 1.543,
+      "p95Ms": 1.663,
+      "maxMs": 1.936
+    }
+  ],
+  "process": {
+    "exited": {
+      "code": 0,
+      "signal": null,
+      "atMs": 1319.75
+    },
+    "requestsCompleted": 113,
+    "protocolViolations": {
+      "count": 0,
+      "samples": []
+    },
+    "unsolicitedFrames": 0,
+    "notifications": 0,
+    "stderr": {
+      "bytes": 0,
+      "truncated": false,
+      "tail": ""
+    }
+  },
+  "verdict": {
+    "status": "pass",
+    "targetP95Ms": 250,
+    "failures": 0,
+    "reasons": [
+      "binary embeds no build profile, not a release build; measurement may stand but release is blocked"
+    ],
+    "releaseBlocked": true,
+    "releaseIdentity": {
+      "claimed": null,
+      "verified": false,
+      "basis": "embedded-build-metadata",
+      "embedded": {
+        "sha": "6334393c8e670be7f9c06678267a375f4c22b699",
+        "dirty": false,
+        "profile": null
+      },
+      "reason": "the binary embeds commit 6334393c8e670be7f9c06678267a375f4c22b699 and profile null; a self-report is not an attestation, so compare.mjs re-checks it against a recorded --release build receipt and artifact hash"
+    },
+    "releaseIdentityUnverified": true,
+    "warnings": [
+      "release identity is unverified (embedded-build-metadata): the binary embeds commit 6334393c8e670be7f9c06678267a375f4c22b699 and profile null; a self-report is not an attestation, so compare.mjs re-checks it against a recorded --release build receipt and artifact hash"
+    ]
+  }
+}
