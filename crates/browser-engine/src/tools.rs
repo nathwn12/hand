@@ -13,7 +13,7 @@ pub fn list() -> Value {
             "required": ["url", "title"], "additionalProperties": false},
          "annotations": {"readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": true}},
         {"name": "snapshot", "title": "Snapshot",
-         "description": "Snapshot: one line per node with a stable ref (@eN, unique per snapshot), role/name/value, plus page text. Default is the real Accessibility tree of the page itself: open shadow roots are included, iframe content is NOT part of this tree (snapshot the frame with frame= to see inside it), and hidden/ignored subtrees are excluded. mode:\"legacy\" keeps the old DOM heuristic (the only path that stamps an attribute into the page); mode:\"text\" is text-only. frame=<CDP frameId> from targets scopes the snapshot to that iframe (same-process first; OOPIF is a follow-up). AX refs resolve by backend node id, so a shadow ref is actionable exactly like a light-DOM ref. Paging: pass the snapshotId from the offset:0 render with offset>0 (required; paging slices that render and never re-renders).",
+         "description": "Snapshot: one line per node with a stable ref (@eN, unique per snapshot), role/name/value, plus page text. Default is the real Accessibility tree of the page itself: open shadow roots are included, iframe content is NOT part of this tree (snapshot the frame with frame= to see inside it), and hidden/ignored subtrees are excluded. mode:\"legacy\" keeps the old DOM heuristic (the only path that stamps an attribute into the page); mode:\"text\" is text-only. frame=<CDP frameId> from targets scopes the snapshot to that iframe: a same-process frame is read on the page session, a mapped out-of-process frame (OOPIF) is read on its own session, and an OOPIF with no mapped session is a typed error rather than the page's tree. AX refs resolve by backend node id, so a shadow ref is actionable exactly like a light-DOM ref. Paging: pass the snapshotId from the offset:0 render with offset>0 (required; paging slices that render and never re-renders).",
          "inputSchema": {"type": "object", "properties": {"mode": {"type": "string", "enum": ["ax", "legacy", "text"]}, "frame": {"type": "string"}, "offset": {"type": "integer", "minimum": 0, "default": 0}, "snapshotId": {"type": "string", "description": "required when offset > 0: the id returned by the offset:0 render"}}, "additionalProperties": false},
          "outputSchema": {"type": "object",
             "properties": {
@@ -1895,6 +1895,9 @@ struct AxHit {
     role: String,
     name: String,
     at: Option<String>,
+    /// The child session that owns `backend` when the frame is a mapped OOPIF;
+    /// every object read and call for this hit must run there.
+    session: Option<String>,
 }
 
 impl AxHit {
@@ -1930,6 +1933,57 @@ fn ax_name_from_label(node: &Value) -> bool {
     })
 }
 
+/// The accessibility tree for `frame`, and the child session that owns it when
+/// the frame is a mapped OOPIF.
+///
+/// Policy, in order:
+/// 1. The page session answers (`ax_tree`): a same-process frame or the page
+///    itself. No session.
+/// 2. The page session refuses and the frame has a mapped OOPIF session: the
+///    tree is read from THAT session, and every backend id in it is resolved
+///    there too (a backend id belongs to the renderer that issued it).
+/// 3. The page session refuses and no session owns the frame: typed
+///    `invalid_target`/`not_found` for an unknown frame, typed
+///    `invalid_target`/`unreachable` for a detached or unmapped out-of-process
+///    frame. The page's own tree is NEVER substituted for the frame's.
+async fn frame_ax_tree(
+    browser: &Browser,
+    tool: &str,
+    fid: Option<&str>,
+) -> Result<(Value, Option<String>), ToolErr> {
+    match browser.ax_tree(fid).await {
+        Ok(t) => Ok((t, None)),
+        Err(e) => {
+            let l = e.to_lowercase();
+            if l.contains("no frame with id")
+                || l.contains("no such frame")
+                || l.contains("cannot find")
+            {
+                return Err(frame_lookup_err(tool, fid.unwrap_or(""), e));
+            }
+            let Some(f) = fid else {
+                return Err(ToolErr::from(e));
+            };
+            if let Some((target, sid)) = browser.oop_session_for_frame(f).await {
+                return match browser.ax_tree_in_session(&sid, None).await {
+                    Ok(t) => Ok((t, Some(sid))),
+                    Err(e2) => Err(ToolErr::typed(
+                        format!("{tool}: frame '{f}' is out-of-process (target {target}) and has no AX tree readable from this session ({e2}); nothing was resolved and the page was not searched instead"),
+                        json!({"code": ToolCode::InvalidTarget.as_str(), "reason": ToolReason::Unreachable.as_str(), "tool": tool, "frame": f, "target": target}),
+                    )),
+                };
+            }
+            // Unmapped OOPIF or a detached frame: say what it is. A silent
+            // main-frame action here would be the one failure this policy
+            // exists to prevent.
+            Err(ToolErr::typed(
+                format!("{tool}: frame '{f}' has no AX tree readable from this session ({e}); nothing was resolved and the page was not searched instead - the frame is detached or out of process with no mapped session, and retrying this call cannot help; re-read targets for a live frameId, or address an element on the page"),
+                json!({"code": ToolCode::InvalidTarget.as_str(), "reason": ToolReason::Unreachable.as_str(), "tool": tool, "frame": f}),
+            ))
+        }
+    }
+}
+
 /// Resolve one AX selector form against the accessibility tree the snapshot
 /// renders (`Accessibility.getFullAXTree`), scoped to `frame` when the caller
 /// named one. Zero matches and more than one match are both typed refusals:
@@ -1946,42 +2000,7 @@ async fn ax_resolve(
     raw: &str,
     fid: Option<&str>,
 ) -> Result<AxHit, ToolErr> {
-    let tree = match browser.ax_tree(fid).await {
-        Ok(t) => t,
-        Err(e) => {
-            let l = e.to_lowercase();
-            if l.contains("no frame with id")
-                || l.contains("no such frame")
-                || l.contains("cannot find")
-            {
-                return Err(frame_lookup_err(tool, fid.unwrap_or(""), e));
-            }
-            if let Some(f) = fid {
-                // A frame whose AX tree this session cannot read is a typed
-                // unreachable: the page is NOT searched instead, and retrying
-                // the same call cannot help, so the prose says so. Measured
-                // shapes: a detached frame ("Frame with the given frameId is
-                // not found") and an out-of-process frame, whose tree lives on
-                // its own session.
-                return Err(ToolErr::typed(
-                    format!("{tool}: frame '{f}' has no AX tree readable from this session ({e}); nothing was resolved and the page was not searched instead - the frame is detached or out of process, and retrying this call cannot help; re-read targets for a live frameId, or address an element on the page"),
-                    json!({"code": ToolCode::InvalidTarget.as_str(), "reason": ToolReason::Unreachable.as_str(), "tool": tool, "frame": f, "element": raw}),
-                ));
-            }
-            return Err(ToolErr::from(e));
-        }
-    };
-    if let Some(f) = fid {
-        // A frame the engine already knows is out-of-process: its nodes are
-        // not on this page session, so resolving one would look like a
-        // detached node. Say what it is instead.
-        if let Some(target) = browser.oop_target_for_frame(f).await {
-            return Err(ToolErr::typed(
-                format!("{tool}: frame '{f}' is out-of-process (target {target}), so its accessibility tree is not on this page session; nothing was resolved - act on that target directly, or use a frame the page session can read"),
-                json!({"code": ToolCode::InvalidTarget.as_str(), "reason": ToolReason::Unreachable.as_str(), "tool": tool, "frame": f, "element": raw, "target": target}),
-            ));
-        }
-    }
+    let (tree, session) = frame_ax_tree(browser, tool, fid).await?;
     let empty = Vec::new();
     let raw_nodes = tree
         .get("nodes")
@@ -2149,6 +2168,7 @@ async fn ax_resolve(
                 .cloned()
                 .unwrap_or_else(|| ax_cap(&nodes[i].name)),
             at,
+            session: session.clone(),
         });
     }
     if cands.len() > 1 {
@@ -2281,14 +2301,20 @@ async fn ax_object(
                    "tool": tool, "element": element, "role": hit.role, "name": hit.name}),
         )
     };
-    match browser
-        .command(
-            "DOM.resolveNode",
-            json!({"backendNodeId": hit.backend}),
-            true,
-        )
-        .await
-    {
+    match match hit.session.as_deref() {
+        // An out-of-process node's backend id is only meaningful in the
+        // renderer that issued it, so the resolve runs on that session.
+        Some(sid) => browser.resolve_node_in_session(sid, hit.backend).await,
+        None => {
+            browser
+                .command(
+                    "DOM.resolveNode",
+                    json!({"backendNodeId": hit.backend}),
+                    true,
+                )
+                .await
+        }
+    } {
         Ok(v) => v
             .get("object")
             .and_then(|o| o.get("objectId"))
@@ -2429,10 +2455,19 @@ pub(crate) async fn resolve_ref_object(
     let Some(backend) = browser.ref_backend(id).await else {
         return Ok(None);
     };
-    match browser
-        .command("DOM.resolveNode", json!({"backendNodeId": backend}), true)
-        .await
-    {
+    // A ref minted in a mapped OOPIF resolves in its own session: its backend
+    // id is meaningless to the page session, and asking there would read as a
+    // detached node.
+    let session = browser.ref_session(id).await;
+    let resolved = match session.as_deref() {
+        Some(sid) => browser.resolve_node_in_session(sid, backend).await,
+        None => {
+            browser
+                .command("DOM.resolveNode", json!({"backendNodeId": backend}), true)
+                .await
+        }
+    };
+    match resolved {
         Ok(v) => match v
             .get("object")
             .and_then(|o| o.get("objectId"))
@@ -2463,12 +2498,24 @@ pub(crate) async fn call_on_object(
     func: &str,
     args: Vec<Value>,
 ) -> Result<Value, ToolErr> {
+    call_on_object_in(browser, None, object_id, func, args).await
+}
+
+/// `call_on_object` with an explicit child session: object ids are
+/// session-scoped in CDP, so a node resolved out of an OOPIF must be called on
+/// that session and never on the page one.
+pub(crate) async fn call_on_object_in(
+    browser: &Browser,
+    session: Option<&str>,
+    object_id: &str,
+    func: &str,
+    args: Vec<Value>,
+) -> Result<Value, ToolErr> {
     let r = browser
-        .command(
-            "Runtime.callFunctionOn",
+        .call_function_on_in_session(
+            session,
             json!({"objectId": object_id, "functionDeclaration": func,
                    "returnByValue": true, "awaitPromise": true, "arguments": args}),
-            true,
         )
         .await
         .map_err(ToolErr::fallback)?;
@@ -2521,7 +2568,7 @@ fn type_reply(typed: &str, value_length: Option<u64>) -> Value {
 /// resolver is unsupported, so the typed rejection stands either way.
 fn ref_in_frame(tool: &str, element: &str, frame: &str) -> ToolErr {
     ToolErr::typed(
-        format!("{tool}: refs (@eN) are main-frame only; with frame= use a CSS selector or an AX selector (role=/name=/text=/label=) (got ref '{element}' with frame '{frame}'; take a frame snapshot for names, then act with the selector)"),
+        format!("{tool}: ref '{element}' was minted by a snapshot of a different frame than '{frame}'; a ref is actionable only in the frame whose own snapshot minted it - take a snapshot with frame='{frame}' for its refs, or use a CSS or AX selector"),
         json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": tool, "arg": "frame", "frame": frame, "element": element}),
     )
 }
@@ -3076,6 +3123,8 @@ async fn tool_snapshot_legacy(
                 crate::browser::RefEntry {
                     label: format!("{role} {name}"),
                     backend: None,
+                    frame: None,
+                    session: None,
                 },
             );
         }
@@ -3155,6 +3204,12 @@ const ENRICH_FN: &str = r#"function(...rest) {
 /// neighbours. Values keep the input order; a singleton that still fails is
 /// `Null` and takes the masked fallback.
 async fn enrich_objects(browser: &Browser, ids: &[String]) -> Vec<Value> {
+    enrich_objects_in(browser, None, ids).await
+}
+
+/// `enrich_objects` on an explicit child session, for object ids that session
+/// issued (an OOPIF's own nodes). Object ids do not cross sessions.
+async fn enrich_objects_in(browser: &Browser, session: Option<&str>, ids: &[String]) -> Vec<Value> {
     let mut vals: Vec<Value> = vec![Value::Null; ids.len()];
     let mut pending: Vec<(usize, usize)> = (0..ids.len())
         .step_by(100)
@@ -3168,11 +3223,10 @@ async fn enrich_objects(browser: &Browser, ids: &[String]) -> Vec<Value> {
         };
         let args: Vec<Value> = rest.iter().map(|id| json!({"objectId": id})).collect();
         let got = browser
-            .command(
-                "Runtime.callFunctionOn",
+            .call_function_on_in_session(
+                session,
                 json!({"objectId": receiver, "functionDeclaration": ENRICH_FN,
                        "returnByValue": true, "arguments": args}),
-                true,
             )
             .await
             .ok()
@@ -3266,17 +3320,10 @@ async fn tool_snapshot_ax(
 ) -> Result<Value, ToolErr> {
     let _snap_guard = browser.lock_snapshot().await;
     let start = browser.ref_start();
-    let tree = browser.ax_tree(frame).await.map_err(|e| {
-        let l = e.to_lowercase();
-        if frame.is_some() && (l.contains("frame") || l.contains("no frame") || l.contains("no such")) {
-            ToolErr::typed(
-                format!("snapshot: no frame with id '{}'", frame.unwrap_or("")),
-                json!({"code": ToolCode::InvalidTarget.as_str(), "reason": ToolReason::NotFound.as_str(), "tool": "snapshot", "frame": frame.unwrap_or("")}),
-            )
-        } else {
-            ToolErr::from(e)
-        }
-    })?;
+    // The page session for a same-process frame; the frame's OWN session for a
+    // mapped OOPIF. An unmapped out-of-process frame is a typed error here and
+    // never falls back to the page's tree.
+    let (tree, frame_session) = frame_ax_tree(browser, "snapshot", frame).await?;
     let empty_nodes = Vec::new();
     let ax_nodes = tree
         .get("nodes")
@@ -3361,9 +3408,23 @@ async fn tool_snapshot_ax(
     // DOM.resolveNode pierces open shadow roots - which is why a shadow ref
     // is now actionable with the same resolver as a light-DOM ref.
     browser.command("DOM.enable", json!({}), true).await?;
-    let resolves = cands
-        .iter()
-        .map(|c| browser.command("DOM.resolveNode", json!({"backendNodeId": c.backend}), true));
+    // Each resolve happens on the session that owns the node: the page session
+    // for a same-process frame, the frame's own session for an OOPIF.
+    let mut resolves = Vec::with_capacity(cands.len());
+    for c in cands.iter() {
+        let backend = c.backend;
+        let sid = frame_session.clone();
+        resolves.push(async move {
+            match sid.as_deref() {
+                Some(s) => browser.resolve_node_in_session(s, backend).await,
+                None => {
+                    browser
+                        .command("DOM.resolveNode", json!({"backendNodeId": backend}), true)
+                        .await
+                }
+            }
+        });
+    }
     let resolved = futures_util::future::join_all(resolves).await;
     let mut items: Vec<Value> = Vec::new();
     let mut object_ids: Vec<String> = Vec::new();
@@ -3389,7 +3450,7 @@ async fn tool_snapshot_ax(
     // themselves (shadow included). The first object of each chunk is the
     // receiver so every call stays in that node's execution context; a chunk
     // that mixes worlds is split rather than nulled (see `enrich_objects`).
-    let enrich_vals: Vec<Value> = enrich_objects(browser, &object_ids).await;
+    let enrich_vals: Vec<Value> = enrich_objects_in(browser, frame_session.as_deref(), &object_ids).await;
     let enrich_map: serde_json::Map<String, Value> = items
         .iter()
         .zip(enrich_vals.into_iter())
@@ -3468,13 +3529,19 @@ async fn tool_snapshot_ax(
             }
         }
     }
-    // url/title/text: the frame's own when scoped, else the main page.
+    // url/title/text: the frame's own when scoped, else the main page. A
+    // frame-scoped read goes through the frame's realm resolver, so an OOPIF
+    // is read from its own session instead of failing on the page one.
     let (url, title, text) = match frame {
         Some(fid) => {
-            let pair = browser
-                .eval_in_frame(fid, "[window.location.href, document.title]")
-                .await
-                .ok();
+            let pair = frame_realm_eval(
+                browser,
+                "snapshot",
+                fid,
+                "[window.location.href, document.title]",
+            )
+            .await
+            .ok();
             let u = pair
                 .as_ref()
                 .and_then(|v| v.get(0))
@@ -3487,15 +3554,16 @@ async fn tool_snapshot_ax(
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
-            let tv = browser
-                .eval_in_frame(
-                    fid,
-                    "((((document.body && document.body.innerText) || (document.documentElement && document.documentElement.innerText) || '')) + '').slice(0, 12000)",
-                )
-                .await
-                .ok()
-                .and_then(|x| x.as_str().map(|s| s.to_string()))
-                .unwrap_or_default();
+            let tv = frame_realm_eval(
+                browser,
+                "snapshot",
+                fid,
+                "((((document.body && document.body.innerText) || (document.documentElement && document.documentElement.innerText) || '')) + '').slice(0, 12000)",
+            )
+            .await
+            .ok()
+            .and_then(|x| x.as_str().map(|s| s.to_string()))
+            .unwrap_or_default();
             let tx = tv.split_whitespace().collect::<Vec<_>>().join(" ");
             (u, t, tx)
         }
@@ -3520,7 +3588,10 @@ async fn tool_snapshot_ax(
         }
     };
     // Store the ref table (label + backend node id) for exact resolution,
-    // shadow actionability, and stale detection.
+    // shadow actionability, and stale detection. A frame-scoped snapshot
+    // records the frame and the owning session per ref, because a backend id
+    // only resolves in the renderer that issued it; the staleness URL stays the
+    // PAGE's, since that is what a later action compares against.
     let mut table = std::collections::HashMap::new();
     for it in items.iter() {
         if let (Some(r), role, name) = (
@@ -3533,11 +3604,22 @@ async fn tool_snapshot_ax(
                 crate::browser::RefEntry {
                     label: format!("{role} {name}"),
                     backend: it.get("backend").and_then(|b| b.as_i64()),
+                    frame: frame.map(str::to_string),
+                    session: frame_session.clone(),
                 },
             );
         }
     }
-    browser.store_refs(url.clone(), table).await;
+    let snap_url = match frame {
+        Some(_) => browser
+            .eval("window.location.href")
+            .await
+            .ok()
+            .and_then(|v| v.as_str().map(str::to_string))
+            .unwrap_or_default(),
+        None => url.clone(),
+    };
+    browser.store_refs(snap_url, table).await;
     let total = items.len();
     browser.ref_advance(total);
     let mut text = text;
@@ -4293,14 +4375,23 @@ async fn click_dispatch(
     hover_first: bool,
     button: &str,
     click_count: i64,
+    cross_process_frame: bool,
 ) -> Result<String, ToolErr> {
     // The button and the click count are CDP's own parameters: a right,
     // middle or double click is the same trusted press/release pair, never a
-    // synthetic DOM event.
-    browser
-        .mouse_click_button(x, y, button, click_count, hover_first)
-        .await
-        .map_err(ToolErr::from)?;
+    // synthetic DOM event. A cross-process frame click additionally positions
+    // the pointer first, because that is the only way the browser routes input
+    // into the child renderer.
+    let sent = if cross_process_frame {
+        browser
+            .mouse_click_cross_process(x, y, button, click_count)
+            .await
+    } else {
+        browser
+            .mouse_click_button(x, y, button, click_count, hover_first)
+            .await
+    };
+    sent.map_err(ToolErr::from)?;
     let live = browser.eval("[location.href, document.readyState]").await?;
     let h1 = live.get(0).and_then(|v| v.as_str()).unwrap_or(h0);
     let rs = live.get(1).and_then(|v| v.as_str()).unwrap_or("complete");
@@ -4331,7 +4422,19 @@ async fn tool_click(
         // Frame policy: a ref is actionable only in the frame whose own
         // snapshot minted it. A main-frame ref, or another frame's ref, is a
         // typed `invalid_args` (never a silent main-frame click).
-        if parse_ref(element).is_some() {
+        if let Some(id) = parse_ref(element) {
+            if browser.ref_frame(&id).await.as_deref() == Some(f) {
+                return ref_click_frame(
+                    browser,
+                    element,
+                    &id,
+                    f,
+                    hover_first,
+                    button,
+                    click_count,
+                )
+                .await;
+            }
             return Err(ref_in_frame("click", element, f));
         }
         return tool_click_frame(browser, element, f, hover_first, button, click_count).await;
@@ -4366,7 +4469,7 @@ async fn tool_click(
                     .and_then(|n| n.as_str())
                     .unwrap_or("")
                     .to_string();
-                let st = click_dispatch(browser, x, y, &h0, hover_first, button, click_count).await?;
+                let st = click_dispatch(browser, x, y, &h0, hover_first, button, click_count, false).await?;
                 click_settle(browser, &st).await;
                 Ok(click_ok(browser).await)
             }
@@ -4432,7 +4535,7 @@ async fn tool_click(
                 .and_then(|n| n.as_str())
                 .unwrap_or("")
                 .to_string();
-            let st = click_dispatch(browser, x, y, &h0, hover_first, button, click_count).await?;
+            let st = click_dispatch(browser, x, y, &h0, hover_first, button, click_count, false).await?;
             click_settle(browser, &st).await;
             Ok(click_ok(browser).await)
         }
@@ -4478,7 +4581,7 @@ async fn ax_click(
     click_count: i64,
 ) -> Result<Value, ToolErr> {
     let oid = ax_object(browser, "click", element, hit).await?;
-    let v = call_on_object(browser, &oid, click_preflight_fn(), vec![]).await?;
+    let v = call_on_object_in(browser, hit.session.as_deref(), &oid, click_preflight_fn(), vec![]).await?;
     let (x, y, h0) = match v.as_str() {
         Some(s) if s.starts_with("GLADIUS_FALLBACK:") => {
             click_settle(browser, &s["GLADIUS_FALLBACK:".len()..]).await;
@@ -4525,7 +4628,17 @@ async fn ax_click(
         }
         None => (x, y, h0),
     };
-    let st = click_dispatch(browser, x, y, &h0, hover_first, button, click_count).await?;
+    let st = click_dispatch(
+        browser,
+        x,
+        y,
+        &h0,
+        hover_first,
+        button,
+        click_count,
+        hit.session.is_some(),
+    )
+    .await?;
     click_settle(browser, &st).await;
     Ok(with_resolved(click_ok(browser).await, element, hit))
 }
@@ -4539,7 +4652,7 @@ async fn ax_hover(
     fid: Option<&str>,
 ) -> Result<Value, ToolErr> {
     let oid = ax_object(browser, "hover", element, hit).await?;
-    let v = call_on_object(browser, &oid, hover_preflight_fn(), vec![]).await?;
+    let v = call_on_object_in(browser, hit.session.as_deref(), &oid, hover_preflight_fn(), vec![]).await?;
     // The preflight answers a JSON STRING (`{"x":..,"y":..}`) on success and a
     // `GLADIUS_*` marker on failure, exactly like the CSS frame path: parse it
     // as text, never as an object value.
@@ -4582,7 +4695,7 @@ async fn ax_type(
     submit: bool,
 ) -> Result<Value, ToolErr> {
     let oid = ax_object(browser, "type", element, hit).await?;
-    let v = call_on_object(browser, &oid, type_preflight_fn(), vec![]).await?;
+    let v = call_on_object_in(browser, hit.session.as_deref(), &oid, type_preflight_fn(), vec![]).await?;
     if v.as_str() != Some("GLADIUS_READY") {
         return Err(ax_status_err("type", element, hit, v.as_str()).unwrap_or_else(|| {
             ToolErr::typed(
@@ -4620,7 +4733,7 @@ async fn ax_upload(
 ) -> Result<Value, ToolErr> {
     let oid = ax_object(browser, "upload", element, hit).await?;
     let probe = r#"function() { const el = this; if (!el || !el.isConnected) return 'GLADIUS_NOTFOUND'; if (el.disabled) return 'GLADIUS_DISABLED'; if (el.tagName !== 'INPUT' || (el.type || '').toLowerCase() !== 'file') return 'GLADIUS_NOTFILE'; return 'GLADIUS_OK'; }"#;
-    let v = call_on_object(browser, &oid, probe, vec![]).await?;
+    let v = call_on_object_in(browser, hit.session.as_deref(), &oid, probe, vec![]).await?;
     if v.as_str() != Some("GLADIUS_OK") {
         return Err(ax_status_err("upload", element, hit, v.as_str()).unwrap_or_else(|| {
             ToolErr::typed(
@@ -4663,8 +4776,9 @@ async fn ax_select(
         None => "null".to_string(),
     };
     let oid = ax_object(browser, "select", element, hit).await?;
-    let v = call_on_object(
+    let v = call_on_object_in(
         browser,
+        hit.session.as_deref(),
         &oid,
         &select_preflight_fn(&val_lit, &txt_lit),
         vec![],
@@ -4763,7 +4877,9 @@ async fn tool_click_frame(
             // at ANY level is typed occluded, never a click into the wrong
             // surface.
             let (mx, my) = frame_owner_hit_ok(browser, "click", element, fid, lx, ly).await?;
-            let st = click_dispatch(browser, mx, my, &h0, hover_first, button, click_count).await?;
+            let cross = browser.oop_session_for_frame(fid).await.is_some();
+            let st = click_dispatch(browser, mx, my, &h0, hover_first, button, click_count, cross)
+                .await?;
             click_settle(browser, &st).await;
             Ok(click_ok(browser).await)
         }
@@ -4786,6 +4902,333 @@ async fn tool_click_frame(
             json!({"code": ToolCode::NotActionable.as_str(), "reason": ToolReason::Hidden.as_str(), "tool": "click", "element": element, "frame": fid}),
         )),
     }
+}
+
+/// Preflight for a DRAG endpoint: the same liveness, visibility, disabled,
+/// box and occlusion checks a click runs, but it NEVER scrolls. A drag has two
+/// endpoints in one viewport, and scrolling one into view moves the other, so
+/// an endpoint that is off screen is a typed refusal that says to bring it on
+/// screen first - never a silent scroll that makes the pair disagree.
+fn drag_preflight_fn() -> &'static str {
+    r#"function() { const el = this; if (!el || !el.isConnected) return 'GLADIUS_NOTFOUND'; const cs = getComputedStyle(el); if (cs.display === 'none' || cs.visibility === 'hidden' || cs.visibility === 'collapse') return 'GLADIUS_HIDDEN'; if (el.disabled) return 'GLADIUS_DISABLED'; const r = el.getBoundingClientRect(); if (!r || r.width === 0 || r.height === 0) return 'GLADIUS_HIDDEN'; const cx = r.left + r.width / 2, cy = r.top + r.height / 2; if (cx < 0 || cy < 0 || cx > window.innerWidth || cy > window.innerHeight) return 'GLADIUS_OFFSCREEN'; let hit = null; try { const root = el.getRootNode ? el.getRootNode() : document; hit = (root.elementFromPoint || document.elementFromPoint).call(root, cx, cy); } catch (e) { return 'GLADIUS_OCCLUDED'; } if (!hit || (hit !== el && !el.contains(hit))) return 'GLADIUS_OCCLUDED'; return 'GLADIUS_POINT:' + JSON.stringify({x: cx, y: cy}); }"#
+}
+
+/// The same drag preflight, by CSS selector, for the main realm and a frame
+/// realm (the element is looked up in the realm the expression runs in).
+fn drag_preflight_sel(sel: &str) -> String {
+    format!(
+        "(() => {{ const el = document.querySelector({sel}); if (!el) return 'GLADIUS_NOTFOUND'; const cs = getComputedStyle(el); if (cs.display === 'none' || cs.visibility === 'hidden' || cs.visibility === 'collapse') return 'GLADIUS_HIDDEN'; if (el.disabled) return 'GLADIUS_DISABLED'; const r = el.getBoundingClientRect(); if (!r || r.width === 0 || r.height === 0) return 'GLADIUS_HIDDEN'; const cx = r.left + r.width / 2, cy = r.top + r.height / 2; if (cx < 0 || cy < 0 || cx > window.innerWidth || cy > window.innerHeight) return 'GLADIUS_OFFSCREEN'; let hit = null; try {{ hit = document.elementFromPoint(cx, cy); }} catch (e) {{ return 'GLADIUS_OCCLUDED'; }} if (!hit || (hit !== el && !el.contains(hit))) return 'GLADIUS_OCCLUDED'; return 'GLADIUS_POINT:' + JSON.stringify({{x: cx, y: cy}}); }})()"
+    )
+}
+
+/// Turn a click-preflight result into a viewport point, or the same typed
+/// refusal `click` would give. `<option>` has no pointer box, so it cannot be
+/// an endpoint of a drag: that is a typed refusal, never a guess.
+fn preflight_point(v: &Value, tool: &str, element: &str) -> Result<(f64, f64), ToolErr> {
+    match v.as_str() {
+        Some(s) if s.starts_with("GLADIUS_POINT:") => {
+            let pt: Value = serde_json::from_str(&s["GLADIUS_POINT:".len()..])
+                .map_err(|_| ToolErr::fallback(format!("{tool}: no layout point")))?;
+            Ok((
+                pt.get("x").and_then(|n| n.as_f64()).unwrap_or(0.0),
+                pt.get("y").and_then(|n| n.as_f64()).unwrap_or(0.0),
+            ))
+        }
+        Some(s) if s.starts_with("GLADIUS_FALLBACK") => Err(ToolErr::typed(
+            format!("{tool}: element has no pointer box (a native <option> cannot be dragged): {element}"),
+            json!({"code": ToolCode::NotActionable.as_str(), "reason": ToolReason::Hidden.as_str(), "tool": tool, "element": element}),
+        )),
+        Some("GLADIUS_NOTFOUND") => Err(ToolErr::typed(
+            format!("{tool}: element not found: {element}"),
+            json!({"code": ToolCode::InvalidTarget.as_str(), "reason": ToolReason::NotFound.as_str(), "tool": tool, "element": element}),
+        )),
+        Some("GLADIUS_DISABLED") => Err(ToolErr::typed(
+            format!("{tool}: element is disabled: {element}"),
+            json!({"code": ToolCode::NotActionable.as_str(), "reason": ToolReason::Disabled.as_str(), "tool": tool, "element": element}),
+        )),
+        Some("GLADIUS_OCCLUDED") => Err(ToolErr::typed(
+            format!("{tool}: element is occluded by another element (no {tool} dispatched): {element}"),
+            json!({"code": ToolCode::NotActionable.as_str(), "reason": ToolReason::Occluded.as_str(), "tool": tool, "element": element}),
+        )),
+        Some("GLADIUS_OFFSCREEN") => Err(ToolErr::typed(
+            format!("{tool}: element is not inside the viewport; scroll it into view first (browser_wheel, or evaluate scrollIntoView) - a drag never scrolls, because scrolling one endpoint moves the other: {element}"),
+            json!({"code": ToolCode::NotActionable.as_str(), "reason": ToolReason::Hidden.as_str(), "tool": tool, "element": element, "offscreen": true}),
+        )),
+        _ => Err(ToolErr::typed(
+            format!("{tool}: element not visible or not actionable: {element}"),
+            json!({"code": ToolCode::NotActionable.as_str(), "reason": ToolReason::Hidden.as_str(), "tool": tool, "element": element}),
+        )),
+    }
+}
+
+/// Resolve one drag endpoint to a MAIN-VIEWPORT point, running the same
+/// visibility/occlusion preflight `click` runs: an endpoint a click could not
+/// land on is a typed refusal here too, and nothing is dispatched. Ref, AX
+/// selector and CSS selector are all accepted; with `fid` the endpoint is
+/// resolved inside that frame's realm and its point mapped through the owner
+/// chain exactly like a frame click.
+async fn drag_point(
+    browser: &Browser,
+    tool: &str,
+    element: &str,
+    fid: Option<&str>,
+) -> Result<(f64, f64), ToolErr> {
+    if let Some(sel) = ax_sel_parse(tool, element)? {
+        let hit = ax_resolve(browser, tool, &sel, element, fid).await?;
+        let oid = ax_object(browser, tool, element, &hit).await?;
+        let v = call_on_object_in(browser, hit.session.as_deref(), &oid, drag_preflight_fn(), vec![]).await?;
+        let (lx, ly) = preflight_point(&v, tool, element)?;
+        return match fid {
+            Some(f) => frame_owner_hit_ok(browser, tool, element, f, lx, ly).await,
+            None => Ok((lx, ly)),
+        };
+    }
+    if let Some(f) = fid {
+        if parse_ref(element).is_some() {
+            return Err(ref_in_frame(tool, element, f));
+        }
+        let sel = serde_json::to_string(element).map_err(|e| ToolErr::fallback(e.to_string()))?;
+        let v = frame_realm_eval(browser, tool, f, &drag_preflight_sel(&sel)).await?;
+        let (lx, ly) = preflight_point(&v, tool, element)?;
+        return frame_owner_hit_ok(browser, tool, element, f, lx, ly).await;
+    }
+    if let Some(id) = parse_ref(element) {
+        let _at = guard_ref(browser, tool, element, &id).await?;
+        let session = browser.ref_session(&id).await;
+        let v = match resolve_ref_object(browser, tool, &id).await? {
+            Some(oid) => call_on_object_in(browser, session.as_deref(), &oid, drag_preflight_fn(), vec![]).await?,
+            None => {
+                let (expr, _) = click_preflight_ref(&id);
+                browser.eval(&expr).await?
+            }
+        };
+        return preflight_point(&v, tool, element);
+    }
+    let sel = serde_json::to_string(element).map_err(|e| ToolErr::fallback(e.to_string()))?;
+    let v = browser.eval(&drag_preflight_sel(&sel)).await?;
+    preflight_point(&v, tool, element)
+}
+
+/// Refuse an explicit pointer point outside the live viewport: an event there
+/// lands on nothing, so accepting it would report a success that did nothing.
+async fn point_in_viewport(
+    browser: &Browser,
+    tool: &str,
+    arg: &str,
+    x: f64,
+    y: f64,
+) -> Result<(), ToolErr> {
+    let (w, h, _) = browser.viewport_readback().await.map_err(ToolErr::from)?;
+    if x >= 0.0 && y >= 0.0 && x <= w as f64 && y <= h as f64 {
+        return Ok(());
+    }
+    Err(ToolErr::typed(
+        format!("{tool}: '{arg}' ({x}, {y}) is outside the {w}x{h} viewport; a pointer event there lands on nothing"),
+        json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(),
+               "tool": tool, "arg": arg, "viewport": {"width": w, "height": h}}),
+    ))
+}
+
+/// Read the document scroll offsets (the effect a wheel is supposed to have).
+async fn scroll_offsets(browser: &Browser) -> Option<(f64, f64)> {
+    let v = browser.eval("[window.scrollX, window.scrollY]").await.ok()?;
+    Some((
+        v.get(0).and_then(|x| x.as_f64()).unwrap_or(0.0),
+        v.get(1).and_then(|x| x.as_f64()).unwrap_or(0.0),
+    ))
+}
+
+/// Wheel: one trusted `mouseWheel` at the point (viewport centre by default),
+/// then read the offsets back until they settle. `moved` is measured, not
+/// claimed: a wheel over a non-scrolling surface reports the same offsets.
+async fn tool_wheel(
+    browser: &Browser,
+    dx: f64,
+    dy: f64,
+    point: Option<(f64, f64)>,
+) -> Result<Value, ToolErr> {
+    let (x, y) = match point {
+        Some(p) => p,
+        None => {
+            let (w, h, _) = browser.viewport_readback().await.map_err(ToolErr::from)?;
+            (w as f64 / 2.0, h as f64 / 2.0)
+        }
+    };
+    if point.is_some() {
+        point_in_viewport(browser, "wheel", "x/y", x, y).await?;
+    }
+    let before = scroll_offsets(browser).await.unwrap_or((0.0, 0.0));
+    browser
+        .mouse_wheel(x, y, dx, dy)
+        .await
+        .map_err(ToolErr::from)?;
+    // Bounded settle: scrolling can be delegated to the compositor and eased,
+    // so read until the offset stops moving (or the budget ends). The LAST
+    // read is the reply, never the first.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(1200);
+    let mut last = before;
+    let mut stable = 0u32;
+    loop {
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let cur = scroll_offsets(browser).await.unwrap_or(last);
+        if cur == last {
+            stable += 1;
+            if stable >= 2 {
+                break;
+            }
+        } else {
+            stable = 0;
+        }
+        last = cur;
+        if std::time::Instant::now() >= deadline {
+            break;
+        }
+    }
+    let after = last;
+    Ok(ok_text(
+        json!({
+            "ok": true,
+            "moved": after != before,
+            "scroll": {"x": after.0, "y": after.1},
+            "at": {"x": x, "y": y},
+            "deltaX": dx,
+            "deltaY": dy,
+        })
+        .to_string(),
+    ))
+}
+
+/// Drag: resolve both endpoints (with the click preflight's occlusion guard),
+/// then dispatch the trusted press/move/release sequence. Every event is
+/// `Input.dispatchMouseEvent`; no DOM event is synthesised and no `.value` or
+/// `DataTransfer` is touched.
+async fn tool_drag(
+    browser: &Browser,
+    from: Option<&str>,
+    to: Option<&str>,
+    from_point: Option<(f64, f64)>,
+    to_point: Option<(f64, f64)>,
+    steps: usize,
+    frame: Option<&str>,
+) -> Result<Value, ToolErr> {
+    let fid = frame_id_ok("drag", frame)?;
+    let from_pt = match from_point {
+        Some(p) => {
+            point_in_viewport(browser, "drag", "fromPoint", p.0, p.1).await?;
+            p
+        }
+        None => drag_point(browser, "drag", from.unwrap_or(""), fid.as_deref()).await?,
+    };
+    let to_pt = match to_point {
+        Some(p) => {
+            point_in_viewport(browser, "drag", "toPoint", p.0, p.1).await?;
+            p
+        }
+        None => drag_point(browser, "drag", to.unwrap_or(""), fid.as_deref()).await?,
+    };
+    let events = browser
+        .mouse_drag(from_pt, to_pt, steps)
+        .await
+        .map_err(ToolErr::from)?;
+    // Give the page's own handlers a turn before the caller reads the DOM:
+    // the drop logic runs in the release task, not in the CDP acknowledgement.
+    tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+    Ok(ok_text(
+        json!({
+            "ok": true,
+            "from": {"x": from_pt.0, "y": from_pt.1},
+            "to": {"x": to_pt.0, "y": to_pt.1},
+            "events": events,
+            "steps": steps,
+        })
+        .to_string(),
+    ))
+}
+
+/// Click a ref that a frame-scoped snapshot minted, inside that frame. The
+/// node is resolved through its recorded session (an OOPIF's own session, or
+/// the page session for a same-process frame), the preflight runs on that
+/// node, and the point is mapped through the owner chain to main-viewport
+/// coordinates before dispatch - exactly the frame CSS path, on a node
+/// identity instead of a selector.
+async fn ref_click_frame(
+    browser: &Browser,
+    element: &str,
+    id: &str,
+    fid: &str,
+    hover_first: bool,
+    button: &str,
+    click_count: i64,
+) -> Result<Value, ToolErr> {
+    let at_id = guard_ref(browser, "click", element, id).await?;
+    let session = browser.ref_session(id).await;
+    let v = match resolve_ref_object(browser, "click", id).await? {
+        Some(oid) => {
+            call_on_object_in(browser, session.as_deref(), &oid, click_preflight_fn(), vec![]).await?
+        }
+        None => {
+            let (expr, _) = click_preflight_ref(id);
+            frame_realm_eval(browser, "click", fid, &expr).await?
+        }
+    };
+    let (lx, ly) = match v.as_str() {
+        Some("GLADIUS_FALLBACK") | Some("GLADIUS_FALLBACK:") => {
+            click_settle(browser, "").await;
+            return Ok(click_ok(browser).await);
+        }
+        Some(s) if s.starts_with("GLADIUS_FALLBACK:") => {
+            click_settle(browser, "").await;
+            return Ok(click_ok(browser).await);
+        }
+        Some(s) if s.starts_with("GLADIUS_POINT:") => {
+            let pt: Value = serde_json::from_str(&s["GLADIUS_POINT:".len()..])
+                .map_err(|_| ToolErr::fallback("click: no layout point".to_string()))?;
+            (
+                pt.get("x").and_then(|n| n.as_f64()).unwrap_or(0.0),
+                pt.get("y").and_then(|n| n.as_f64()).unwrap_or(0.0),
+            )
+        }
+        Some("GLADIUS_NOTFOUND") => return Err(stale_gone("click", element, id)),
+        Some("GLADIUS_DISABLED") => {
+            return Err(ToolErr::typed(
+                format!("click: {at_id} is disabled"),
+                json!({"code": ToolCode::NotActionable.as_str(), "reason": ToolReason::Disabled.as_str(), "tool": "click", "ref": at_id, "frame": fid}),
+            ))
+        }
+        Some("GLADIUS_OCCLUDED") => {
+            return Err(ToolErr::typed(
+                format!("click: {at_id} is occluded by another element (no click dispatched)"),
+                json!({"code": ToolCode::NotActionable.as_str(), "reason": ToolReason::Occluded.as_str(), "tool": "click", "ref": at_id, "frame": fid}),
+            ))
+        }
+        _ => {
+            return Err(ToolErr::typed(
+                format!("click: {at_id} not visible or not clickable"),
+                json!({"code": ToolCode::NotActionable.as_str(), "reason": ToolReason::Hidden.as_str(), "tool": "click", "ref": at_id, "frame": fid}),
+            ))
+        }
+    };
+    let (mx, my) = frame_owner_hit_ok(browser, "click", element, fid, lx, ly).await?;
+    // Settle against the MAIN href: the leaf realm's own href never matches.
+    let h0 = browser
+        .eval("window.location.href")
+        .await
+        .ok()
+        .and_then(|v| v.as_str().map(|s| s.to_string()))
+        .unwrap_or_default();
+    let st = click_dispatch(
+        browser,
+        mx,
+        my,
+        &h0,
+        hover_first,
+        button,
+        click_count,
+        session.is_some(),
+    )
+    .await?;
+    click_settle(browser, &st).await;
+    Ok(click_ok(browser).await)
 }
 
 /// Settle a click that navigates (measured H2H form-02: submit click
@@ -5145,246 +5588,6 @@ async fn submit_enter(browser: &Browser) -> Result<(), String> {
     Ok(())
 }
 
-/// Preflight for a DRAG endpoint: the same liveness, visibility, disabled,
-/// box and occlusion checks a click runs, but it NEVER scrolls. A drag has two
-/// endpoints in one viewport, and scrolling one into view moves the other, so
-/// an endpoint that is off screen is a typed refusal that says to bring it on
-/// screen first - never a silent scroll that makes the pair disagree.
-fn drag_preflight_fn() -> &'static str {
-    r#"function() { const el = this; if (!el || !el.isConnected) return 'GLADIUS_NOTFOUND'; const cs = getComputedStyle(el); if (cs.display === 'none' || cs.visibility === 'hidden' || cs.visibility === 'collapse') return 'GLADIUS_HIDDEN'; if (el.disabled) return 'GLADIUS_DISABLED'; const r = el.getBoundingClientRect(); if (!r || r.width === 0 || r.height === 0) return 'GLADIUS_HIDDEN'; const cx = r.left + r.width / 2, cy = r.top + r.height / 2; if (cx < 0 || cy < 0 || cx > window.innerWidth || cy > window.innerHeight) return 'GLADIUS_OFFSCREEN'; let hit = null; try { const root = el.getRootNode ? el.getRootNode() : document; hit = (root.elementFromPoint || document.elementFromPoint).call(root, cx, cy); } catch (e) { return 'GLADIUS_OCCLUDED'; } if (!hit || (hit !== el && !el.contains(hit))) return 'GLADIUS_OCCLUDED'; return 'GLADIUS_POINT:' + JSON.stringify({x: cx, y: cy}); }"#
-}
-
-/// The same drag preflight, by CSS selector, for the main realm and a frame
-/// realm (the element is looked up in the realm the expression runs in).
-fn drag_preflight_sel(sel: &str) -> String {
-    format!(
-        "(() => {{ const el = document.querySelector({sel}); if (!el) return 'GLADIUS_NOTFOUND'; const cs = getComputedStyle(el); if (cs.display === 'none' || cs.visibility === 'hidden' || cs.visibility === 'collapse') return 'GLADIUS_HIDDEN'; if (el.disabled) return 'GLADIUS_DISABLED'; const r = el.getBoundingClientRect(); if (!r || r.width === 0 || r.height === 0) return 'GLADIUS_HIDDEN'; const cx = r.left + r.width / 2, cy = r.top + r.height / 2; if (cx < 0 || cy < 0 || cx > window.innerWidth || cy > window.innerHeight) return 'GLADIUS_OFFSCREEN'; let hit = null; try {{ hit = document.elementFromPoint(cx, cy); }} catch (e) {{ return 'GLADIUS_OCCLUDED'; }} if (!hit || (hit !== el && !el.contains(hit))) return 'GLADIUS_OCCLUDED'; return 'GLADIUS_POINT:' + JSON.stringify({{x: cx, y: cy}}); }})()"
-    )
-}
-
-/// Turn a click-preflight result into a viewport point, or the same typed
-/// refusal `click` would give. `<option>` has no pointer box, so it cannot be
-/// an endpoint of a drag: that is a typed refusal, never a guess.
-fn preflight_point(v: &Value, tool: &str, element: &str) -> Result<(f64, f64), ToolErr> {
-    match v.as_str() {
-        Some(s) if s.starts_with("GLADIUS_POINT:") => {
-            let pt: Value = serde_json::from_str(&s["GLADIUS_POINT:".len()..])
-                .map_err(|_| ToolErr::fallback(format!("{tool}: no layout point")))?;
-            Ok((
-                pt.get("x").and_then(|n| n.as_f64()).unwrap_or(0.0),
-                pt.get("y").and_then(|n| n.as_f64()).unwrap_or(0.0),
-            ))
-        }
-        Some(s) if s.starts_with("GLADIUS_FALLBACK") => Err(ToolErr::typed(
-            format!("{tool}: element has no pointer box (a native <option> cannot be dragged): {element}"),
-            json!({"code": ToolCode::NotActionable.as_str(), "reason": ToolReason::Hidden.as_str(), "tool": tool, "element": element}),
-        )),
-        Some("GLADIUS_NOTFOUND") => Err(ToolErr::typed(
-            format!("{tool}: element not found: {element}"),
-            json!({"code": ToolCode::InvalidTarget.as_str(), "reason": ToolReason::NotFound.as_str(), "tool": tool, "element": element}),
-        )),
-        Some("GLADIUS_DISABLED") => Err(ToolErr::typed(
-            format!("{tool}: element is disabled: {element}"),
-            json!({"code": ToolCode::NotActionable.as_str(), "reason": ToolReason::Disabled.as_str(), "tool": tool, "element": element}),
-        )),
-        Some("GLADIUS_OCCLUDED") => Err(ToolErr::typed(
-            format!("{tool}: element is occluded by another element (no {tool} dispatched): {element}"),
-            json!({"code": ToolCode::NotActionable.as_str(), "reason": ToolReason::Occluded.as_str(), "tool": tool, "element": element}),
-        )),
-        Some("GLADIUS_OFFSCREEN") => Err(ToolErr::typed(
-            format!("{tool}: element is not inside the viewport; scroll it into view first (browser_wheel, or evaluate scrollIntoView) - a drag never scrolls, because scrolling one endpoint moves the other: {element}"),
-            json!({"code": ToolCode::NotActionable.as_str(), "reason": ToolReason::Hidden.as_str(), "tool": tool, "element": element, "offscreen": true}),
-        )),
-        _ => Err(ToolErr::typed(
-            format!("{tool}: element not visible or not actionable: {element}"),
-            json!({"code": ToolCode::NotActionable.as_str(), "reason": ToolReason::Hidden.as_str(), "tool": tool, "element": element}),
-        )),
-    }
-}
-
-/// Resolve one drag endpoint to a MAIN-VIEWPORT point, running the same
-/// visibility/occlusion preflight `click` runs: an endpoint a click could not
-/// land on is a typed refusal here too, and nothing is dispatched. Ref, AX
-/// selector and CSS selector are all accepted; with `fid` the endpoint is
-/// resolved inside that frame's realm and its point mapped through the owner
-/// chain exactly like a frame click.
-async fn drag_point(
-    browser: &Browser,
-    tool: &str,
-    element: &str,
-    fid: Option<&str>,
-) -> Result<(f64, f64), ToolErr> {
-    if let Some(sel) = ax_sel_parse(tool, element)? {
-        let hit = ax_resolve(browser, tool, &sel, element, fid).await?;
-        let oid = ax_object(browser, tool, element, &hit).await?;
-        let v = call_on_object(browser, &oid, drag_preflight_fn(), vec![]).await?;
-        let (lx, ly) = preflight_point(&v, tool, element)?;
-        return match fid {
-            Some(f) => frame_owner_hit_ok(browser, tool, element, f, lx, ly).await,
-            None => Ok((lx, ly)),
-        };
-    }
-    if let Some(f) = fid {
-        if parse_ref(element).is_some() {
-            return Err(ref_in_frame(tool, element, f));
-        }
-        let sel = serde_json::to_string(element).map_err(|e| ToolErr::fallback(e.to_string()))?;
-        let v = frame_realm_eval(browser, tool, f, &drag_preflight_sel(&sel)).await?;
-        let (lx, ly) = preflight_point(&v, tool, element)?;
-        return frame_owner_hit_ok(browser, tool, element, f, lx, ly).await;
-    }
-    if let Some(id) = parse_ref(element) {
-        let _at = guard_ref(browser, tool, element, &id).await?;
-        let v = match resolve_ref_object(browser, tool, &id).await? {
-            Some(oid) => call_on_object(browser, &oid, drag_preflight_fn(), vec![]).await?,
-            None => {
-                let (expr, _) = click_preflight_ref(&id);
-                browser.eval(&expr).await?
-            }
-        };
-        return preflight_point(&v, tool, element);
-    }
-    let sel = serde_json::to_string(element).map_err(|e| ToolErr::fallback(e.to_string()))?;
-    let v = browser.eval(&drag_preflight_sel(&sel)).await?;
-    preflight_point(&v, tool, element)
-}
-
-/// Refuse an explicit pointer point outside the live viewport: an event there
-/// lands on nothing, so accepting it would report a success that did nothing.
-async fn point_in_viewport(
-    browser: &Browser,
-    tool: &str,
-    arg: &str,
-    x: f64,
-    y: f64,
-) -> Result<(), ToolErr> {
-    let (w, h, _) = browser.viewport_readback().await.map_err(ToolErr::from)?;
-    if x >= 0.0 && y >= 0.0 && x <= w as f64 && y <= h as f64 {
-        return Ok(());
-    }
-    Err(ToolErr::typed(
-        format!("{tool}: '{arg}' ({x}, {y}) is outside the {w}x{h} viewport; a pointer event there lands on nothing"),
-        json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(),
-               "tool": tool, "arg": arg, "viewport": {"width": w, "height": h}}),
-    ))
-}
-
-/// Read the document scroll offsets (the effect a wheel is supposed to have).
-async fn scroll_offsets(browser: &Browser) -> Option<(f64, f64)> {
-    let v = browser.eval("[window.scrollX, window.scrollY]").await.ok()?;
-    Some((
-        v.get(0).and_then(|x| x.as_f64()).unwrap_or(0.0),
-        v.get(1).and_then(|x| x.as_f64()).unwrap_or(0.0),
-    ))
-}
-
-/// Wheel: one trusted `mouseWheel` at the point (viewport centre by default),
-/// then read the offsets back until they settle. `moved` is measured, not
-/// claimed: a wheel over a non-scrolling surface reports the same offsets.
-async fn tool_wheel(
-    browser: &Browser,
-    dx: f64,
-    dy: f64,
-    point: Option<(f64, f64)>,
-) -> Result<Value, ToolErr> {
-    let (x, y) = match point {
-        Some(p) => p,
-        None => {
-            let (w, h, _) = browser.viewport_readback().await.map_err(ToolErr::from)?;
-            (w as f64 / 2.0, h as f64 / 2.0)
-        }
-    };
-    if point.is_some() {
-        point_in_viewport(browser, "wheel", "x/y", x, y).await?;
-    }
-    let before = scroll_offsets(browser).await.unwrap_or((0.0, 0.0));
-    browser
-        .mouse_wheel(x, y, dx, dy)
-        .await
-        .map_err(ToolErr::from)?;
-    // Bounded settle: scrolling can be delegated to the compositor and eased,
-    // so read until the offset stops moving (or the budget ends). The LAST
-    // read is the reply, never the first.
-    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(1200);
-    let mut last = before;
-    let mut stable = 0u32;
-    loop {
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        let cur = scroll_offsets(browser).await.unwrap_or(last);
-        if cur == last {
-            stable += 1;
-            if stable >= 2 {
-                break;
-            }
-        } else {
-            stable = 0;
-        }
-        last = cur;
-        if std::time::Instant::now() >= deadline {
-            break;
-        }
-    }
-    let after = last;
-    Ok(ok_text(
-        json!({
-            "ok": true,
-            "moved": after != before,
-            "scroll": {"x": after.0, "y": after.1},
-            "at": {"x": x, "y": y},
-            "deltaX": dx,
-            "deltaY": dy,
-        })
-        .to_string(),
-    ))
-}
-
-/// Drag: resolve both endpoints (with the click preflight's occlusion guard),
-/// then dispatch the trusted press/move/release sequence. Every event is
-/// `Input.dispatchMouseEvent`; no DOM event is synthesised and no `.value` or
-/// `DataTransfer` is touched.
-async fn tool_drag(
-    browser: &Browser,
-    from: Option<&str>,
-    to: Option<&str>,
-    from_point: Option<(f64, f64)>,
-    to_point: Option<(f64, f64)>,
-    steps: usize,
-    frame: Option<&str>,
-) -> Result<Value, ToolErr> {
-    let fid = frame_id_ok("drag", frame)?;
-    let from_pt = match from_point {
-        Some(p) => {
-            point_in_viewport(browser, "drag", "fromPoint", p.0, p.1).await?;
-            p
-        }
-        None => drag_point(browser, "drag", from.unwrap_or(""), fid.as_deref()).await?,
-    };
-    let to_pt = match to_point {
-        Some(p) => {
-            point_in_viewport(browser, "drag", "toPoint", p.0, p.1).await?;
-            p
-        }
-        None => drag_point(browser, "drag", to.unwrap_or(""), fid.as_deref()).await?,
-    };
-    let events = browser
-        .mouse_drag(from_pt, to_pt, steps)
-        .await
-        .map_err(ToolErr::from)?;
-    // Give the page's own handlers a turn before the caller reads the DOM:
-    // the drop logic runs in the release task, not in the CDP acknowledgement.
-    tokio::time::sleep(std::time::Duration::from_millis(80)).await;
-    Ok(ok_text(
-        json!({
-            "ok": true,
-            "from": {"x": from_pt.0, "y": from_pt.1},
-            "to": {"x": to_pt.0, "y": to_pt.1},
-            "events": events,
-            "steps": steps,
-        })
-        .to_string(),
-    ))
-}
-
 async fn tool_evaluate(
     browser: &Browser,
     expression: &str,
@@ -5401,7 +5604,15 @@ async fn tool_evaluate(
     browser.take_dialog().await;
     let v = match (target, frame) {
         (Some(tid), None) => browser.eval_in_target(tid, expression).await?,
-        (None, Some(fid)) => browser.eval_in_frame(fid, expression).await?,
+        // A frame routinely means an OOPIF, whose realm is only reachable on
+        // its own session; `frame_realm_eval` prefers that session and falls
+        // back to the page-session frame realm for a same-process iframe.
+        (None, Some(fid)) => match frame_realm_eval(browser, "evaluate", fid, expression).await {
+            Ok(v) => v,
+            // The realm router reports a frame-shape failure as a String from
+            // the session; keep it typed here.
+            Err(e) => return Err(e),
+        },
         (None, None) => browser.eval(expression).await?,
         _ => unreachable!(),
     };

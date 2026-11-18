@@ -20,6 +20,7 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 
 const POINTER: &str = include_str!("../fixtures/interaction/pointer.html");
+const PARENT: &str = include_str!("../fixtures/interaction/oopif-parent.html");
 const CHILD: &str = include_str!("../fixtures/interaction/oopif-child.html");
 
 /// Two loopback listeners on different hosts: `127.0.0.1` and `localhost` are
@@ -94,9 +95,9 @@ fn serve(mut stream: TcpStream, other_origin: &str) -> std::io::Result<()> {
         .unwrap_or("/");
     let body = match path {
         "/pointer.html" => POINTER.to_string(),
+        "/oopif-parent.html" => PARENT.replace("__CROSS_ORIGIN__", other_origin),
         "/oopif-child.html" => CHILD.to_string(),
         _ => {
-            let _ = other_origin;
             let head = "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: 14\r\nConnection: close\r\n\r\n";
             stream.write_all(head.as_bytes())?;
             stream.write_all(b"404 not found\n")?;
@@ -120,6 +121,19 @@ fn evaluate(s: &mut Session, expression: &str, frame: Option<&str>) -> Value {
     let resp = s.call("browser_evaluate", args);
     assert!(!is_error(&resp), "evaluate failed: {}", text_of(&resp));
     structured(&resp)["value"].clone()
+}
+
+fn oopif_frame(s: &mut Session) -> String {
+    let targets = s.call("browser_targets", json!({"action": "list"}));
+    assert!(!is_error(&targets), "{}", text_of(&targets));
+    structured(&targets)["frames"]
+        .as_array()
+        .expect("frames")
+        .iter()
+        .find(|f| f.get("oopif").and_then(|v| v.as_bool()) == Some(true))
+        .and_then(|f| f.get("frameId").and_then(|v| v.as_str()))
+        .map(str::to_string)
+        .unwrap_or_else(|| panic!("no OOPIF frame in the fixture page: {}", text_of(&targets)))
 }
 
 /// Right click reaches the page as a trusted contextmenu, and the menu the page
@@ -297,3 +311,67 @@ fn element_screenshot_is_the_box_and_is_deterministic() {
     assert_eq!(structured(&wrong)["code"], json!("stale_ref"));
 }
 
+/// A cross-origin frame with its own renderer is addressable: `snapshot` with
+/// its frame id returns ITS nodes, a click lands inside it, and a frame id no
+/// session owns stays a typed error instead of a main-frame action.
+#[test]
+fn oopif_frame_snapshot_and_click_with_typed_unmapped_frame() {
+    let fx = Fixture::start();
+    let mut s = Session::spawn();
+    s.call("browser_navigate", json!({"url": format!("{}/oopif-parent.html", fx.a)}));
+    let fid = oopif_frame(&mut s);
+
+    // The main frame's snapshot still excludes the child's content.
+    let main = text_of(&s.call("browser_snapshot", json!({})));
+    assert!(
+        !main.contains("Child action"),
+        "iframe content is not part of the page's own AX tree: {main}"
+    );
+
+    let inside = s.call("browser_snapshot", json!({"frame": fid}));
+    assert!(!is_error(&inside), "{}", text_of(&inside));
+    let node = structured(&inside)["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|n| n["role"] == json!("button"))
+        .cloned()
+        .expect("the child frame's button");
+    assert_eq!(node["name"], json!("Child action"));
+    assert_eq!(structured(&inside)["url"], json!(format!("{}/oopif-child.html", fx.b)));
+
+    let clicked = s.call(
+        "browser_click",
+        json!({"element": "#child-btn", "frame": fid}),
+    );
+    assert!(!is_error(&clicked), "{}", text_of(&clicked));
+    assert_eq!(
+        evaluate(&mut s, "document.getElementById('child-out').textContent", Some(&fid)),
+        json!("clicked"),
+        "the click must land inside the out-of-process frame"
+    );
+
+    // A ref minted by the frame snapshot is actionable in that frame; a
+    // main-frame ref with frame= stays a typed refusal.
+    let child_ref = node["ref"].as_str().expect("ref").to_string();
+    let by_ref = s.call("browser_click", json!({"element": format!("@{child_ref}"), "frame": fid}));
+    assert!(!is_error(&by_ref), "{}", text_of(&by_ref));
+    let cross = s.call("browser_click", json!({"element": "@e1", "frame": fid}));
+    assert!(is_error(&cross), "a main-frame ref must not be clicked in a frame");
+
+    // Unmapped: typed error from every frame-scoped tool, never main-frame.
+    for (tool, args) in [
+        ("browser_snapshot", json!({"frame": "NOSUCHFRAMEID"})),
+        ("browser_click", json!({"element": "#child-btn", "frame": "NOSUCHFRAMEID"})),
+        ("browser_evaluate", json!({"expression": "1", "frame": "NOSUCHFRAMEID"})),
+    ] {
+        let resp = s.call(tool, args);
+        assert!(is_error(&resp), "{tool} with an unknown frame must fail");
+        let code = structured(&resp)["code"].as_str().unwrap_or("").to_string();
+        assert!(
+            code == "invalid_target",
+            "{tool} must answer a typed invalid_target, got {code}: {}",
+            text_of(&resp)
+        );
+    }
+}

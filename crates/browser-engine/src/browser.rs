@@ -479,6 +479,14 @@ async fn attach(
 pub struct RefEntry {
     pub label: String,
     pub backend: Option<i64>,
+    /// The CDP frameId whose snapshot minted this ref, when it was a
+    /// frame-scoped snapshot. `None` means the main frame, which is where every
+    /// pre-existing ref lives.
+    pub frame: Option<String>,
+    /// The child session that owns `backend` (a mapped OOPIF). Backend node ids
+    /// are renderer-scoped, so a ref minted in an out-of-process frame must be
+    /// resolved there, never on the page session.
+    pub session: Option<String>,
 }
 
 /// The last rendered snapshot, kept so `snapshot {offset}` can page through
@@ -661,6 +669,22 @@ impl Browser {
     /// Backend node id for a known ref, when the snapshot recorded one.
     pub async fn ref_backend(&self, id: &str) -> Option<i64> {
         self.refs.lock().await.get(id).and_then(|e| e.backend)
+    }
+
+    /// The frame a ref was minted in: `None` for the main frame (every ref
+    /// before frame-scoped OOPIF snapshots), `Some(frameId)` otherwise.
+    pub async fn ref_frame(&self, id: &str) -> Option<String> {
+        self.refs.lock().await.get(id).and_then(|e| e.frame.clone())
+    }
+
+    /// The child session that owns a ref's backend node id, when the ref came
+    /// from a mapped out-of-process frame.
+    pub async fn ref_session(&self, id: &str) -> Option<String> {
+        self.refs
+            .lock()
+            .await
+            .get(id)
+            .and_then(|e| e.session.clone())
     }
 
     /// The ref id (`eN`) minted from this backend node id, when the current
@@ -1052,6 +1076,32 @@ impl Browser {
         }
     }
 
+    /// Click into a mapped out-of-process frame: a positioning move, a short
+    /// settle, then the same press/release pair. Measured on
+    /// chrome-headless-shell 155 with site isolation on: the browser routes
+    /// pointer input into a child renderer only after a move at that position
+    /// has landed, and a press issued in the same instant is dropped (the child
+    /// receives no event at all). The settle is routing, not animation: it is
+    /// 40 ms, it applies only to a cross-process frame click, and a main-frame
+    /// click never pays it.
+    pub async fn mouse_click_cross_process(
+        &self,
+        x: f64,
+        y: f64,
+        button: &str,
+        click_count: i64,
+    ) -> Result<(), String> {
+        self.command(
+            "Input.dispatchMouseEvent",
+            json!({"type": "mouseMoved", "x": x, "y": y}),
+            true,
+        )
+        .await?;
+        tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+        self.mouse_click_button(x, y, button, click_count, false)
+            .await
+    }
+
     /// Trusted main-frame click with an explicit button and click count:
     /// `mousePressed` then `mouseReleased` at `(x, y)` with the button's own
     /// bitmask and `clickCount`. `clickCount: 2` is a double click - the
@@ -1227,7 +1277,32 @@ impl Browser {
     /// and every frame action takes the page-session path; where an engine
     /// DOES map an OOPIF, callers route the leaf realm work into it.
     pub async fn oop_session_for_frame(&self, frame_id: &str) -> Option<(String, String)> {
+        let Ok(shared) = self.shared().await else {
+            return None;
+        };
         for (tid, sid) in self.extra_pairs().await {
+            // An OOPIF session identifies its frame through its OWN frame tree:
+            // measured on chrome-headless-shell 155, `DOM.getDocument` on an
+            // iframe session returns a root with no `frameId` at all, so the
+            // document probe alone can never map one. `Page.getFrameTree` on
+            // the session reports the frame's id and its parentId, which is the
+            // same id the page session refuses to know about.
+            if let Ok(tree) = send_raw(
+                &shared,
+                "Page.getFrameTree",
+                json!({}),
+                Some(sid.clone()),
+            )
+            .await
+            {
+                if tree
+                    .pointer("/frameTree/frame/id")
+                    .and_then(|v| v.as_str())
+                    == Some(frame_id)
+                {
+                    return Some((tid, sid));
+                }
+            }
             if let Ok(doc) = self
                 .cdp_raw("DOM.getDocument", json!({"depth": 0}), Some(sid.clone()))
                 .await
@@ -2152,12 +2227,48 @@ impl Browser {
     /// Frame tree of the ACTIVE page: every frame (main + nested iframes)
     /// with its CDP `frameId`, parent, url, and name. Flattened from
     /// `Page.getFrameTree`, document order.
+    ///
+    /// An out-of-process iframe is NOT in the page session's frame tree, so
+    /// each mapped child session contributes its own `Page.getFrameTree` (the
+    /// root of that tree carries the parent frame id). Without this a caller
+    /// had no way to learn an OOPIF's frameId, and every frame-scoped tool
+    /// needed one. `oopif` and `target` name the owning target; a same-process
+    /// frame has neither.
     pub async fn frame_tree(&self) -> Result<Value, String> {
         let shared = self.shared().await?;
         let (_, r) = send_session(&shared, "Page.getFrameTree", json!({})).await?;
         let mut frames = Vec::new();
         if let Some(tree) = r.get("frameTree") {
             flatten_frames(tree, &mut frames);
+        }
+        let mut seen: std::collections::HashSet<String> = frames
+            .iter()
+            .filter_map(|f| f.get("frameId").and_then(|v| v.as_str()).map(str::to_string))
+            .collect();
+        for (tid, sid) in self.extra_pairs().await {
+            let Ok(tree) = send_raw(&shared, "Page.getFrameTree", json!({}), Some(sid)).await
+            else {
+                continue;
+            };
+            let mut child = Vec::new();
+            if let Some(t) = tree.get("frameTree") {
+                flatten_frames(t, &mut child);
+            }
+            for mut f in child {
+                let id = f
+                    .get("frameId")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                if id.is_empty() || !seen.insert(id) {
+                    continue;
+                }
+                if let Some(obj) = f.as_object_mut() {
+                    obj.insert("oopif".to_string(), json!(true));
+                    obj.insert("target".to_string(), json!(tid));
+                }
+                frames.push(f);
+            }
         }
         Ok(json!({"frames": frames}))
     }
@@ -2182,6 +2293,69 @@ impl Browser {
             Some(session),
         )
         .await
+    }
+
+    /// Full Accessibility tree of the document owned by one CHILD session -
+    /// a mapped OOPIF target. The page session cannot read it: an
+    /// out-of-process frame's tree lives in its own renderer, so Accessibility
+    /// is enabled on that session and asked there. `frame_id` is omitted
+    /// because the session already owns exactly one document.
+    pub async fn ax_tree_in_session(
+        &self,
+        session: &str,
+        frame_id: Option<&str>,
+    ) -> Result<Value, String> {
+        let shared = self.shared().await?;
+        let sid = session.to_string();
+        let _ = send_raw(&shared, "Accessibility.enable", json!({}), Some(sid.clone())).await;
+        let mut params = json!({});
+        if let Some(fid) = frame_id {
+            params["frameId"] = json!(fid);
+        }
+        send_raw(&shared, "Accessibility.getFullAXTree", params, Some(sid)).await
+    }
+
+    /// `DOM.resolveNode` on one child session (an OOPIF's own document), for a
+    /// backend node id the snapshot read from THAT session's AX tree. A backend
+    /// id is only meaningful in the renderer that issued it, so resolving an
+    /// out-of-process node on the page session is never attempted.
+    pub async fn resolve_node_in_session(
+        &self,
+        session: &str,
+        backend: i64,
+    ) -> Result<Value, String> {
+        let shared = self.shared().await?;
+        let sid = session.to_string();
+        let _ = send_raw(&shared, "DOM.enable", json!({}), Some(sid.clone())).await;
+        send_raw(
+            &shared,
+            "DOM.resolveNode",
+            json!({"backendNodeId": backend}),
+            Some(sid),
+        )
+        .await
+    }
+
+    /// `Runtime.callFunctionOn` with explicit session routing. `Some(sid)` is a
+    /// child session (an OOPIF target) whose object ids are session-scoped in
+    /// CDP, so they must be called on exactly that session. `None` means the
+    /// object came from the page session, so the command goes there via
+    /// `command(.., true)`; a browser-level send has no Runtime domain.
+    pub async fn call_function_on_in_session(
+        &self,
+        session: Option<&str>,
+        params: Value,
+    ) -> Result<Value, String> {
+        // No recorded child session means the object was minted on the active
+        // PAGE session, and the Runtime domain only exists there: a
+        // browser-level send has no `Runtime.callFunctionOn` at all. `command`
+        // with `attach` = true routes it through `send_session`, which
+        // re-attaches (Runtime enabled on attach) and types session death.
+        let Some(sid) = session else {
+            return self.command("Runtime.callFunctionOn", params, true).await;
+        };
+        let shared = self.shared().await?;
+        send_raw(&shared, "Runtime.callFunctionOn", params, Some(sid.to_string())).await
     }
 
     /// Make a PAGE target current by its `targetId`: activate + attach, then
@@ -3889,6 +4063,13 @@ fn chromium_argv(port: u16, profile_dir: &std::path::Path) -> Vec<String> {
         "--disable-backgrounding-occluded-windows".to_string(),
         "--disable-renderer-backgrounding".to_string(),
         "--disable-background-timer-throttling".to_string(),
+        // Site isolation ON: the shell ships it off, which collapses every
+        // cross-site iframe into the page renderer and leaves no OOPIF target
+        // to address (measured: `Target.getTargets` lists only the page).
+        // Chrome's own default is isolation on, and a frame a caller names must
+        // be a real OOPIF it can reach rather than a main-frame guess. One
+        // occurrence; never paired with an isolation-disabling switch.
+        "--site-per-process".to_string(),
         format!("--remote-allow-origins=http://127.0.0.1:{port}"),
         "about:blank".to_string(),
     ]
@@ -6455,6 +6636,9 @@ mod tests {
             "--disable-backgrounding-occluded-windows",
             "--disable-renderer-backgrounding",
             "--disable-background-timer-throttling",
+            // Site isolation: OOPIF frame addressing needs a real iframe
+            // target, which the shell only creates with this switch.
+            "--site-per-process",
         ] {
             let n = argv.iter().filter(|a| a.as_str() == flag).count();
             assert_eq!(n, 1, "flag {flag} must appear exactly once: {argv:?}");
@@ -6491,6 +6675,7 @@ mod tests {
             "--disable-backgrounding-occluded-windows".to_string(),
             "--disable-renderer-backgrounding".to_string(),
             "--disable-background-timer-throttling".to_string(),
+            "--site-per-process".to_string(),
             "--remote-allow-origins=http://127.0.0.1:19431".to_string(),
             "--remote-debugging-port=19431".to_string(),
             profile_flag,
