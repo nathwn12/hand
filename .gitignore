@@ -1,3 +1,5 @@
 /target/
 /bin
 npm/hand.exe
+.seed/
+.opencode/skills/*-seed/
