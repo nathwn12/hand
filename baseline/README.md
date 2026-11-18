@@ -13,10 +13,10 @@ reproduce, taken from the revisions the specification pins:
 
 The floor is what `hand` must serve; it is not the whole surface. The current
 build publishes **35** tools — those 32 plus `browser_context`,
-`browser_wheel` and `browser_drag` — and `hand-catalog.json` records both halves: `counts` is the
-derived floor, `live` is what the binary answered `tools/list` with. Quoting
-`counts.total` as "the catalogue" is the mistake the `live` block exists to
-prevent.
+`browser_wheel` and `browser_drag` — and `hand-catalog.json` records both
+halves: `counts` is the derived floor, `live` is what the binary answered
+`tools/list` with. Quoting `counts.total` as "the catalogue" is the mistake the
+`live` block exists to prevent.
 
 This directory captures catalog evidence and provides a compatibility gate. It
 does not by itself prove the implementation's behavior or the complete suite.
@@ -120,15 +120,22 @@ node baseline/scripts/capture-mcp-catalog.mjs --cmd Q:\PROJECTS\PERSONAL\puppet\
 ```
 
 Exit codes: `compare-catalog.mjs` returns 0 pass, 1 mismatch, 2 usage or
-transport error. `build-hand-catalog.mjs` returns 1 when a blocker is recorded
-and still writes the file, because the baseline records what was captured rather
-than what was hoped for. A blocker is a disagreement with the pinned capture: a
-tool count, version or canonical hash that does not match `pins.json`, a
-required tool missing from the capture, or a duplicate name. A tool captured
-*beyond* the required floor is a note instead — printed as `NOTE`, recorded in
-`hand-catalog.json` under `notes`, and not an exit-code change. It is not a
-blocker because the 32 names are a floor; extra upstream capability does not
-make the capture wrong.
+transport error. `build-hand-catalog.mjs` returns 1 when a blocker or a live
+block inconsistency is recorded and still writes the file, because the baseline
+records what was captured rather than what was hoped for. A blocker is a
+disagreement with the pinned capture: a tool count, version or canonical hash
+that does not match `pins.json`, a required tool missing from the capture, or a
+duplicate name. A tool captured *beyond* the required floor is a note instead —
+printed as `NOTE`, recorded in `hand-catalog.json` under `notes`, and not an
+exit-code change. It is not a blocker because the 32 names are a floor; extra
+upstream capability does not make the capture wrong. The same rule covers a live
+tool above the floor, while a live block that contradicts its own count, its
+ordering or the floor is an `ISSUE` and exits 1. A live server that never
+answers `tools/list` exits 2 and leaves the committed file untouched.
+
+`compare-catalog.mjs` reads only the derived floor: `live` and `counts.live` are
+provenance for what one binary publishes and are not part of the gate, which is
+why an addition above the floor is reported as `extra` and passes.
 
 The live tests skip rather than pass when a binary is absent; set
 `HAND_BASELINE_SKIP_LIVE=1` to skip them deliberately.
@@ -139,7 +146,7 @@ The live tests skip rather than pass when a binary is absent; set
 |---|---|---|
 | name | must be `browser_<legacy>` / `desktop_<legacy>` | exact legacy name |
 | `inputSchema`, `outputSchema`, `annotations` | structural equality, deep and key-order independent | structural equality |
-| `title`, `description` | drift reported, fails only with `--strict-metadata` | failure |
+| `title`, `description` | pinned; a `description` difference fails unless the tool is listed under `metadata.description` in `declared-additions.json`, and a listed description that still matches the pin fails as stale | failure |
 | tool set | all 32 required names must be present; a missing one fails, an additional one is reported as `extra` and passes | exact set: a missing or an additional name fails |
 
 A missing required tool, a duplicate name, a relaxed schema (for example a

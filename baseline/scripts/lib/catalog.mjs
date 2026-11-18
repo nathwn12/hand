@@ -7,6 +7,15 @@
 // (name, title, description, inputSchema, outputSchema, annotations). Adding a
 // field to a legacy tool is therefore visible as a difference instead of being
 // dropped on the floor.
+//
+// The single exception is declared in `baseline/declared-additions.json`, the
+// one machine-readable list of what hand changes on purpose: schema properties
+// it adds, and tool descriptions it rewrites. This module is the only reader of
+// that file; nothing else hardcodes an allowance.
+
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { canonicalHash, deepEqual, diffPaths } from "./canonical.mjs";
 
@@ -25,38 +34,172 @@ export const SPEC_REQUIRED = {
 
 export const PREFIX = { browser: "browser_", desktop: "desktop_" };
 
-/** Metadata keys compared as "documentation" rather than as contract. */
-const METADATA_KEYS = ["title", "description"];
-
 /**
- * Output-schema properties hand adds on purpose, per tool. Everything else must
- * stay byte-comparable to the legacy body: a new field cannot ship unnoticed, and
- * a declared one still has to match its own promise (the property is removed from
- * the candidate before the deep comparison, together with its `required` entry).
+ * The declared allowance: the one file that lets a legacy tool differ by hand,
+ * and the only place an allowance is written. Schema paths are dotted and
+ * relative to the schema object, so a top-level property is `properties.<name>`;
+ * a metadata entry is a bare tool name.
+ *
+ * Nothing here is a permissive mode. `compareCatalogs` requires every listed
+ * schema path to be PRESENT in the candidate, removes exactly those paths, and
+ * then demands structural equality with the pin for everything else — so an
+ * unlisted addition fails, a listed-but-missing (or renamed) addition fails,
+ * and a change to a pinned property fails. A declared description must DIFFER
+ * from the pin, because a declaration says "this one was rewritten": an
+ * identical one is a stale entry, not a satisfied one. `title` has no declared
+ * exceptions at all.
  *
  * Justify each entry in docs/COMPATIBILITY.md under "Intentional differences".
  */
-const DECLARED_OUTPUT_ADDITIONS = {
-  browser_click: ["resolved"],
-  browser_hover: ["resolved"],
-  browser_select: ["resolved"],
-  browser_type: ["resolved"],
-  browser_upload: ["resolved"],
-  // hand adds attribution beside the raw before/after booleans: the import
-  // audit and the samples that say whether a pointer/foreground change was the
-  // owner's input or this process's. The legacy fields stay unchanged.
-  desktop_screenshot: ["noSteal"],
-  desktop_elements: ["noSteal"],
-};
+export const DECLARED_ADDITIONS_PATH = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "..",
+  "declared-additions.json",
+);
 
-/** Remove declared additions from a candidate schema so the rest must match exactly. */
-function withoutDeclaredProperties(schema, names) {
-  if (!schema || typeof schema !== "object" || names.length === 0) return schema;
+/** Schema keys an allowance may name. `annotations` is never allowed to grow. */
+const ALLOWANCE_KEYS = ["inputSchema", "outputSchema"];
+/** Metadata keys an allowance may name. `title` is pinned with no exceptions. */
+export const DECLARABLE_METADATA_KEYS = ["description"];
+const METADATA_KEY = "metadata";
+const TOP_LEVEL_KEYS = ["$comment", "version", METADATA_KEY, ...ALLOWANCE_KEYS];
+const PATH_SEGMENT = /^[A-Za-z0-9_$-]+$/;
+const TOOL_NAME = /^[A-Za-z0-9_$-]+$/;
+
+/**
+ * Read and validate the allowance file. A malformed file throws at import time
+ * rather than silently comparing with no allowance: a broken gate that looks
+ * green is worse than a gate that refuses to run.
+ */
+function loadDeclaredAdditions(path) {
+  const parsed = JSON.parse(readFileSync(path, "utf8"));
+  if (parsed.version !== 1) {
+    throw new Error(`${path}: unsupported declared-additions version ${JSON.stringify(parsed.version)} (expected 1)`);
+  }
+  const unknown = Object.keys(parsed).filter((key) => !TOP_LEVEL_KEYS.includes(key));
+  if (unknown.length) throw new Error(`${path}: unknown top-level key(s): ${unknown.join(", ")}`);
+  const declared = { version: parsed.version };
+  for (const key of ALLOWANCE_KEYS) {
+    const tools = parsed[key] ?? {};
+    if (typeof tools !== "object" || tools === null || Array.isArray(tools)) {
+      throw new Error(`${path}: ${key} must be an object of tool name -> path array`);
+    }
+    declared[key] = {};
+    for (const [tool, paths] of Object.entries(tools)) {
+      if (!Array.isArray(paths) || paths.length === 0) {
+        throw new Error(`${path}: ${key}.${tool} must be a non-empty array of dotted paths`);
+      }
+      for (const dotted of paths) {
+        const segments = typeof dotted === "string" ? dotted.split(".") : [];
+        if (segments.length < 2 || !segments.every((segment) => PATH_SEGMENT.test(segment))) {
+          throw new Error(`${path}: ${key}.${tool} has a path that is not a dotted schema path: ${JSON.stringify(dotted)}`);
+        }
+      }
+      declared[key][tool] = [...paths];
+    }
+  }
+  const metadata = parsed[METADATA_KEY] ?? {};
+  if (typeof metadata !== "object" || metadata === null || Array.isArray(metadata)) {
+    throw new Error(`${path}: ${METADATA_KEY} must be an object of metadata key -> tool name array`);
+  }
+  const undeclarable = Object.keys(metadata).filter((key) => !DECLARABLE_METADATA_KEYS.includes(key));
+  if (undeclarable.length) {
+    throw new Error(
+      `${path}: ${METADATA_KEY} may only declare ${DECLARABLE_METADATA_KEYS.join(", ")}, not ${undeclarable.join(", ")}: title has no declared exceptions`,
+    );
+  }
+  declared[METADATA_KEY] = {};
+  for (const key of DECLARABLE_METADATA_KEYS) {
+    const names = metadata[key];
+    // An absent key declares nothing; a present one must name at least one tool,
+    // so a half-written section cannot read as "declared nothing".
+    if (names === undefined) {
+      declared[METADATA_KEY][key] = [];
+      continue;
+    }
+    if (!Array.isArray(names) || names.length === 0) {
+      throw new Error(`${path}: ${METADATA_KEY}.${key} must be a non-empty array of tool names`);
+    }
+    for (const name of names) {
+      if (typeof name !== "string" || !TOOL_NAME.test(name)) {
+        throw new Error(`${path}: ${METADATA_KEY}.${key} names a value that is not a bare tool name: ${JSON.stringify(name)}`);
+      }
+    }
+    if (new Set(names).size !== names.length) {
+      throw new Error(`${path}: ${METADATA_KEY}.${key} repeats a tool name`);
+    }
+    declared[METADATA_KEY][key] = [...names];
+  }
+  return declared;
+}
+
+export const DECLARED_ADDITIONS = loadDeclaredAdditions(DECLARED_ADDITIONS_PATH);
+
+/**
+ * Declared additions for one tool and schema key. Only the `hand` profile may
+ * grow: the `legacy` profile is the re-capture check, where the pinned binary
+ * has to emit exactly what is committed, byte for byte.
+ */
+export function declaredAdditionsFor(name, key, profile = "hand") {
+  if (profile !== "hand" || !ALLOWANCE_KEYS.includes(key)) return [];
+  return DECLARED_ADDITIONS[key]?.[name] ?? [];
+}
+
+/**
+ * True when this tool's metadata was declared as deliberately rewritten. Only
+ * the `hand` profile reads the file, and only `description` is declarable: a
+ * declaration is a rewrite, not a licence to drift, so the caller has to treat
+ * an identical value as a stale declaration.
+ */
+export function declaredMetadataFor(name, key, profile = "hand") {
+  if (profile !== "hand" || !DECLARABLE_METADATA_KEYS.includes(key)) return false;
+  return DECLARED_ADDITIONS[METADATA_KEY][key].includes(name);
+}
+
+/** True when `path` resolves through `schema` to an own key that exists. */
+export function hasDeclaredPath(schema, path) {
+  if (!schema || typeof schema !== "object") return false;
+  let node = schema;
+  for (const segment of path.split(".")) {
+    if (!node || typeof node !== "object" || Array.isArray(node)) return false;
+    if (!Object.hasOwn(node, segment)) return false;
+    node = node[segment];
+  }
+  return true;
+}
+
+/**
+ * Remove exactly the declared paths from a clone of the candidate schema so the
+ * remainder must equal the pin. A path that does not resolve is left alone: the
+ * presence check above is what fails such a candidate, and stripping nothing
+ * keeps that failure visible instead of hiding it.
+ */
+function withoutDeclaredPaths(schema, paths) {
+  if (!schema || typeof schema !== "object" || paths.length === 0) return schema;
   const clone = JSON.parse(JSON.stringify(schema));
-  if (clone.properties) for (const name of names) delete clone.properties[name];
-  if (Array.isArray(clone.required)) {
-    clone.required = clone.required.filter((key) => !names.includes(key));
-    if (clone.required.length === 0) delete clone.required;
+  for (const path of paths) {
+    const segments = path.split(".");
+    const key = segments[segments.length - 1];
+    const parent = segments.slice(0, -1).reduce(
+      (node, segment) => (node && typeof node === "object" && !Array.isArray(node) ? node[segment] : undefined),
+      clone,
+    );
+    if (!parent || typeof parent !== "object" || Array.isArray(parent)) continue;
+    if (!Object.hasOwn(parent, key)) continue;
+    delete parent[key];
+    // A declared property can also be listed in `required`; that entry has to go
+    // with it, or the strip leaves a name the pin never carried.
+    if (segments[segments.length - 2] === "properties") {
+      const owner = segments.slice(0, -2).reduce(
+        (node, segment) => (node && typeof node === "object" ? node[segment] : undefined),
+        clone,
+      );
+      if (owner && Array.isArray(owner.required)) {
+        owner.required = owner.required.filter((name) => name !== key);
+        if (owner.required.length === 0) delete owner.required;
+      }
+    }
   }
   return clone;
 }
@@ -185,21 +328,27 @@ export function validateHandCatalog(catalog) {
  * including title and description, as contract: it is the re-capture check
  * that proves a pinned revision still emits what is committed here.
  *
- * `profile: "hand"` requires the 32 prefixed names, and treats inputSchema,
- * outputSchema and annotations as contract. Title/description differences are
- * reported as drift, because the spec allows them to change with the prefix or
- * the server identity; `strictMetadata` turns that drift into a failure.
+ * `profile: "hand"` requires the 32 prefixed names, and treats name,
+ * inputSchema, outputSchema, annotations, title and description as contract. A
+ * `description` difference fails unless the tool is listed under
+ * `metadata.description` in `baseline/declared-additions.json`, and a listed
+ * tool whose description still equals the pin fails too, because the
+ * declaration says it was rewritten. `title` has no declared exceptions.
+ *
+ * In the `hand` profile only, a body may grow exactly where the same file says
+ * it may: each declared path must exist in the candidate, is removed, and
+ * everything that remains has to match the pin. An unlisted addition, a listed
+ * addition that vanished, and any change to a pinned property all fail.
  */
-export function compareCatalogs({ baseline, candidate, profile = "hand", strictMetadata = false }) {
-  // In the legacy profile title and description are part of the contract: the
-  // whole point of that profile is to prove a pinned binary emits exactly what
-  // is committed. Only the hand profile may tolerate metadata drift.
-  const strict = strictMetadata || profile === "legacy";
+export function compareCatalogs({ baseline, candidate, profile = "hand" }) {
   const base = indexTools(baseline.tools);
   const cand = indexTools(candidate.tools);
   const report = {
     profile,
-    strictMetadata: strict,
+    // Metadata has no relaxed mode any more: `title` and every undeclared
+    // `description` are contract in both profiles. The field keeps its name
+    // because `compare-catalog.mjs` prints its report line from it.
+    strictMetadata: true,
     ok: true,
     counts: { baseline: baseline.tools.length, candidate: candidate.tools.length, compared: 0 },
     duplicateNames: { baseline: base.duplicates, candidate: cand.duplicates },
@@ -207,6 +356,7 @@ export function compareCatalogs({ baseline, candidate, profile = "hand", strictM
     extra: [],
     schemaMismatches: [],
     declaredAdditions: [],
+    declaredMissing: [],
     metadataDrift: [],
     warnings: [],
   };
@@ -238,22 +388,40 @@ export function compareCatalogs({ baseline, candidate, profile = "hand", strictM
       }
     }
     for (const key of ["inputSchema", "outputSchema", "annotations"]) {
-      const declared = key === "outputSchema" && profile === "hand" ? (DECLARED_OUTPUT_ADDITIONS[name] ?? []) : [];
-      const candidate = declared.length ? withoutDeclaredProperties(candTool[key], declared) : candTool[key];
-      if (!deepEqual(baseTool[key], candidate)) {
-        report.schemaMismatches.push({
-          tool: name,
-          kind: key,
-          diffs: diffOf(baseTool[key], candidate),
-        });
-      } else if (declared.length) {
-        report.declaredAdditions.push({ tool: name, properties: declared });
+      const declared = declaredAdditionsFor(name, key, profile);
+      if (declared.length === 0) {
+        if (!deepEqual(baseTool[key], candTool[key])) {
+          report.schemaMismatches.push({ tool: name, kind: key, diffs: diffOf(baseTool[key], candTool[key]) });
+        }
+        continue;
+      }
+      // Presence first. Stripping a path that is not there would hide a renamed
+      // or deleted addition behind a passing comparison, because the pin never
+      // carried it either.
+      const absent = declared.filter((path) => !hasDeclaredPath(candTool[key], path));
+      if (absent.length) report.declaredMissing.push({ tool: name, kind: key, paths: absent });
+      const stripped = withoutDeclaredPaths(candTool[key], declared);
+      if (!deepEqual(baseTool[key], stripped)) {
+        report.schemaMismatches.push({ tool: name, kind: key, diffs: diffOf(baseTool[key], stripped) });
+      } else if (absent.length === 0) {
+        report.declaredAdditions.push({ tool: name, kind: key, paths: declared });
       }
     }
-    for (const key of METADATA_KEYS) {
-      if (!deepEqual(baseTool[key], candTool[key])) {
-        report.metadataDrift.push({ tool: name, kind: key, baseline: brief(baseTool[key]), candidate: brief(candTool[key]) });
+    // `title` and `description` are pinned exactly like a schema. `title` has no
+    // declared exceptions at all; a description may be declared as rewritten,
+    // and that declaration is a claim that the string DID change.
+    if (!deepEqual(baseTool.title, candTool.title)) {
+      report.metadataDrift.push({ tool: name, kind: "title", baseline: brief(baseTool.title), candidate: brief(candTool.title) });
+    }
+    if (declaredMetadataFor(name, "description", profile)) {
+      if (deepEqual(baseTool.description, candTool.description)) {
+        // Stale declaration: the file says this one was rewritten, and it was not.
+        report.declaredMissing.push({ tool: name, kind: "metadata.description", paths: ["description"] });
+      } else {
+        report.declaredAdditions.push({ tool: name, kind: "metadata.description", paths: ["description"] });
       }
+    } else if (!deepEqual(baseTool.description, candTool.description)) {
+      report.metadataDrift.push({ tool: name, kind: "description", baseline: brief(baseTool.description), candidate: brief(candTool.description) });
     }
   }
 
@@ -267,8 +435,9 @@ export function compareCatalogs({ baseline, candidate, profile = "hand", strictM
   report.ok = report.missing.length === 0
     && (profile === "hand" || report.extra.length === 0)
     && report.schemaMismatches.length === 0
-    && report.duplicateNames.candidate.length === 0
-    && (!strict || report.metadataDrift.length === 0);
+    && report.declaredMissing.length === 0
+    && report.metadataDrift.length === 0
+    && report.duplicateNames.candidate.length === 0;
   return report;
 }
 

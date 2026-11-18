@@ -10,8 +10,8 @@
   "live": {
     "capture": {
       "executable": "Q:\\PROJECTS\\PERSONAL\\hand\\target\\gap-build\\release\\hand.exe",
-      "executableSha256": "sha256:0b20351837f92b2b8d6a5ddb5ebfd7c685eac4573c1eb0357a78f7eb5734d19b",
-      "reportedVersion": "hand 0.1.0 (48c45de652c8fe8a1793dcbb822aa1f1a9298e12-dirty; release)"
+      "executableSha256": "sha256:b50b18d75634557694d8fbcb8e3f833680e397706e99d4fcc6608e6ee8c42fd0",
+      "reportedVersion": "hand 0.1.0 (9580b5bf1b59f1e1edd858fbf7dd087097e00fa0-dirty; release)"
     },
     "extra": [
       "browser_context",
