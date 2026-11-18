@@ -4744,6 +4744,8 @@ async fn submit_enter(browser: &Browser) -> Result<(), String> {
     Ok(())
 }
 
+/// Refuse an explicit pointer point outside the live viewport: an event there
+/// lands on nothing, so accepting it would report a success that did nothing.
 async fn point_in_viewport(
     browser: &Browser,
     tool: &str,
