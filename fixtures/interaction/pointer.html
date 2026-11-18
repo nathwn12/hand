@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Pointer fixture</title>
+<style>
+  body { font: 16px/1.4 system-ui, sans-serif; margin: 0; padding: 16px; }
+  #rc, #dbl { width: 180px; height: 44px; background: #d8d8d8; margin: 8px 0; }
+  #menu { position: fixed; top: 8px; left: 320px; margin: 0; padding: 4px 0; list-style: none;
+          width: 160px; background: #fff; border: 1px solid #888; }
+  #menu li { padding: 4px 12px; }
+  #list { list-style: none; padding: 0; width: 240px; }
+  #list li { border: 1px solid #aaa; padding: 8px; margin: 4px 0; background: #f4f4f4; }
+  #shot { width: 240px; height: 120px; background: #12639c; color: #fff; }
+  #spacer { height: 1800px; }
+</style>
+</head>
+<body>
+<h1>Pointer fixture</h1>
+
+<div id="rc" role="button" tabindex="0">right-click here</div>
+<ul id="menu" role="menu" hidden>
+  <li role="menuitem" tabindex="-1">Menu Copy</li>
+  <li role="menuitem" tabindex="-1">Menu Paste</li>
+</ul>
+
+<div id="dbl" role="button" tabindex="0">double-click here</div>
+<p id="dbl-out">dbl: 0</p>
+
+<ul id="list">
+  <li id="item1">Item 1</li>
+  <li id="item2">Item 2</li>
+  <li id="item3">Item 3</li>
+</ul>
+<p id="drag-out"></p>
+
+<div id="shot">shot target</div>
+
+<div id="spacer"></div>
+
+<script>
+  // Trusted-input ledger: every pointer event this page sees is recorded with
+  // its isTrusted flag. A synthetic dispatchEvent() would show false, so the
+  // ledger is the page's own proof that the input came from the engine.
+  window.__ev = { down: 0, move: 0, up: 0, trustedDown: 0, trustedUp: 0, types: [] };
+  const rc = document.getElementById('rc');
+  const menu = document.getElementById('menu');
+  rc.addEventListener('contextmenu', (e) => { e.preventDefault(); menu.hidden = false; });
+  document.addEventListener('click', () => { menu.hidden = true; });
+
+  let dbl = 0;
+  document.getElementById('dbl').addEventListener('dblclick', () => {
+    dbl += 1;
+    document.getElementById('dbl-out').textContent = 'dbl: ' + dbl;
+  });
+
+  const list = document.getElementById('list');
+  let dragSrc = null;
+  list.addEventListener('pointerdown', (e) => {
+    const li = e.target.closest && e.target.closest('#list > li');
+    if (!li) return;
+    dragSrc = li;
+    window.__ev.down += 1;
+    if (e.isTrusted) window.__ev.trustedDown += 1;
+    window.__ev.types.push('pointerdown:' + e.isTrusted);
+  });
+  list.addEventListener('pointermove', (e) => {
+    if (!dragSrc) return;
+    window.__ev.move += 1;
+  });
+  list.addEventListener('pointerup', (e) => {
+    window.__ev.up += 1;
+    if (e.isTrusted) window.__ev.trustedUp += 1;
+    if (!dragSrc) return;
+    const under = document.elementFromPoint(e.clientX, e.clientY);
+    const target = under && under.closest ? under.closest('#list > li') : null;
+    const src = dragSrc;
+    dragSrc = null;
+    if (!target || target === src) return;
+    const items = Array.prototype.slice.call(list.children);
+    const from = items.indexOf(src);
+    const to = items.indexOf(target);
+    list.insertBefore(src, from < to ? target.nextSibling : target);
+    document.getElementById('drag-out').textContent = Array.prototype.slice
+      .call(list.children)
+      .map((li) => li.textContent.trim())
+      .join(',');
+  });
+</script>
+</body>
+</html>

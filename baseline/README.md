@@ -11,6 +11,13 @@ reproduce, taken from the revisions the specification pins:
 32 tools in total, which is the specification's first-release floor
 ([specification](../docs/SPEC.md), "Initial public surface and lifecycle").
 
+The floor is what `hand` must serve; it is not the whole surface. The current
+build publishes **34** tools — those 32 plus `browser_context` and
+`browser_wheel` — and `hand-catalog.json` records both halves: `counts` is the
+derived floor, `live` is what the binary answered `tools/list` with. Quoting
+`counts.total` as "the catalogue" is the mistake the `live` block exists to
+prevent.
+
 This directory captures catalog evidence and provides a compatibility gate. It
 does not by itself prove the implementation's behavior or the complete suite.
 
@@ -41,6 +48,35 @@ difference, not a normalization artifact. Its `blockers` and `notes` fields
 record the derivation run: blockers are pinned-capture disagreements, notes are
 tools captured beyond the required floor.
 
+### The `live` block
+
+`--serve` also asks the built server what it publishes, so the file stops
+implying that 32 is everything:
+
+| Field | Content |
+|---|---|
+| `counts.total` / `browser` / `desktop` | the derived floor, 32 = 25 + 7 pinned legacy tools |
+| `counts.live` | how many tools the served binary published (34 today) |
+| `live.names` | every name the server answered with, sorted |
+| `live.extra` | the names above the floor, sorted (`browser_context`, `browser_wheel`) |
+| `live.toolCount` | `live.names.length` |
+| `live.protocolVersion` | the version the server negotiated for a `2025-11-25` request |
+| `live.capture` | the executable path, its SHA-256, and the binary's own `--version` line |
+
+That capture is provenance, not a log: `live.capture` carries exactly those
+three keys — no timestamp, no environment, no build directory — so two runs
+against the same binary produce the same bytes. A live name above the floor is
+a note. A live block that contradicts itself is an `ISSUE` and exits 1: a count
+that disagrees with its names, names out of order, a repeated name, a floor name
+the server does not serve, an `extra` list that is not exactly the difference,
+or an unexpected `capture` field.
+
+Without `--serve` nothing about a running server is claimed: no `live` block, no
+`counts.live`, no `live:` notes, and the derived file stays reproducible from
+the captures alone. The two halves are separate facts for that reason — the
+floor is derived and pinned, the live block is measured from one binary, and
+that binary is identified only by its hash and version, never by a date.
+
 ## Why the capture is the pinned catalogue
 
 The committed catalogues were captured from the release binaries already on
@@ -62,11 +98,14 @@ touching the worktree, index or refs.
 ## Commands
 
 ```powershell
-# integrity + comparator self-checks (18 tests, includes a live re-capture)
+# integrity + comparator self-checks (20 tests, includes a live re-capture)
 node --test baseline/test/
 
-# derive the hand catalogue from the two captures
+# derive the hand catalogue from the two captures (no live block: the floor only)
 node baseline/scripts/build-hand-catalog.mjs
+
+# derive it and record what a built server publishes: counts.live and live
+node baseline/scripts/build-hand-catalog.mjs --serve Q:\path\to\hand.exe
 
 # compare a candidate server against the hand baseline
 node baseline/scripts/compare-catalog.mjs --serve Q:\path\to\hand.exe
@@ -138,7 +177,9 @@ the gate cannot pass vacuously.
 - 32 tools is the floor, not the product: the additional capabilities in the
   specification (isolated contexts, interception, clock/viewport control,
   private-desktop launch, semantic paging, visual-change waits, and the rest)
-  are not in either catalogue and are not implied by this baseline.
+  are not in either catalogue and are not implied by this baseline. The `live`
+  block records only what one build already adds — today `browser_context` and
+  `browser_wheel` — and says nothing about the rest.
 - The capture says nothing about whether either binary passes its own tests on
   this machine in this session.
 - `ping`, `initialize` and `server/discover` results are captured for

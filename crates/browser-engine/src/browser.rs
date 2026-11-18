@@ -1054,6 +1054,26 @@ impl Browser {
     /// convention); modifiers default to 0 (no Alt/Ctrl/Meta/Shift - key
     /// combos are G4b, never smuggled here). No OS input is involved: the
     /// whole sequence rides CDP.
+    /// Trusted main-frame wheel at main-frame viewport CSS px: ONE
+    /// `Input.dispatchMouseEvent` of type `mouseWheel` carrying the pixel
+    /// deltas. Chromium runs the page's own scroll machinery (compositor or
+    /// main thread, whatever the page uses) - no `window.scrollBy` and no
+    /// synthetic event, so a page that scrolls by its own wheel handler
+    /// responds exactly as it would to a person. The caller reads the effect
+    /// back (`scrollX`/`scrollY`); a wheel over an element that does not
+    /// scroll simply reports no movement.
+    pub async fn mouse_wheel(&self, x: f64, y: f64, dx: f64, dy: f64) -> Result<(), String> {
+        self.command(
+            "Input.dispatchMouseEvent",
+            json!({"type": "mouseWheel", "x": x, "y": y,
+                   "deltaX": dx, "deltaY": dy,
+                   "button": "none", "buttons": 0, "clickCount": 0}),
+            true,
+        )
+        .await
+        .map(|_| ())
+    }
+
     pub async fn mouse_click(&self, x: f64, y: f64, hover_first: bool) -> Result<(), String> {
         if hover_first {
             self.command(

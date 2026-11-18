@@ -20,7 +20,7 @@ import { fileURLToPath } from "node:url";
 
 import { canonicalHash } from "../scripts/lib/canonical.mjs";
 import { SPEC_REQUIRED, compareCatalogs, validateHandCatalog } from "../scripts/lib/catalog.mjs";
-import { buildFromDisk } from "../scripts/build-hand-catalog.mjs";
+import { buildFromDisk, validateLive } from "../scripts/build-hand-catalog.mjs";
 import { captureCatalog } from "../scripts/capture-mcp-catalog.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -60,13 +60,82 @@ test("captured names are exactly the spec's 25 browser and 7 desktop tools", () 
   assert.deepEqual(puppetTools.map((tool) => tool.name).sort(), [...SPEC_REQUIRED.desktop].sort());
 });
 
+/**
+ * The committed file minus everything the live capture adds. The `live` block,
+ * `counts.live` and the `live:` notes come from a running binary; the block is
+ * the one part the capture-only derivation cannot reproduce, and the notes are
+ * its commentary. Everything else must still equal the generator's output byte
+ * for byte.
+ */
+function withoutLive(catalog) {
+  const clone = JSON.parse(JSON.stringify(catalog));
+  delete clone.live;
+  delete clone.counts.live;
+  clone.notes = clone.notes.filter((note) => !note.startsWith("live: "));
+  return clone;
+}
+
 test("hand-catalog.json is exactly what the generator derives, not a hand edit", () => {
   // Whole-file equality, including the provenance block: a stale executable
   // hash, pin or tool body all show up here rather than only a changed schema.
+  // The `live` block is excluded because it comes from a running binary, not
+  // from the pinned captures; the next test holds it to its own contract.
   const derived = buildFromDisk({ root: ROOT }).hand;
-  assert.deepEqual(handCatalog, derived);
+  assert.deepEqual(withoutLive(handCatalog), derived);
   assert.equal(handCatalog.tools.length, 32);
-  assert.deepEqual(handCatalog.counts, { total: 32, browser: 25, desktop: 7 });
+  assert.deepEqual(handCatalog.counts, { total: 32, browser: 25, desktop: 7, live: 34 });
+});
+
+test("the live block records the server's own tools/list beside the 32-name floor", () => {
+  const live = handCatalog.live;
+  // The count the docs quote and the block itself must agree three ways.
+  assert.equal(live.toolCount, 34);
+  assert.equal(live.toolCount, live.names.length);
+  assert.equal(handCatalog.counts.live, live.toolCount);
+  assert.equal(new Set(live.names).size, live.names.length, "live names are unique");
+  assert.deepEqual(live.names, [...live.names].sort(), "live names are sorted");
+
+  // The floor is served: every derived name is in the live set.
+  const floor = handCatalog.tools.map((tool) => tool.name);
+  assert.deepEqual(live.names.filter((name) => !floor.includes(name)), [...live.extra]);
+
+  // The additions hand makes on top, named in README.md and
+  // docs/CAPABILITIES.md, are exactly what the server publishes above the floor.
+  assert.deepEqual(live.extra, ["browser_context", "browser_wheel"]);
+
+  // A capture is provenance, not a log: no timestamp, no environment, no paths
+  // beyond the executable itself.
+  assert.deepEqual(Object.keys(live.capture).sort(), ["executable", "executableSha256", "reportedVersion"]);
+  assert.match(live.capture.executableSha256, /^sha256:[0-9a-f]{64}$/);
+  assert.ok(live.capture.reportedVersion.includes("hand"), live.capture.reportedVersion);
+  assert.match(live.protocolVersion, /^\d{4}-\d{2}-\d{2}$/);
+
+  assert.deepEqual(validateLive(handCatalog), []);
+});
+
+test("a live block that contradicts the floor is rejected, so the check is not vacuous", () => {
+  const omitFloorTool = JSON.parse(JSON.stringify(handCatalog));
+  omitFloorTool.live.names = omitFloorTool.live.names.filter((name) => name !== "desktop_do");
+  omitFloorTool.live.toolCount = omitFloorTool.live.names.length;
+  omitFloorTool.counts.live = omitFloorTool.live.toolCount;
+  const omitted = validateLive(omitFloorTool).map((issue) => issue.code);
+  assert.ok(omitted.includes("live-omits-floor-tool"), omitted.join(", "));
+
+  const misfiledExtra = JSON.parse(JSON.stringify(handCatalog));
+  misfiledExtra.live.extra = [];
+  const extra = validateLive(misfiledExtra).map((issue) => issue.code);
+  assert.deepEqual(extra, ["live-extra-mismatch"]);
+
+  const timestamped = JSON.parse(JSON.stringify(handCatalog));
+  timestamped.live.capture.capturedAt = "2026-11-18T00:00:00Z";
+  const stamped = validateLive(timestamped).map((issue) => issue.code);
+  assert.deepEqual(stamped, ["live-capture-unexpected-field"]);
+
+  const counted = JSON.parse(JSON.stringify(handCatalog));
+  counted.live.toolCount = 35;
+  const miscounted = validateLive(counted).map((issue) => issue.code);
+  assert.ok(miscounted.includes("live-count-mismatch"), miscounted.join(", "));
+  assert.ok(miscounted.includes("live-count-not-in-counts"), miscounted.join(", "));
 });
 
 test("hand catalogue validates against the required surface", () => {

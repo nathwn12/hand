@@ -10,8 +10,10 @@ use serde_json::{json, Value};
 pub const BROWSER_PREFIX: &str = "browser_";
 pub const DESKTOP_PREFIX: &str = "desktop_";
 
-/// The 25 Gladius tools, in catalog order, followed by hand's own additions.
-pub const BROWSER_TOOLS: [&str; 26] = [
+/// The 25 Gladius tools, in catalog order, followed by hand's own addition:
+/// `context` (isolated contexts) and the wheel primitive that had no legacy
+/// tool.
+pub const BROWSER_TOOLS: [&str; 27] = [
     "navigate",
     "snapshot",
     "screenshot",
@@ -38,6 +40,7 @@ pub const BROWSER_TOOLS: [&str; 26] = [
     "close",
     "fetch_text",
     "context",
+    "wheel",
 ];
 
 /// The 7 Puppet tools, in catalog order.

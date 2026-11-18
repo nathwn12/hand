@@ -10,7 +10,7 @@ mod common;
 use common::{text_of, tool, Session};
 use serde_json::{json, Value};
 
-const BROWSER_TOOLS: [&str; 26] = [
+const BROWSER_TOOLS: [&str; 27] = [
     "navigate",
     "snapshot",
     "screenshot",
@@ -37,6 +37,7 @@ const BROWSER_TOOLS: [&str; 26] = [
     "close",
     "fetch_text",
     "context",
+    "wheel",
 ];
 
 const DESKTOP_TOOLS: [&str; 7] = [
@@ -75,7 +76,15 @@ fn initialize_identifies_version_platform_and_both_engines() {
     assert_eq!(browser["engine"].as_str(), Some("gladius"));
     assert_eq!(browser["sourcePin"].as_str(), Some("59c6d77"));
     assert_eq!(browser["version"].as_str(), Some("0.8.0"));
-    assert_eq!(browser["toolCount"].as_u64(), Some(25));
+    // `browser_context` is published from `browser_engine::contexts::tool_schema()`
+    // beside the engine's own `list()`, so the engine's own count is one below the
+    // number of `browser_*` bodies on the wire. Both numbers are asserted so a
+    // dropped body cannot pass as a smaller count.
+    assert_eq!(
+        browser["toolCount"].as_u64(),
+        Some((BROWSER_TOOLS.len() - 1) as u64),
+        "the browser engine counts its own list, one below the published browser_* bodies"
+    );
     assert!(
         browser["backend"].is_string(),
         "browser backend must be named: {browser}"
@@ -103,7 +112,7 @@ fn initialize_identifies_version_platform_and_both_engines() {
 }
 
 #[test]
-fn catalog_is_exactly_the_32_prefixed_tools() {
+fn catalog_is_the_floor_plus_hand_additions() {
     let mut s = Session::spawn();
     let tools = s.list_tools();
     let expected = BROWSER_TOOLS.len() + DESKTOP_TOOLS.len();

@@ -362,6 +362,21 @@ pub fn list() -> Value {
                  "maxDiffRatio": {"type": "number"}, "fullPage": {"type": "boolean"}},
              "required": ["ok", "action"], "additionalProperties": false},
           "annotations": {"readOnlyHint": false, "destructiveHint": true, "idempotentHint": false, "openWorldHint": false}}));
+        // Pointer completeness: a wheel is a primitive of its own, so the
+        // cursor can be moved and the document scrolled without a second
+        // pointer tool standing in for it.
+        tools.insert(at + 3, json!({"name": "wheel", "title": "Wheel",
+          "description": "Scroll with real trusted input: ONE Input.dispatchMouseEvent of type mouseWheel at (x,y) - viewport CSS px, default the viewport centre - carrying deltaX/deltaY in pixels. The page's own scroll machinery runs (smooth scrolling, scroll listeners, nested scroll containers, whatever the page uses), so this is not window.scrollBy and not a synthetic WheelEvent. The reply reads scrollX/scrollY back after a bounded settle and reports them with `moved`, so 'it scrolled' is measured rather than assumed: a delta aimed at an element that cannot scroll reports moved:false and the same offsets, never a false success. Coordinates are main-viewport CSS px; pass them from browser_layout when a specific scroller must receive the wheel.",
+          "inputSchema": {"type": "object", "properties": {
+              "deltaY": {"type": "number"}, "deltaX": {"type": "number"},
+              "x": {"type": "number"}, "y": {"type": "number"}},
+              "required": ["deltaY"], "additionalProperties": false},
+          "outputSchema": {"type": "object",
+             "properties": {"ok": {"type": "boolean"}, "moved": {"type": "boolean"},
+                 "scroll": {"type": "object"}, "at": {"type": "object"},
+                 "deltaX": {"type": "number"}, "deltaY": {"type": "number"}},
+             "required": ["ok", "moved", "scroll", "at"], "additionalProperties": false},
+          "annotations": {"readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": false}}));
     }
     listed
 }
@@ -894,6 +909,55 @@ pub async fn call(name: &str, args: &Value, browser: &Browser) -> Value {
                 .unwrap_or(false);
             tool_click(browser, &el, frame.as_deref(), hover_first).await
         }
+        "wheel" => {
+            if let Err(e) = check_unknown("wheel", args, &["deltaY", "deltaX", "x", "y"]) {
+                return e.envelope();
+            }
+            let delta_y = match args.get("deltaY").and_then(|v| v.as_f64()) {
+                Some(d) => d,
+                None => {
+                    return ToolErr::typed(
+                        "wheel: missing required numeric arg 'deltaY'".to_string(),
+                        json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::MissingArg.as_str(), "tool": "wheel"}),
+                    )
+                    .envelope()
+                }
+            };
+            let delta_x = args
+                .get("deltaX")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(0.0);
+            if !delta_x.is_finite() || !delta_y.is_finite() {
+                return ToolErr::typed(
+                    "wheel: 'deltaX'/'deltaY' must be finite numbers".to_string(),
+                    json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "wheel", "arg": "deltaY"}),
+                )
+                .envelope();
+            }
+            let point = match (args.get("x"), args.get("y")) {
+                (None, None) => None,
+                (Some(x), Some(y)) => match (x.as_f64(), y.as_f64()) {
+                    (Some(x), Some(y)) => Some((x, y)),
+                    _ => {
+                        return ToolErr::typed(
+                            "wheel: 'x'/'y' must be numbers when given".to_string(),
+                            json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "wheel", "arg": "x"}),
+                        )
+                        .envelope()
+                    }
+                },
+                _ => {
+                    return ToolErr::typed(
+                        "wheel: pass both 'x' and 'y', or neither (the viewport centre)"
+                            .to_string(),
+                        json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "wheel", "arg": "y"}),
+                    )
+                    .envelope()
+                }
+            };
+            tool_wheel(browser, delta_x, delta_y, point).await
+        }
+
         "type" => {
             if let Err(e) = check_unknown("type", args, &["element", "text", "submit", "frame"]) {
                 return e.envelope();
@@ -4678,6 +4742,93 @@ async fn submit_enter(browser: &Browser) -> Result<(), String> {
         )
         .await?;
     Ok(())
+}
+
+async fn point_in_viewport(
+    browser: &Browser,
+    tool: &str,
+    arg: &str,
+    x: f64,
+    y: f64,
+) -> Result<(), ToolErr> {
+    let (w, h, _) = browser.viewport_readback().await.map_err(ToolErr::from)?;
+    if x >= 0.0 && y >= 0.0 && x <= w as f64 && y <= h as f64 {
+        return Ok(());
+    }
+    Err(ToolErr::typed(
+        format!("{tool}: '{arg}' ({x}, {y}) is outside the {w}x{h} viewport; a pointer event there lands on nothing"),
+        json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(),
+               "tool": tool, "arg": arg, "viewport": {"width": w, "height": h}}),
+    ))
+}
+
+/// Read the document scroll offsets (the effect a wheel is supposed to have).
+async fn scroll_offsets(browser: &Browser) -> Option<(f64, f64)> {
+    let v = browser.eval("[window.scrollX, window.scrollY]").await.ok()?;
+    Some((
+        v.get(0).and_then(|x| x.as_f64()).unwrap_or(0.0),
+        v.get(1).and_then(|x| x.as_f64()).unwrap_or(0.0),
+    ))
+}
+
+/// Wheel: one trusted `mouseWheel` at the point (viewport centre by default),
+/// then read the offsets back until they settle. `moved` is measured, not
+/// claimed: a wheel over a non-scrolling surface reports the same offsets.
+async fn tool_wheel(
+    browser: &Browser,
+    dx: f64,
+    dy: f64,
+    point: Option<(f64, f64)>,
+) -> Result<Value, ToolErr> {
+    let (x, y) = match point {
+        Some(p) => p,
+        None => {
+            let (w, h, _) = browser.viewport_readback().await.map_err(ToolErr::from)?;
+            (w as f64 / 2.0, h as f64 / 2.0)
+        }
+    };
+    if point.is_some() {
+        point_in_viewport(browser, "wheel", "x/y", x, y).await?;
+    }
+    let before = scroll_offsets(browser).await.unwrap_or((0.0, 0.0));
+    browser
+        .mouse_wheel(x, y, dx, dy)
+        .await
+        .map_err(ToolErr::from)?;
+    // Bounded settle: scrolling can be delegated to the compositor and eased,
+    // so read until the offset stops moving (or the budget ends). The LAST
+    // read is the reply, never the first.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(1200);
+    let mut last = before;
+    let mut stable = 0u32;
+    loop {
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let cur = scroll_offsets(browser).await.unwrap_or(last);
+        if cur == last {
+            stable += 1;
+            if stable >= 2 {
+                break;
+            }
+        } else {
+            stable = 0;
+        }
+        last = cur;
+        if std::time::Instant::now() >= deadline {
+            break;
+        }
+    }
+    let after = last;
+    Ok(ok_text(
+        json!({
+            "ok": true,
+            "moved": after != before,
+            "scroll": {"x": after.0, "y": after.1},
+            "at": {"x": x, "y": y},
+            "deltaX": dx,
+            "deltaY": dy,
+        })
+        .to_string(),
+    ))
 }
 
 async fn tool_evaluate(

@@ -4,9 +4,62 @@
   "counts": {
     "browser": 25,
     "desktop": 7,
+    "live": 34,
     "total": 32
   },
-  "notes": [],
+  "live": {
+    "capture": {
+      "executable": "Q:\\PROJECTS\\PERSONAL\\hand\\target\\gap-build\\release\\hand.exe",
+      "executableSha256": "sha256:15f83118a11a56d5e0f41efb791c57809e461a8023dd1422249abece1e936035",
+      "reportedVersion": "hand 0.1.0 (f08da6499a3133e68e2b72e52f97c68365274be7-dirty; release)"
+    },
+    "extra": [
+      "browser_context",
+      "browser_wheel"
+    ],
+    "names": [
+      "browser_assert_layout",
+      "browser_cdp",
+      "browser_click",
+      "browser_close",
+      "browser_console",
+      "browser_context",
+      "browser_dialog",
+      "browser_evaluate",
+      "browser_fetch_text",
+      "browser_history",
+      "browser_hover",
+      "browser_key",
+      "browser_layout",
+      "browser_navigate",
+      "browser_network",
+      "browser_screenshot",
+      "browser_select",
+      "browser_snapshot",
+      "browser_storage",
+      "browser_tabs",
+      "browser_targets",
+      "browser_type",
+      "browser_upload",
+      "browser_viewport",
+      "browser_visual",
+      "browser_wait_for",
+      "browser_wheel",
+      "desktop_cursor",
+      "desktop_diff",
+      "desktop_do",
+      "desktop_elements",
+      "desktop_list_windows",
+      "desktop_screenshot",
+      "desktop_window"
+    ],
+    "protocolVersion": "2025-11-25",
+    "toolCount": 34
+  },
+  "notes": [
+    "live: 34 tools published by Q:\\PROJECTS\\PERSONAL\\hand\\target\\gap-build\\release\\hand.exe; the floor is 32",
+    "live: beyond the 32-tool floor: browser_context, browser_wheel"
+  ],
   "provenance": {
     "generator": "baseline/scripts/build-hand-catalog.mjs",
     "migration": "one-to-one name mapping only: browser_<legacy> / desktop_<legacy>; inputSchema, outputSchema, annotations, title and description are carried over unchanged",
