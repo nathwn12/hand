@@ -34,15 +34,24 @@ pub fn list() -> Value {
             "anyOf": [{"required": ["url", "title", "truncated", "nodes", "snapshotId", "totalLines", "nextOffset"]}, {"required": ["mode", "text"]}]},
          "annotations": {"readOnlyHint": true, "destructiveHint": false, "idempotentHint": false, "openWorldHint": false}},
         {"name": "screenshot", "title": "Screenshot",
-         "description": "PNG screenshot of the active page (unavailable with GLADIUS_BACKEND_CAPS=dom-only: no rendering pipeline). Optional path: an ABSOLUTE filesystem path the decoded PNG is also written to (missing parent directories are created; a failed write is a typed error, never a silent success). There is no allowlisted screenshot root: only absolute paths are accepted, and a relative path is rejected. When path is absent the reply shape is unchanged. deterministic:true pins the capture: device metrics fixed (current viewport, or width/height; deviceScaleFactor 1, mobile false) and restored afterwards, prefers-reduced-motion:reduce while the capture runs, cleared back to the engine/host default afterwards (a host that asks for reduced motion reports reduce again, so the guarantee is unchanged-from-baseline; reducedMotionEmulated reports whether the emulation was applied at all, and the freeze stylesheet is what stops CSS animation), a temporary style element freezing animation/transition/caret-color/scrollbars, applied by a walk that reaches the main document, every same-process descendant frame and every OPEN shadow root, and that pauses WAAPI animations, SVG SMIL timelines and media playback (each pinned to its start, because a pause at a wall-clock position is not reproducible); a realm the walk cannot reach is named in freeze.skipped, then `document.fonts.status === 'loaded'` plus every `FontFace` reaching `loaded` or `error` (a face still loading at the budget is counted in `fontsPending` and named in `settleTimeouts`), every img complete and two animation-frame ticks before Page.captureScreenshot({format:png, fromSurface:true, captureBeyondViewport for full page}). The reply then carries viewport, deviceScaleFactor, url, byte length, a cheap content checksum, reducedMotionEmulated, settled, settleTimeouts, fontsPending, freezeMode and freeze. deterministic pins the capture so two captures of the same page in the same engine produce the same PNG bytes; the scope of the freeze is the main document, same-process frames, open shadow roots, CSS animation, WAAPI, SMIL and media (see freeze). Canvas, WebGL, video frames and cross-process iframes are sampled, not frozen. Everything rides CDP: no OS cursor, no OS keyboard, no window, no foreground tab.",
+         "description": "PNG screenshot of the active page (unavailable with GLADIUS_BACKEND_CAPS=dom-only: no rendering pipeline). Optional path: an ABSOLUTE filesystem path the decoded PNG is also written to (missing parent directories are created; a failed write is a typed error, never a silent success). There is no allowlisted screenshot root: only absolute paths are accepted, and a relative path is rejected. When path is absent the reply shape is unchanged. deterministic:true pins the capture: device metrics fixed (current viewport, or width/height; deviceScaleFactor 1, mobile false) and restored afterwards, prefers-reduced-motion:reduce while the capture runs, cleared back to the engine/host default afterwards (a host that asks for reduced motion reports reduce again, so the guarantee is unchanged-from-baseline; reducedMotionEmulated reports whether the emulation was applied at all, and the freeze stylesheet is what stops CSS animation), a temporary style element freezing animation/transition/caret-color/scrollbars, applied by a walk that reaches the main document, every same-process descendant frame and every OPEN shadow root, and that pauses WAAPI animations, SVG SMIL timelines and media playback (each pinned to its start, because a pause at a wall-clock position is not reproducible); a realm the walk cannot reach is named in freeze.skipped, then `document.fonts.status === 'loaded'` plus every `FontFace` reaching `loaded` or `error` (a face still loading at the budget is counted in `fontsPending` and named in `settleTimeouts`), every img complete and two animation-frame ticks before Page.captureScreenshot({format:png, fromSurface:true, captureBeyondViewport for full page}). The reply then carries viewport, deviceScaleFactor, url, byte length, a cheap content checksum, reducedMotionEmulated, settled, settleTimeouts, fontsPending, freezeMode and freeze. deterministic pins the capture so two captures of the same page in the same engine produce the same PNG bytes; the scope of the freeze is the main document, same-process frames, open shadow roots, CSS animation, WAAPI, SMIL and media (see freeze). Canvas, WebGL, video frames and cross-process iframes are sampled, not frozen. Everything rides CDP: no OS cursor, no OS keyboard, no window, no foreground tab. Scope: element= (a CSS selector or an @eN ref from browser_snapshot) captures exactly that element's border box, and clip={x,y,width,height} captures a page-coordinate region (the same space browser_layout's box reports); both ride Page.captureScreenshot's clip, so the pixel size is the box size at deviceScaleFactor 1, and an element with no layout box (display:none, detached) is a typed not_actionable/hidden refusal rather than an empty image. An unknown ref is a typed stale_ref. fullPage and clip together are refused. format=png (default)|jpeg|webp sets the encoding and the reply's mimeType; quality=0-100 applies to jpeg/webp only and is refused with png instead of being silently ignored. The default capture (no element, no clip, no format) is byte-for-byte the historic PNG.",
          "inputSchema": {"type": "object", "properties": {
              "fullPage": {"type": "boolean"}, "path": {"type": "string"},
              "deterministic": {"type": "boolean"},
-             "width": {"type": "integer"}, "height": {"type": "integer"}},
+             "width": {"type": "integer"}, "height": {"type": "integer"},
+             "element": {"type": "string", "description": "CSS selector or @eN ref: capture that element's box"},
+             "clip": {"type": "object", "description": "page-coordinate region to capture",
+                 "properties": {"x": {"type": "number"}, "y": {"type": "number"},
+                     "width": {"type": "number", "exclusiveMinimum": 0},
+                     "height": {"type": "number", "exclusiveMinimum": 0}},
+                 "required": ["x", "y", "width", "height"], "additionalProperties": false},
+             "format": {"type": "string", "enum": ["png", "jpeg", "webp"], "default": "png"},
+             "quality": {"type": "integer", "minimum": 0, "maximum": 100}},
              "additionalProperties": false},
          "outputSchema": {"type": "object",
-            "properties": {"mimeType": {"type": "string"}, "bytes": {"type": "integer", "minimum": 0},
+            "properties": {"mimeType": {"type": "string"}, "format": {"type": "string"}, "bytes": {"type": "integer", "minimum": 0},
                 "path": {"type": "string"}, "deterministic": {"type": "boolean"},
+                "element": {"type": "string"}, "clip": {"type": "object"},
                 "viewport": {"type": "object"}, "deviceScaleFactor": {"type": "number"},
                 "size": {"type": "object", "properties": {"width": {"type": "integer"}, "height": {"type": "integer"}}, "required": ["width", "height"]},
                 "url": {"type": "string"}, "checksum": {"type": "string"},
@@ -864,7 +873,17 @@ pub async fn call(name: &str, args: &Value, browser: &Browser) -> Value {
             if let Err(e) = check_unknown(
                 "screenshot",
                 args,
-                &["fullPage", "path", "deterministic", "width", "height"],
+                &[
+                    "fullPage",
+                    "path",
+                    "deterministic",
+                    "width",
+                    "height",
+                    "element",
+                    "clip",
+                    "format",
+                    "quality",
+                ],
             ) {
                 return e.envelope();
             }
@@ -879,6 +898,44 @@ pub async fn call(name: &str, args: &Value, browser: &Browser) -> Value {
                 .unwrap_or(false);
             let width = args.get("width").and_then(|v| v.as_i64());
             let height = args.get("height").and_then(|v| v.as_i64());
+            let element = args
+                .get("element")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let format = match args.get("format").and_then(|v| v.as_str()) {
+                None | Some("png") => crate::capture::Format::Png,
+                Some("jpeg") => crate::capture::Format::Jpeg,
+                Some("webp") => crate::capture::Format::WebP,
+                Some(other) => {
+                    return ToolErr::typed(
+                        format!("screenshot: unknown 'format' '{other}' (png, jpeg, webp)"),
+                        json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "screenshot", "arg": "format"}),
+                    )
+                    .envelope()
+                }
+            };
+            let quality = match args.get("quality") {
+                None => None,
+                Some(v) => match v.as_u64() {
+                    Some(q) if q <= 100 => Some(q as u8),
+                    _ => {
+                        return ToolErr::typed(
+                            "screenshot: 'quality' must be an integer 0-100".to_string(),
+                            json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "screenshot", "arg": "quality"}),
+                        )
+                        .envelope()
+                    }
+                },
+            };
+            // A quality on a lossless encoding would be silently dropped by
+            // the engine, so it is refused by name instead.
+            if quality.is_some() && !format.takes_quality() {
+                return ToolErr::typed(
+                    "screenshot: 'quality' applies to format jpeg/webp only (png is lossless)".to_string(),
+                    json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "screenshot", "arg": "quality"}),
+                )
+                .envelope();
+            }
             // Metric overrides only mean something under a pinned
             // capture; accept them otherwise and they would silently do
             // nothing, so refuse instead.
@@ -889,7 +946,58 @@ pub async fn call(name: &str, args: &Value, browser: &Browser) -> Value {
                     )
                     .envelope();
             }
-            tool_screenshot(browser, full, path, deterministic, width, height).await
+            // Two different framings: full page or one region. Picking one
+            // silently would capture something the caller did not ask for.
+            if full && (element.is_some() || args.get("clip").is_some()) {
+                return ToolErr::typed(
+                    "screenshot: 'fullPage' cannot be combined with 'element'/'clip' (capture one or the other)".to_string(),
+                    json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "screenshot", "arg": "fullPage"}),
+                )
+                .envelope();
+            }
+            if element.is_some() && args.get("clip").is_some() {
+                return ToolErr::typed(
+                    "screenshot: 'element' and 'clip' are two framings of one capture; pass one".to_string(),
+                    json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "screenshot", "arg": "clip"}),
+                )
+                .envelope();
+            }
+            let clip = match args.get("clip") {
+                None => None,
+                Some(v) => {
+                    let pick = |k: &str| v.get(k).and_then(|x| x.as_f64());
+                    match (pick("x"), pick("y"), pick("width"), pick("height")) {
+                        (Some(x), Some(y), Some(w), Some(h)) if w > 0.0 && h > 0.0 => {
+                            Some(crate::capture::Clip {
+                                x,
+                                y,
+                                width: w,
+                                height: h,
+                            })
+                        }
+                        _ => {
+                            return ToolErr::typed(
+                                "screenshot: 'clip' needs finite x, y and positive width/height".to_string(),
+                                json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "screenshot", "arg": "clip"}),
+                            )
+                            .envelope()
+                        }
+                    }
+                }
+            };
+            tool_screenshot(
+                browser,
+                full,
+                path,
+                deterministic,
+                width,
+                height,
+                element.as_deref(),
+                clip,
+                format,
+                quality,
+            )
+            .await
         }
         "assert_layout" => {
             // Boxed on purpose: the geometry body would otherwise be
@@ -3518,6 +3626,135 @@ fn write_screenshot_file(path: &str, png: &[u8]) -> Result<(), ToolErr> {
     Ok(())
 }
 
+/// Resolve an element target (`@eN` ref, AX selector form, or CSS selector) to
+/// its border box in PAGE coordinates, for a clipped capture. The box comes
+/// from `DOM.getBoxModel` - the same engine measurement `browser_layout`
+/// reports - so a capture of `element` is exactly the box layout names, and a
+/// node with no layout box is a typed refusal instead of an empty image.
+async fn screenshot_element_box(
+    browser: &Browser,
+    element: &str,
+) -> Result<crate::capture::Clip, ToolErr> {
+    let node_id: i64 = if let Some(id) = parse_ref(element) {
+        let _at = guard_ref(browser, "screenshot", element, &id).await?;
+        let backend = browser.ref_backend(&id).await.ok_or_else(|| {
+            ToolErr::typed(
+                format!("screenshot: ref @{id} has no backend node id (take a fresh snapshot)"),
+                json!({"code": ToolCode::StaleRef.as_str(), "reason": ToolReason::Unknown.as_str(), "tool": "screenshot", "ref": format!("@{id}")}),
+            )
+        })?;
+        push_backend_node(browser, "screenshot", element, backend).await?
+    } else if let Some(sel) = ax_sel_parse("screenshot", element)? {
+        let hit = ax_resolve(browser, "screenshot", &sel, element, None).await?;
+        push_backend_node(browser, "screenshot", element, hit.backend).await?
+    } else {
+        browser.command("DOM.enable", json!({}), true).await?;
+        let doc = browser
+            .command("DOM.getDocument", json!({"depth": 0, "pierce": true}), true)
+            .await?;
+        let root = doc
+            .get("root")
+            .and_then(|r| r.get("nodeId"))
+            .and_then(|n| n.as_i64())
+            .unwrap_or(0);
+        let found = browser
+            .command(
+                "DOM.querySelector",
+                json!({"nodeId": root, "selector": element}),
+                true,
+            )
+            .await?;
+        let nid = found.get("nodeId").and_then(|n| n.as_i64()).unwrap_or(0);
+        if nid == 0 {
+            return Err(ToolErr::typed(
+                format!("screenshot: element not found: {element}"),
+                json!({"code": ToolCode::InvalidTarget.as_str(), "reason": ToolReason::NotFound.as_str(), "tool": "screenshot", "element": element}),
+            ));
+        }
+        nid
+    };
+    let bm = match browser
+        .command("DOM.getBoxModel", json!({"nodeId": node_id}), true)
+        .await
+    {
+        Ok(v) => v,
+        Err(e)
+            if e.contains("Could not compute box model")
+                || e.contains("no layout object")
+                || e.contains("No node") =>
+        {
+            return Err(ToolErr::typed(
+                format!("screenshot: element has no layout box (not rendered, so nothing to capture): {element}"),
+                json!({"code": ToolCode::NotActionable.as_str(), "reason": ToolReason::Hidden.as_str(), "tool": "screenshot", "element": element}),
+            ))
+        }
+        Err(e) => return Err(ToolErr::fallback(e)),
+    };
+    let quad = bm
+        .get("model")
+        .and_then(|m| m.get("border"))
+        .and_then(|q| q.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let nums: Vec<f64> = quad.iter().filter_map(|v| v.as_f64()).collect();
+    if nums.len() < 8 {
+        return Err(ToolErr::typed(
+            format!("screenshot: element has no measurable border box: {element}"),
+            json!({"code": ToolCode::NotActionable.as_str(), "reason": ToolReason::Hidden.as_str(), "tool": "screenshot", "element": element}),
+        ));
+    }
+    let xs: Vec<f64> = nums.iter().step_by(2).copied().collect();
+    let ys: Vec<f64> = nums.iter().skip(1).step_by(2).copied().collect();
+    let min = |v: &[f64]| v.iter().copied().fold(f64::INFINITY, f64::min);
+    let max = |v: &[f64]| v.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    let (x, y) = (min(&xs), min(&ys));
+    let (w, h) = (max(&xs) - x, max(&ys) - y);
+    if w <= 0.0 || h <= 0.0 {
+        return Err(ToolErr::typed(
+            format!("screenshot: element box is empty ({w}x{h} CSS px): {element}"),
+            json!({"code": ToolCode::NotActionable.as_str(), "reason": ToolReason::Hidden.as_str(), "tool": "screenshot", "element": element}),
+        ));
+    }
+    Ok(crate::capture::Clip {
+        x,
+        y,
+        width: w,
+        height: h,
+    })
+}
+
+/// Frontend node id for a backend node id, or a typed stale-node refusal. The
+/// bridge the snapshot path uses (`DOM.pushNodesByBackendIdsToFrontend`).
+async fn push_backend_node(
+    browser: &Browser,
+    tool: &str,
+    element: &str,
+    backend: i64,
+) -> Result<i64, ToolErr> {
+    browser.command("DOM.enable", json!({}), true).await?;
+    let pushed = browser
+        .command(
+            "DOM.pushNodesByBackendIdsToFrontend",
+            json!({"backendNodeIds": [backend]}),
+            true,
+        )
+        .await
+        .map_err(ToolErr::fallback)?;
+    let nid = pushed
+        .get("nodeIds")
+        .and_then(|v| v.as_array())
+        .and_then(|a| a.first())
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0);
+    if nid == 0 {
+        return Err(ToolErr::typed(
+            format!("{tool}: node no longer resolves (stale element; take a fresh snapshot): {element}"),
+            json!({"code": ToolCode::StaleRef.as_str(), "reason": ToolReason::NodeGone.as_str(), "tool": tool, "element": element}),
+        ));
+    }
+    Ok(nid)
+}
+
 async fn tool_screenshot(
     browser: &Browser,
     full_page: bool,
@@ -3525,6 +3762,10 @@ async fn tool_screenshot(
     deterministic: bool,
     width: Option<i64>,
     height: Option<i64>,
+    element: Option<&str>,
+    clip: Option<crate::capture::Clip>,
+    format: crate::capture::Format,
+    quality: Option<u8>,
 ) -> Result<Value, ToolErr> {
     // Capability gate: a dom-only backend has no rendering pipeline, so
     // there are no pixels to capture. Refuse with the backend and the
@@ -3554,6 +3795,13 @@ async fn tool_screenshot(
     } else {
         Some(browser.active_target_id().await)
     };
+    // Element framing resolves to a page-space box BEFORE the capture, so a
+    // bad ref or an unrendered node is a typed error and never a shot of
+    // something else.
+    let clip = match element {
+        Some(el) => Some(screenshot_element_box(browser, el).await?),
+        None => clip,
+    };
     let cap = crate::capture::capture(
         browser,
         &crate::capture::Options {
@@ -3561,6 +3809,9 @@ async fn tool_screenshot(
             deterministic,
             width,
             height,
+            clip,
+            format,
+            quality,
         },
     )
     .await?;
@@ -3588,9 +3839,18 @@ async fn tool_screenshot(
     if let Some(p) = path {
         meta.insert("path".to_string(), json!(p));
     }
+    if let Some(el) = element {
+        meta.insert("element".to_string(), json!(el));
+    }
+    if let Some(c) = clip {
+        meta.insert(
+            "clip".to_string(),
+            json!({"x": c.x, "y": c.y, "width": c.width, "height": c.height}),
+        );
+    }
     let meta = Value::Object(meta);
     Ok(
-        json!({"content": [{"type": "image", "data": cap.base64, "mimeType": "image/png"},
+        json!({"content": [{"type": "image", "data": cap.base64, "mimeType": cap.format.mime()},
                           {"type": "text", "text": meta.to_string()}],
               "structuredContent": meta}),
     )

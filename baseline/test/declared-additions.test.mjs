@@ -30,10 +30,11 @@ const rawFile = JSON.parse(readFileSync(DECLARED_ADDITIONS_PATH, "utf8"));
 const clone = (value) => JSON.parse(JSON.stringify(value));
 
 const ALLOWANCE_KEYS = ["inputSchema", "outputSchema"];
-/** The six tools whose description this tree rewrote, and only those. */
+/** The seven tools whose description this tree rewrote, and only those. */
 const DECLARED_DESCRIPTIONS = [
   "browser_click",
   "browser_hover",
+  "browser_screenshot",
   "browser_select",
   "browser_snapshot",
   "browser_type",
@@ -138,7 +139,7 @@ test("the allowance file is versioned, dotted and read by the comparator itself"
   assert.deepEqual(
     [...rawFile.metadata.description].sort(),
     DECLARED_DESCRIPTIONS,
-    "exactly the six rewritten descriptions are declared, nothing more and nothing less",
+    "exactly the seven rewritten descriptions are declared, nothing more and nothing less",
   );
   for (const name of rawFile.metadata.description) {
     assert.ok(floorNames.has(name), `metadata.description.${name} is not a floor tool`);
@@ -158,8 +159,9 @@ test("a candidate that is the floor plus the declared allowances passes, and the
     input.map((entry) => `${entry.tool} ${entry.paths.join(",")}`).sort(),
     [
       "browser_click properties.button,properties.clickCount",
+      "browser_screenshot properties.clip,properties.element,properties.format,properties.quality",
     ],
-    "exactly the two declared input properties are allowed",
+    "exactly the six declared input properties are allowed",
   );
   assert.equal(
     output.reduce((count, entry) => count + entry.paths.length, 0),
@@ -169,7 +171,7 @@ test("a candidate that is the floor plus the declared allowances passes, and the
   assert.deepEqual(
     descriptions.map((entry) => entry.tool).sort(),
     DECLARED_DESCRIPTIONS,
-    "one place lists every allowance, so all six rewritten descriptions are named here",
+    "one place lists every allowance, so all seven rewritten descriptions are named here",
   );
 });
 
@@ -217,21 +219,21 @@ test("a declared addition that is missing fails: red on a deleted properties.cli
 
 test("a listed addition under a renamed property fails, because presence is checked first", () => {
   const candidate = additiveCandidate();
-  const click = candidate.tools.find((tool) => tool.name === "browser_click");
-  const value = click.outputSchema.properties.resolved;
-  delete click.outputSchema.properties.resolved;
-  click.outputSchema.properties.resolvedAt = value;
+  const screenshot = candidate.tools.find((tool) => tool.name === "browser_screenshot");
+  const value = screenshot.outputSchema.properties.format;
+  delete screenshot.outputSchema.properties.format;
+  screenshot.outputSchema.properties.mime = value;
 
   const report = compareCatalogs({ baseline: handCatalog, candidate, profile: "hand" });
   assert.equal(report.ok, false);
-  const missing = report.declaredMissing.find((entry) => entry.tool === "browser_click");
+  const missing = report.declaredMissing.find((entry) => entry.tool === "browser_screenshot");
   assert.ok(missing, JSON.stringify(report.declaredMissing));
-  assert.deepEqual(missing.paths, ["properties.resolved"]);
+  assert.deepEqual(missing.paths, ["properties.format"]);
 });
 
 test("an eighth tool's rewritten description fails: red on an undeclared description", () => {
   // The point of the metadata section: a description is a failing comparison by
-  // default, exactly like a schema, and the six names in the file are the only
+  // default, exactly like a schema, and the seven names in the file are the only
   // ones that may differ. `browser_navigate` is deliberately not one of them.
   const candidate = additiveCandidate();
   const navigate = candidate.tools.find((tool) => tool.name === "browser_navigate");
@@ -303,9 +305,9 @@ test("the green candidate is green through the real CLI, exit 0", () => {
   assert.match(cli.stdout, /metadata {3}0 title\/description difference\(s\) \(strict: on\)/);
   assert.doesNotMatch(cli.stdout, /failure/i, "a passing run must not print the word failure");
   assert.doesNotMatch(cli.stdout, /--strict-metadata/, "the reported policy is not stated as a flag");
-  assert.match(cli.stdout, /browser_click inputSchema \+= properties\.button, properties\.clickCount/);
+  assert.match(cli.stdout, /screenshot inputSchema \+= properties\.clip, properties\.element, properties\.format, properties\.quality/);
   assert.match(cli.stdout, /browser_click metadata\.description \+= description/);
-  assert.match(cli.stdout, /declared {3}14 addition group\(s\)/);
+  assert.match(cli.stdout, /declared {3}17 addition group\(s\)/);
 });
 
 test("the legacy profile is never allowed to grow: a declared path does not soften a recapture", () => {

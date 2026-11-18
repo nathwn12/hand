@@ -1,5 +1,6 @@
-//! The interaction slice: pointer completeness (wheel) first, then the rest of
-//! the pointer and frame work in later commits.
+//! The interaction slice: pointer completeness (right/middle/double click,
+//! wheel, drag), element/clip screenshot with format passthrough, and
+//! out-of-process frame scoping for snapshot and click.
 //!
 //! Every test drives the real executable over stdio against a two-origin
 //! loopback fixture (`fixtures/interaction/*.html`, served from 127.0.0.1 and
@@ -250,3 +251,49 @@ fn drag_reorders_with_trusted_pointer_events() {
         "the page's own drop handler must have run"
     );
 }
+
+/// An element capture is the element's own box (its IHDR width equals the box
+/// `browser_layout` reports), two deterministic captures are byte-identical,
+/// and a ref that was never minted is a typed refusal.
+#[test]
+fn element_screenshot_is_the_box_and_is_deterministic() {
+    let fx = Fixture::start();
+    let mut s = Session::spawn();
+    s.call("browser_navigate", json!({"url": format!("{}/pointer.html", fx.a)}));
+
+    let layout = s.call("browser_layout", json!({"selector": "#shot"}));
+    assert!(!is_error(&layout), "{}", text_of(&layout));
+    let box_w = structured(&layout)["elements"][0]["documentBox"]["w"]
+        .as_f64()
+        .expect("layout box width");
+
+    let first = s.call("browser_screenshot", json!({"element": "#shot", "deterministic": true}));
+    assert!(!is_error(&first), "{}", text_of(&first));
+    let one = structured(&first).clone();
+    let second = s.call("browser_screenshot", json!({"element": "#shot", "deterministic": true}));
+    let two = structured(&second).clone();
+
+    assert_eq!(one["element"], json!("#shot"));
+    let width = one["size"]["width"].as_f64().expect("IHDR width");
+    assert!(
+        (width - box_w).abs() <= 1.0,
+        "PNG IHDR width {width} must equal the layout box width {box_w}"
+    );
+    assert_eq!(one["checksum"], two["checksum"], "deterministic bytes must match");
+    assert_eq!(one["bytes"], two["bytes"]);
+
+    // Format passthrough names the encoding it actually produced.
+    let jpeg = s.call("browser_screenshot", json!({"format": "jpeg", "quality": 70}));
+    assert!(!is_error(&jpeg), "{}", text_of(&jpeg));
+    assert_eq!(structured(&jpeg)["mimeType"], json!("image/jpeg"));
+
+    // A quality on a lossless encoding is refused by name.
+    let png_quality = s.call("browser_screenshot", json!({"format": "png", "quality": 70}));
+    assert!(is_error(&png_quality), "png + quality must be refused");
+
+    // A ref that was never minted is typed, never a shot of something else.
+    let wrong = s.call("browser_screenshot", json!({"element": "@e9999", "deterministic": true}));
+    assert!(is_error(&wrong), "an unknown ref must fail");
+    assert_eq!(structured(&wrong)["code"], json!("stale_ref"));
+}
+

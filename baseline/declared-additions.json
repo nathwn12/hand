@@ -5,6 +5,12 @@
     "browser_click": [
       "properties.button",
       "properties.clickCount"
+    ],
+    "browser_screenshot": [
+      "properties.clip",
+      "properties.element",
+      "properties.format",
+      "properties.quality"
     ]
   },
   "outputSchema": {
@@ -13,6 +19,11 @@
     ],
     "browser_hover": [
       "properties.resolved"
+    ],
+    "browser_screenshot": [
+      "properties.clip",
+      "properties.element",
+      "properties.format"
     ],
     "browser_select": [
       "properties.resolved"
@@ -34,6 +45,7 @@
     "description": [
       "browser_click",
       "browser_hover",
+      "browser_screenshot",
       "browser_select",
       "browser_snapshot",
       "browser_type",

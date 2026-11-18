@@ -927,6 +927,7 @@ async fn assert_layout_inner(
                 deterministic: true,
                 width: None,
                 height: None,
+                ..Default::default()
             },
         )
         .await?;
