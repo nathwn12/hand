@@ -1,5 +1,5 @@
 {
-  "$comment": "Derived baseline for hand-mcp. Tools are the pinned legacy catalogues with the documented browser_/desktop_ prefix; no schema, description, annotation or ordering was changed. Regenerate with: node baseline/scripts/build-hand-catalog.mjs",
+  "$comment": "Derived baseline for hand. Tools are the pinned legacy catalogues with the documented browser_/desktop_ prefix; no schema, description, annotation or ordering was changed. Regenerate with: node baseline/scripts/build-hand-catalog.mjs",
   "blockers": [],
   "counts": {
     "browser": 25,
