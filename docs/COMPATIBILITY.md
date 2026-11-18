@@ -174,6 +174,57 @@ so an attached or capability-restricted engine is described as it really is.
    fails. Removing one entry from that list turns `compare-catalog` red —
    verified, not assumed.
 
+## External CDP engines
+
+`GLADIUS_CDP_URL` attaches the browser domain to any CDP endpoint instead of the
+owned `chrome-headless-shell`; `initialize` then reports `backend: "external-cdp"`
+with that URL. The engine is not bundled, not installed and not owned: `hand`
+sends commands and does not reap the process.
+
+Compatibility is **per release and by observation**. A vendor's documented
+domain list is not evidence — the measured case below had a domain that every
+one of 22 sampled vendor documents omitted and the binary answered.
+
+Measured 2026-11-18 against Obscura v0.2.7 (`obscura-x86_64-windows.zip`,
+72,427,564 B), attach over loopback, `data:` URL fixture, no credentials:
+
+| Call | Result |
+|---|---|
+| `browser_navigate` | ok, `{"url":"data:…","title":"probe"}` |
+| `browser_cdp Accessibility.getFullAXTree` | ok, 8 nodes; `button "Press"`, `textbox "Field"`, `StaticText "body text"` |
+| `browser_snapshot` | 6 nodes `@e1..@e6`, page text `Press body text` |
+| `browser_click #b` | `{"ok":true}`; `#b.textContent` `"Press"` → `"1"` |
+| `browser_assert_layout #b` | `pass:true`, box `8,8 19×20`, viewport 1280×720 |
+| `browser_screenshot` | PNG 6,958 B, 1280×720 |
+
+The accessibility tree — the surface `browser_snapshot`, ref clicks and ref
+typing are built on — **works** on that engine even though its documentation
+does not list the domain.
+
+Known limits on that engine, measured, not inferred:
+
+- `browser_context {action:"destroy"}` fails `-32601` (`Browser context not
+  found`): its `createBrowserContext` mints a context that `Storage.getCookies`
+  and `Target.disposeBrowserContext` cannot then resolve. `hand` reports the
+  context as still tracked rather than claiming disposal; on this engine an
+  isolated context leaks until the engine exits, and `disposeOnDetach` cannot be
+  honoured.
+- `browser_visual {action:"compare"}` needs the engine started with
+  `--allow-file-access`; with it, `pixelsIdentical:true`, `diffPixels:0`. That
+  flag also permits `file://` navigation, so `hand` does not request it and the
+  user must enable it knowingly.
+- `RootWebArea.name` is absent rather than empty; `browser_snapshot` normalises
+  both to `""`, so a selector keyed on the document root's name does not resolve.
+- Visual baselines are comparable only within one engine: `hand` records backend
+  and version, so a cross-engine comparison reports an environment mismatch by
+  design.
+
+Vendor performance claims for that engine (about 30 MB resident against 200+ MB,
+85 ms page load against about 500 ms, instant against about 2 s startup) were
+**not** measured here and are repeated as claims, not as receipts. The owned
+`chrome-headless-shell` remains the default backend; this route is an option,
+not a replacement. The artifact's signature was not verified.
+
 ## Not preserved / not claimed
 
 - A shared ref grammar or merged tools: none. Browser and desktop references
