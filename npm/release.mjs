@@ -22,6 +22,20 @@ const skipBuild = process.argv.includes('--skip-build');
 function run(cmd, args, opts = {}) {
   return execFileSync(cmd, args, { cwd: repo, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...opts }).trim();
 }
+// npm is a .cmd shim on Windows and cannot be spawned directly; go through cmd.
+function npmInvocation(args) {
+  return process.platform === 'win32'
+    ? [process.env.ComSpec || 'cmd.exe', ['/d', '/c', 'npm', ...args]]
+    : ['npm', args];
+}
+function npmOut(args, opts = {}) {
+  const [cmd, full] = npmInvocation(args);
+  return run(cmd, full, opts);
+}
+function npmExec(args, opts = {}) {
+  const [cmd, full] = npmInvocation(args);
+  return execFileSync(cmd, full, opts);
+}
 function fail(step, message, code = 1) {
   console.error(`FAIL ${step}: ${message}`);
   process.exit(code);
@@ -58,7 +72,7 @@ if (!skipBuild) {
 // 3. Pack and extract, then prove the artifact from its own bytes.
 const work = mkdtempSync(join(tmpdir(), 'hand-release-'));
 const tarballName = step('pack', () => {
-  const out = run('npm', ['pack', '--pack-destination', work], { cwd: here });
+  const out = npmOut(['pack', '--pack-destination', work], { cwd: here });
   return out.split(/\r?\n/).filter(Boolean).pop();
 });
 const tarball = join(work, tarballName);
@@ -103,12 +117,12 @@ console.log(`check: ${tarballName} ${pkg.version} ${head.slice(0, 8)} tools=${ha
 
 // 5. Publish only after the checks above, then make the registry prove it.
 if (publish) {
-  step('whoami', () => run('npm', ['whoami'], { cwd: here }));
+  step('whoami', () => npmOut(['whoami'], { cwd: here }));
   console.log('publish: npm publish --access public (a passkey URL may appear)');
   const publishArgs = ['publish', '--access', 'public'];
   if (ci) publishArgs.push('--provenance');
-  step('publish', () => execFileSync('npm', publishArgs, { cwd: here, stdio: ['inherit', 'inherit', 'inherit'] }));
-  const live = step('registry', () => run('npm', ['view', `${pkg.name}@${pkg.version}`, 'version'], { cwd: here }));
+  step('publish', () => npmExec(publishArgs, { cwd: here, stdio: ['inherit', 'inherit', 'inherit'] }));
+  const live = step('registry', () => npmOut(['view', `${pkg.name}@${pkg.version}`, 'version'], { cwd: here }));
   if (live !== pkg.version) fail('registry', `registry reports ${live}, manifest says ${pkg.version}`);
   console.log(`published: ${pkg.name}@${live}`);
 }
