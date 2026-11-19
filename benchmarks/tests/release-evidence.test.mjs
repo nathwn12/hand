@@ -1,6 +1,3 @@
-// Release-build evidence tests: a real cargo --release build in a temporary
-// git repository, then tampering and missing-evidence cases. The tiny crate is
-// only a recorder test; it is not a product benchmark.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -55,8 +52,6 @@ async function makeCrate(dir) {
     '[package]\nname = "hand-bench-sample"\nversion = "0.1.0"\nedition = "2021"\n\n[[bin]]\nname = "hand-bench-sample"\npath = "src/main.rs"\n',
     "utf8",
   );
-  // The product contract under test: `--version` prints the commit and cargo
-  // profile compiled in, so the measured bytes carry their own identity.
   await writeFile(
     join(crate, "build.rs"),
     [

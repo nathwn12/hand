@@ -54,7 +54,6 @@ const FORMULA: &str = "screen_x = source.x + round((img_x + 0.5) * source.w / im
 const SUPPORTED_VERSIONS: [&str; 2] = ["2025-06-18", "2025-11-25"];
 const LATEST_VERSION: &str = "2025-11-25";
 const MODERN_VERSION: &str = "2026-07-28";
-// Batching is not implemented, so 2024-11-05 and 2025-03-26 are not advertised: do not serve what we do not support.
 const ALL_VERSIONS: [&str; 3] = ["2025-06-18", "2025-11-25", "2026-07-28"];
 const ELEMENT_CAP: usize = 200;
 const UIA_DEPTH_LIMIT: i64 = 8;
@@ -212,9 +211,6 @@ pub(crate) fn is_int_overflow(v: &Value) -> bool {
             if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
                 return false;
             }
-            // Handle the sign edge explicitly: the magnitude of i64::MIN
-            // (9223372036854775808) overflows a positive i64 accumulation,
-            // so accumulate the magnitude as unsigned and compare once.
             let mut mag: u64 = 0;
             for b in digits.bytes() {
                 mag = match mag
@@ -579,7 +575,6 @@ fn missing_arg(_tool: &str, args: &Map<String, Value>, field: &str) -> VErr {
     }
 }
 
-// ---------------------------------------------------------------- python-compatible JSON dumps
 
 /// Float rendering matching Python repr() for the value ranges this server
 /// emits (bounded magnitudes; never exponent-form, never non-finite).
@@ -787,14 +782,6 @@ fn wrapped_text(s: &str) -> String {
             "error: internal: tool payload is not a JSON object or array",
         )]);
     };
-    // Tool-level failure is signalled by the payload itself: any object
-    // with top-level `"ok": false` (window resolve/action errors, elements
-    // resolve errors, cursor read errors) is `isError: true`. `do` is the one
-    // exception by contract: its `ok` is false when ANY action failed, but a
-    // burst is continue-always, so only a burst where NOTHING succeeded (its
-    // `results` carry no `ok:true`) is a tool error - plus a hidden launch that
-    // never created its target, where a target-free action's success is not
-    // evidence (see `hidden_launch_failed`).
     let is_err = payload_is_err(&sc);
     format!(
         "{{\"content\":[{}],\"isError\":{},\"structuredContent\":{}}}",
@@ -893,19 +880,11 @@ fn enum_child_windows(hwnd: HWND) -> Result<Vec<HWND>, String> {
     };
     let mut v: Vec<isize> = Vec::new();
     unsafe {
-        // Measured: EnumChildWindows returns FALSE with last-error 0 for a
-        // valid window with no children, and pywin32 does not raise there
-        // (python falls into the empty-list branch). Only a nonzero
-        // last-error is a real failure.
         SetLastError(0);
         let ok = EnumChildWindows(hwnd, Some(child_cb), &mut v as *mut Vec<isize> as LPARAM);
         if ok == 0 {
             let code = GetLastError();
             if code != 0 {
-                // pywin32 raises pywintypes.error (code, funcname, message);
-                // str(e) renders as the tuple below (reading: pywin32
-                // error-tuple str convention; only reachable when UIA also
-                // failed on a live hwnd, i.e. effectively never).
                 let mut buf = vec![0u16; 256];
                 let n = FormatMessageW(
                     FORMAT_MESSAGE_FROM_SYSTEM,
@@ -1148,7 +1127,6 @@ fn cloaked(hwnd: HWND) -> i64 {
 
 fn win_dpi(hwnd: HWND) -> i64 {
     unsafe {
-        // GetDpiForWindow returns 0 on failure per contract (python try/except).
         GetDpiForWindow(hwnd) as i64
     }
 }
@@ -1280,9 +1258,6 @@ fn window_info(hwnd: HWND, include_app_ids: bool) -> Option<Map<String, Value>> 
         m.insert("hwnd".to_string(), Value::from(hwnd as i64));
         m.insert("pid".to_string(), Value::from(pid as i64));
         m.insert("exe".to_string(), Value::from(exe_of_pid(pid)));
-        // Opt-in: the AppUserModelID comes from the window's property store,
-        // which is a per-window COM read, so it is only paid for on request.
-        // null (never a guess) when the store or property is unavailable.
         if include_app_ids {
             m.insert(
                 "appId".to_string(),
@@ -1329,9 +1304,6 @@ fn window_info(hwnd: HWND, include_app_ids: bool) -> Option<Map<String, Value>> 
         m.insert("cloaked".to_string(), Value::from(cloaked(hwnd)));
         m.insert("visible".to_string(), Value::from(true));
         m.insert("dpi".to_string(), Value::from(win_dpi(hwnd)));
-        // Gap 2: elevation names the UIPI condition. true = elevated target
-        // (input from this server is UIPI-blocked), false = not, null =
-        // unreadable (fail-open: unknown is never named elevated).
         m.insert(
             "elevated".to_string(),
             match window_elevated(hwnd) {
@@ -1373,7 +1345,6 @@ fn candidates() -> Vec<Cand> {
                 foreground: h == fg,
             });
         }
-        // Foreground-most first, stable (enum order already z-order).
         rows.sort_by_key(|c| !c.foreground);
         rows
     }
@@ -1424,7 +1395,6 @@ pub(crate) fn hr_text(hr: i32) -> String {
 }
 
 pub(crate) fn win32_text(code: u32) -> String {
-    // HRESULT::from_win32 (windows-result 0.2.0 hresult.rs:117-124).
     let hr = if code as i32 <= 0 {
         code as i32
     } else {
@@ -1542,7 +1512,6 @@ mod tests {
 
     #[test]
     fn region_validator_table() {
-        // Order: inverted or empty edges reject without any subtraction.
         assert!(matches!(
             validate_region(5000, 0, 0, 100, 8192),
             Err(RegionReject::Order)
@@ -1555,7 +1524,6 @@ mod tests {
             validate_region(0, 0, 0, 100, 8192),
             Err(RegionReject::Order)
         ));
-        // Extremes: MIN/MAX (and any out-of-i32 coord) reject before cast.
         assert!(matches!(
             validate_region(i64::MIN, 0, i64::MAX, 100, 8192),
             Err(RegionReject::Extreme)
@@ -1568,7 +1536,6 @@ mod tests {
             validate_region(0, 0, i64::MAX, 100, 8192),
             Err(RegionReject::Extreme)
         ));
-        // Over-cap: width and height each reject with their sizes.
         match validate_region(0, 0, 9000, 100, 8192) {
             Err(RegionReject::OverCap(w, h)) => assert_eq!((w, h), (9000, 100)),
             other => panic!("width>cap must reject OverCap, got: {other:?}"),
@@ -1577,7 +1544,6 @@ mod tests {
             Err(RegionReject::OverCap(w, h)) => assert_eq!((w, h), (100, 5000)),
             other => panic!("height>cap must reject OverCap, got: {other:?}"),
         }
-        // Valid edge: exactly the cap passes.
         assert_eq!(
             validate_region(0, 0, 8192, 100, 8192).expect("edge==cap"),
             (8192, 100)

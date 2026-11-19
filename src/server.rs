@@ -121,8 +121,6 @@ fn server_info() -> Value {
             }
         },
         "count": catalog::BROWSER_TOOLS.len() + catalog::DESKTOP_TOOLS.len(),
-        // hand's own browser capability, stated where discovery reads it so a
-        // client learns what contexts do and do not guarantee before using one.
         "isolatedContexts": browser_engine::contexts::capability_info()["isolatedContexts"].clone(),
     })
 }
@@ -437,8 +435,6 @@ impl EngineKind {
                  exit ends the worker",
             );
         }
-        // The ownership clause describes what happens to a BROWSER call's page
-        // state; a desktop-only shutdown has no browser work to attribute.
         if browser > 0 {
             match self {
                 Self::Owned => line.push_str(
@@ -555,8 +551,6 @@ impl State {
         for mut worker in workers {
             let left = deadline.saturating_duration_since(Instant::now());
             if left.is_zero() {
-                // A worker can finish while an earlier one consumes the grace;
-                // a finished handle is not abandoned work.
                 if !worker.handle.is_finished() {
                     abandoned.push(worker);
                 }
@@ -580,13 +574,8 @@ impl State {
         let desktop = abandoned.len() - browser;
         eprintln!("{}", kind.abandonment(grace, browser, desktop));
         for worker in abandoned.iter_mut() {
-            // For a desktop wrapper this only drops the join future; the
-            // blocking job it waits on is not cancelled.
             worker.handle.abort();
         }
-        // One shared settle window: aborted wrappers must drop their locals
-        // (including the browser engine task guard) before the browser is
-        // closed. A blocking desktop job is not part of this settle.
         let settle_deadline = Instant::now() + ABORT_SETTLE;
         let mut unsettled = 0usize;
         for worker in abandoned.iter_mut() {
@@ -715,10 +704,6 @@ pub async fn serve() -> Result<(), String> {
 }
 
 async fn shutdown(state: &Arc<State>) {
-    // Nothing answered after EOF has a reader, so discarded results are silent.
-    // Drain each map into a Vec BEFORE touching per-call state: workers lock a
-    // call's state and then the map, so holding the map while locking state here
-    // would be the opposite order and could deadlock.
     let browser_calls: Vec<Arc<BrowserCall>> = {
         let mut calls = state.browser_calls.lock().await;
         calls.drain().map(|(_, call)| call).collect()
@@ -736,19 +721,12 @@ async fn shutdown(state: &Arc<State>) {
         call.cancelled.store(true, Ordering::SeqCst);
         desktop_engine::cancel_call(&key);
     }
-    // Wait for in-flight work to finish its own cleanup. An owned engine is
-    // killed next; an attached engine is not ours and keeps running, so its
-    // calls get a longer window. The bound is real: reaching it aborts the
-    // work and the log says the restore is unverified rather than promising it.
     let kind = EngineKind::of(&browser_engine::backend_info());
     let grace = match kind {
         EngineKind::Owned => EOF_DRAIN_OWNED,
         EngineKind::Attached => EOF_DRAIN_ATTACHED,
     };
     state.drain_tasks(grace, kind).await;
-    // Contexts act through this browser, so they are disposed before it closes:
-    // closing first would leave their ids unaddressable and could relaunch an
-    // engine purely to dispose them. Bounded, because disposal is CDP work.
     if tokio::time::timeout(CONTEXT_CLOSE_GRACE, state.contexts.shutdown())
         .await
         .is_err()
@@ -801,8 +779,6 @@ async fn handle_frame(value: Value, state: &Arc<State>, tx: &mpsc::UnboundedSend
         return;
     }
 
-    // Notifications: no response, whatever the method. Cancellation is the only
-    // one with an effect.
     if !has_id {
         if method == "notifications/cancelled" {
             if let Some(rid) = value.get("params").and_then(|p| p.get("requestId")) {
@@ -818,8 +794,6 @@ async fn handle_frame(value: Value, state: &Arc<State>, tx: &mpsc::UnboundedSend
         return;
     }
 
-    // Per-request version: an explicit version outside the known set is refused
-    // before dispatch, with the supported list.
     let requested = meta_version(&value);
     if let Some(ref v) = requested {
         if !v.as_str().is_some_and(|s| SUPPORTED.contains(&s)) {
@@ -875,10 +849,6 @@ async fn handle_frame(value: Value, state: &Arc<State>, tx: &mpsc::UnboundedSend
 async fn cancel_call(id: &Value, state: &Arc<State>, tx: &mpsc::UnboundedSender<Value>) {
     let key = id_key(id);
 
-    // Desktop: flip the engine token and keep the in-flight entry in place
-    // until its worker ends. Puppet's contract is silence, so no response is
-    // written for this id. Keeping the entry is what makes a reused id a
-    // refusal instead of a new call silently riding the cancelled token.
     {
         let entry = state.desktop_calls.lock().await.get(&key).cloned();
         if let Some(entry) = entry {
@@ -888,10 +858,6 @@ async fn cancel_call(id: &Value, state: &Arc<State>, tx: &mpsc::UnboundedSender<
         }
     }
 
-    // Browser: answer now with the typed cancelled result and discard the late
-    // result. Hand does not abort the call here, so a restore that is already
-    // running is not cut off by hand; it still depends on the engine finishing
-    // that work, and the answer reports the outcome as unknown.
     let entry = state.browser_calls.lock().await.remove(&key);
     if let Some(entry) = entry {
         let mut s = entry.state.lock().await;
@@ -965,19 +931,11 @@ async fn dispatch_call(
             let tx = tx.clone();
             let task = tokio::spawn(async move {
                 let _permit = permit;
-                // The engine call gets its own task. A budget expiry must settle
-                // the CLIENT's answer without dropping the engine future: a
-                // deterministic capture restores its freeze/viewport/media at
-                // the end, and a dropped future never runs that restore.
                 let engine_tool = legacy.clone();
                 let engine_args = args.clone();
                 let engine_browser = browser.clone();
                 let engine_contexts = contexts.clone();
                 let mut worker = EngineTask::spawn(async move {
-                    // hand's own contexts are dispatched first and share the
-                    // browser's slot, budget and cancellation path, so a
-                    // cancelled create still commits (its acquisition runs in a
-                    // task of its own).
                     if let Some(body) = browser_engine::contexts::dispatch(
                         &engine_tool,
                         &engine_args,
@@ -995,10 +953,6 @@ async fn dispatch_call(
                 let body = match outcome {
                     Ok(Ok(value)) => Some(value),
                     Ok(Err(join)) => {
-                        // The engine panicked (or its task was aborted): answer
-                        // the id instead of leaving it pending for ever. The
-                        // panic payload is NOT logged: it can contain user
-                        // content (tool arguments echoed by the panic).
                         eprintln!(
                             "[hand] browser call '{legacy}': engine task failed ({})",
                             if join.is_panic() { "panic" } else { "aborted" }
@@ -1008,8 +962,6 @@ async fn dispatch_call(
                     Err(_) => Some(budget_timeout_envelope(&legacy, budget)),
                 };
 
-                // Emit once: a client cancel may have answered this id while the
-                // engine was working.
                 let claimed = {
                     let mut s = entry.state.lock().await;
                     if s.cancelled || s.emitted {
@@ -1034,9 +986,6 @@ async fn dispatch_call(
                     }
                 }
 
-                // Answer settled. Let the engine finish its cleanup before the
-                // slot is released; a wedged engine is named, not waited on for
-                // ever.
                 if timed_out
                     && tokio::time::timeout(ENGINE_CLEANUP_GRACE, &mut worker.0)
                         .await
@@ -1066,10 +1015,6 @@ async fn dispatch_call(
             let entry = Arc::new(DesktopCall {
                 cancelled: AtomicBool::new(false),
             });
-            // Publish the entry before the worker starts so a cancel that
-            // arrives in between is not lost. An id already in flight is
-            // refused: the engine has one token per id, so a second call would
-            // silently ride the first call's - possibly cancelled - token.
             {
                 let mut map = state.desktop_calls.lock().await;
                 if map.contains_key(&key) {
@@ -1103,18 +1048,12 @@ async fn dispatch_call(
             let params = json!({"name": legacy, "arguments": args});
             let desktop_calls = state.desktop_calls.clone();
             let tx = tx.clone();
-            // Test-only hook: a controlled blocking job that never touches a
-            // window. It exists to prove the process exit is bounded when a
-            // started spawn_blocking job cannot be stopped.
             let stuck_ms = test_stuck_desktop_ms();
             let task = tokio::spawn(async move {
                 let _permit = permit;
                 let call_key = key.clone();
                 let worker_id = id.clone();
                 let result = tokio::task::spawn_blocking(move || {
-                    // Counts this job for its whole life: main's runtime-bound
-                    // line reads it to avoid claiming a desktop job was stuck
-                    // when none was running.
                     let _active = ActiveDesktopJob::enter();
                     if let Some(ms) = stuck_ms {
                         eprintln!(
@@ -1136,8 +1075,6 @@ async fn dispatch_call(
                         map.remove(&key);
                     }
                 }
-                // Cancellation wins over EVERY outcome, panic included: Puppet's
-                // contract is silence for a cancelled id.
                 if entry.cancelled.load(Ordering::SeqCst) {
                     return;
                 }
@@ -1153,8 +1090,6 @@ async fn dispatch_call(
                         ));
                     }
                     Err(_) => {
-                        // Fixed prose on purpose: a JoinError's payload can echo
-                        // user content, and a worker fault is not a tool verdict.
                         let _ = tx.send(error_frame_data(
                             &id,
                             -32603,

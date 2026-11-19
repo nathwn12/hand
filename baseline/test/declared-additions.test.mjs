@@ -1,12 +1,3 @@
-// The declared allowance is the one place a legacy tool may differ by hand:
-// schema properties it adds, and descriptions it rewrites.
-//
-// These tests exist so the allowance cannot rot into "anything may differ": each
-// one breaks a copy of the candidate in a single way and requires the comparator
-// to reject it, and the same copies are run through the real CLI so the exit
-// code - not only the in-process verdict - is what is asserted.
-//
-//   node --test baseline/test/
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -30,7 +21,6 @@ const rawFile = JSON.parse(readFileSync(DECLARED_ADDITIONS_PATH, "utf8"));
 const clone = (value) => JSON.parse(JSON.stringify(value));
 
 const ALLOWANCE_KEYS = ["inputSchema", "outputSchema"];
-/** The seven tools whose description this tree rewrote, and only those. */
 const DECLARED_DESCRIPTIONS = [
   "browser_click",
   "browser_hover",
@@ -41,7 +31,6 @@ const DECLARED_DESCRIPTIONS = [
   "browser_upload",
 ];
 
-/** Set a dotted path in a plain object, creating intermediate objects. */
 function setPath(root, dotted, value) {
   const segments = dotted.split(".");
   const last = segments.pop();
@@ -52,7 +41,6 @@ function setPath(root, dotted, value) {
   parent[last] = value;
 }
 
-/** Delete a dotted path, doing nothing when it is already absent. */
 function deletePath(root, dotted) {
   const segments = dotted.split(".");
   const last = segments.pop();
@@ -60,13 +48,6 @@ function deletePath(root, dotted) {
   if (parent && typeof parent === "object") delete parent[last];
 }
 
-/**
- * A candidate that is the pinned floor plus exactly what the allowance file
- * declares: the schema additions, and the rewritten descriptions. Stub schema
- * values are enough because the comparator removes those paths before
- * comparing; for a description only "differs from the pin" matters, so a
- * declared tool gets a sentence the pin never carried.
- */
 function additiveCandidate() {
   const candidate = { tools: clone(handCatalog.tools) };
   for (const key of ALLOWANCE_KEYS) {
@@ -84,7 +65,6 @@ function additiveCandidate() {
   return candidate;
 }
 
-/** Run the real comparator on a candidate file and return its exit code and output. */
 function runCli(candidate) {
   const dir = mkdtempSync(join(tmpdir(), "hand-declared-"));
   const file = join(dir, "candidate.tools.json");
@@ -105,7 +85,6 @@ test("the allowance file is versioned, dotted and read by the comparator itself"
   const unknown = Object.keys(rawFile).filter((key) => !["$comment", "version", "metadata", ...ALLOWANCE_KEYS].includes(key));
   assert.deepEqual(unknown, [], "only declared schema keys and metadata may appear at the top level");
 
-  // What catalog.mjs compares with is this file, parsed - not a copy of it.
   assert.deepEqual(DECLARED_ADDITIONS, {
     version: rawFile.version,
     inputSchema: rawFile.inputSchema,
@@ -122,8 +101,6 @@ test("the allowance file is versioned, dotted and read by the comparator itself"
       const tool = handCatalog.tools.find((entry) => entry.name === name);
       for (const path of paths) {
         assert.match(path, /^[A-Za-z0-9_$-]+(\.[A-Za-z0-9_$-]+)+$/, `${key}.${name}: ${path} is not a dotted path`);
-        // An allowance for something the pin already carries would strip a
-        // pinned property, hiding a removal behind a "declared" label.
         assert.equal(
           hasDeclaredPath(tool[key], path),
           false,
@@ -133,8 +110,6 @@ test("the allowance file is versioned, dotted and read by the comparator itself"
     }
   }
 
-  // The metadata section declares descriptions and nothing else: `title` is
-  // pinned with no exceptions, so a title allowance would be a different gate.
   assert.deepEqual(Object.keys(rawFile.metadata), ["description"], "only description may be declared");
   assert.deepEqual(
     [...rawFile.metadata.description].sort(),
@@ -208,8 +183,6 @@ test("a declared addition that is missing fails: red on a deleted properties.cli
   assert.ok(missing, JSON.stringify(report.declaredMissing));
   assert.equal(missing.kind, "inputSchema");
   assert.deepEqual(missing.paths, ["properties.clickCount"]);
-  // The schema itself still matches the pin, so the failure must come from the
-  // presence check, not from an accidental deep-equal mismatch.
   assert.deepEqual(report.schemaMismatches, []);
 
   const cli = runCli(candidate);
@@ -232,9 +205,6 @@ test("a listed addition under a renamed property fails, because presence is chec
 });
 
 test("an eighth tool's rewritten description fails: red on an undeclared description", () => {
-  // The point of the metadata section: a description is a failing comparison by
-  // default, exactly like a schema, and the seven names in the file are the only
-  // ones that may differ. `browser_navigate` is deliberately not one of them.
   const candidate = additiveCandidate();
   const navigate = candidate.tools.find((tool) => tool.name === "browser_navigate");
   navigate.description = "Go somewhere";
@@ -255,8 +225,6 @@ test("an eighth tool's rewritten description fails: red on an undeclared descrip
 });
 
 test("a declared description left at the pin fails as a stale declaration", () => {
-  // The declaration says "this one was rewritten". Restoring the pin verbatim
-  // makes the entry false, and a false entry is what lets real drift hide later.
   const candidate = additiveCandidate();
   const pin = handCatalog.tools.find((tool) => tool.name === "browser_click");
   const click = candidate.tools.find((tool) => tool.name === "browser_click");
@@ -268,8 +236,6 @@ test("a declared description left at the pin fails as a stale declaration", () =
   assert.ok(stale, JSON.stringify(report.declaredMissing));
   assert.equal(stale.kind, "metadata.description");
   assert.deepEqual(stale.paths, ["description"]);
-  // The string equals the pin, so the failure has to come from the declaration,
-  // not from an accidental metadata mismatch.
   assert.deepEqual(report.metadataDrift, []);
 
   const cli = runCli(candidate);
@@ -279,8 +245,6 @@ test("a declared description left at the pin fails as a stale declaration", () =
 });
 
 test("a title difference fails even on a tool whose description is declared", () => {
-  // Title has no declared exceptions at all: it is pinned for every tool, and
-  // the description allowance must not be read as a metadata allowance.
   const candidate = additiveCandidate();
   const click = candidate.tools.find((tool) => tool.name === "browser_click");
   const pin = handCatalog.tools.find((tool) => tool.name === "browser_click");
@@ -311,8 +275,6 @@ test("the green candidate is green through the real CLI, exit 0", () => {
 });
 
 test("the legacy profile is never allowed to grow: a declared path does not soften a recapture", () => {
-  // The re-capture profile proves a pinned binary still emits what is committed.
-  // If an allowance leaked into it, the committed pin would no longer be exact.
   const gladius = JSON.parse(readFileSync(resolve(ROOT, "catalog", "gladius-59c6d77.tools.json"), "utf8")).tools;
   const candidate = { tools: clone(gladius) };
   const click = candidate.tools.find((tool) => tool.name === "click");

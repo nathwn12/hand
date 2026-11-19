@@ -88,8 +88,6 @@ fn unique_desktop_name() -> String {
         .filter(|b| b.is_ascii_digit())
         .map(|b| b as char)
         .collect();
-    // Address of a call-local: distinct per live `spawn()` frame, adds
-    // entropy when two calls land in the same nanosecond on one thread.
     let stack_entropy = &nanos as *const _ as usize;
     format!("puppet_hidden_{pid}_{nanos}_{tid_digits}_{stack_entropy:x}")
 }
@@ -197,7 +195,6 @@ mod job {
                         GetLastError()
                     ));
                 }
-                // The list must be pointer-aligned; a Vec<usize> gives that.
                 let words = size.div_ceil(std::mem::size_of::<usize>());
                 let mut attrs = vec![0usize; words];
                 let list = attrs.as_mut_ptr() as LPPROC_THREAD_ATTRIBUTE_LIST;
@@ -334,22 +331,9 @@ pub struct Hidden {
 impl Hidden {
     pub fn teardown(mut self) -> Done {
         let _ = self.tx_go.send(());
-        // The capture this wait covers (`PrintWindow` on the hidden desktop)
-        // must run on the hidden-desktop thread ÔÇö a helper thread would be on
-        // another desktop and could not paint that window ÔÇö so it is bounded
-        // from the caller side instead: the owner thread's result is awaited
-        // for the Capture family's deadline (the same clamped,
-        // env-overridable limit every other PrintWindow call uses) and a
-        // stalled provider returns the typed `capture_timeout` line rather
-        // than a bespoke timeout string.
         let limit = crate::deadline::limit(crate::deadline::Family::Capture);
         let done = match self.rx_done.recv_timeout(limit) {
             Ok(d) => d,
-            // A refused setup never reaches capture+teardown: the owner returns
-            // its setup error and drops its sender. That is not a capture
-            // timeout and must not be reported as one - no capture was asked
-            // for, so an "unresponsive UI thread" line would be a fabricated
-            // diagnosis. The setup refusal itself is carried in `Ready.error`.
             Err(mpsc::RecvTimeoutError::Disconnected) => Done {
                 alive: false,
                 text: None,
@@ -398,14 +382,8 @@ impl Hidden {
                 let _ = j.join();
             }
         } else {
-            // Timed-out (or otherwise unproven) teardown: detach rather than
-            // hang the caller on join; the owner thread finishes on its own.
             let _ = self.join.take();
         }
-        // Final backstop, never earlier: closing the job reaps anything the
-        // graceful path left behind (a windowless descendant, a launcher stub's
-        // successor). It is also what fires on the timeout arm above, and on a
-        // caller that drops `Hidden` without calling teardown at all.
         drop(self.job.take());
         done
     }
@@ -522,9 +500,6 @@ pub fn spawn(program: &str, args: &[String]) -> Hidden {
     let join = std::thread::spawn(move || {
         owner(prog, argv, nm, tx_ready, tx_cover, rx_ack, rx_go, tx_done)
     });
-    // Hand-off, bounded: the cover is sent only after the target exists inside
-    // it, so a caller that stopped waiting makes the owner terminate the launch
-    // (send fails) or abort on the missing acknowledgement.
     let job = match rx_cover.recv_timeout(Duration::from_secs(5)) {
         Ok(c) => {
             let _ = tx_ack.send(());
@@ -532,9 +507,6 @@ pub fn spawn(program: &str, args: &[String]) -> Hidden {
         }
         Err(_) => None,
     };
-    // Worst-case setup is bounded: window discovery (8 s) + text-target
-    // readiness (3 s) + title-stem wait (4 s), so 20 s leaves headroom over
-    // the sum while still failing fast when the owner thread dies.
     let ready = match rx_ready.recv_timeout(Duration::from_secs(20)) {
         Ok(r) => r,
         Err(_) => Ready {
@@ -550,8 +522,6 @@ pub fn spawn(program: &str, args: &[String]) -> Hidden {
             error: Some("hidden-desktop setup timed out after 15s".to_string()),
         },
     };
-    // Only a launch that actually created a process under the job reports the
-    // cover: a refused launch keeps its handle but covered nothing.
     let hard_kill_cover = job.is_some() && ready.created;
     Hidden {
         ready,
@@ -619,8 +589,6 @@ fn owner(
     tx_done: mpsc::Sender<Done>,
 ) {
     unsafe {
-        // 1. Hard-kill cover FIRST, and the owner keeps the only handle for
-        // now. No desktop, no process until it is armed.
         let cover = match job::Cover::arm() {
             Ok(c) => c,
             Err(e) => {
@@ -658,10 +626,6 @@ fn owner(
         }
         let set_ok = SetThreadDesktop(hdesk) != 0;
 
-        // 2. Launch the target with its desktop pinned to the hidden one and
-        // its job membership set at creation. The cover handle is used here
-        // while the owner still owns it, so it cannot have been closed by the
-        // caller underneath us.
         let start = match job::StartInfo::new(cover.raw(), name_w.as_ptr() as PWSTR) {
             Ok(s) => s,
             Err(e) => {
@@ -703,12 +667,8 @@ fn owner(
             ));
             return;
         }
-        // The attribute list is only needed for the creation call.
         drop(start);
 
-        // 3. Verify the guarantee instead of assuming it: the target must be in
-        // the job the owner is holding. A launch that is not covered is
-        // terminated here rather than left running as an orphan nobody can find.
         match job::contains(cover.raw(), pi.hProcess) {
             Ok(true) => {}
             verified => {
@@ -730,9 +690,6 @@ fn owner(
             }
         }
 
-        // 4. Transfer the cover LAST, and never use the handle afterwards. If
-        // the caller stopped waiting (send failed) or never acknowledges, the
-        // target is terminated here instead of continuing without a holder.
         let handed_over = match tx_cover.send(cover) {
             Ok(()) => rx_ack.recv_timeout(Duration::from_secs(5)).is_ok(),
             Err(_) => false,
@@ -752,22 +709,14 @@ fn owner(
 
         let pid = pi.dwProcessId;
         let hwnd = wait_for_window(hdesk, pid);
-        // The top-level window turns visible before its content controls
-        // exist; wait (bounded) for a text target so posted keyboard input
-        // has a document to land in by the time the caller drives.
         if let Some(h) = hwnd {
             wait_for_text_target(h as HWND, 3000);
             wait_for_title_stem(h as HWND, &args, 4000);
         }
-        // Snapshot the driven text controls BEFORE the caller drives, so
-        // the evidence read below can be reverted before teardown (the
-        // hidden target shares the owner's per-user persisted state).
         let mut pre_text: Vec<TextSnapshot> = Vec::new();
         if let Some(h) = hwnd {
             snapshot_edit_texts(h as HWND, &mut pre_text);
         }
-        // Same-fixture baseline for the revert proof, read with the same
-        // function as the evidence and post-revert reads.
         let pre_drive_text = hwnd.and_then(read_target_text);
         let (hwnd_class, hwnd_title, hwnd_pid) = match hwnd {
             Some(h) => (
@@ -790,10 +739,8 @@ fn owner(
             error: None,
         });
 
-        // The caller drives the target now; wait for it to finish.
         let _ = rx_go.recv();
 
-        // Evidence while the target is still alive.
         let alive = match hwnd {
             Some(h) => IsWindow(h as HWND) != 0,
             None => false,
@@ -801,19 +748,10 @@ fn owner(
         let text = hwnd.and_then(read_target_text);
         let capture = hwnd.map(capture_window);
 
-        // Revert driven input before teardown so a persisting app writes
-        // back the pre-drive content, not our evidence run.
         restore_edit_texts(&pre_text);
-        // Same-fixture revert evidence: reread with the readback function
-        // after the restore, before WM_CLOSE.
         let post_revert_text = hwnd.and_then(read_target_text);
         let reverted = post_revert_text == pre_drive_text;
 
-        // Teardown: close the target, then move the thread off the desktop
-        // BEFORE CloseDesktop (else ERROR_BUSY 170), then prove it is gone.
-        // A launcher stub may hand the window to a different pid on the same
-        // private desktop, so emptiness is judged by the desktop's windows,
-        // not only by the launched process handle.
         let close_posted = match hwnd {
             Some(h) => PostMessageW(h as HWND, WM_CLOSE, 0, 0) != 0,
             None => false,
@@ -1137,8 +1075,6 @@ fn wait_for_window(hdesk: HDESK, pid: u32) -> Option<i64> {
             EnumDesktopWindows(hdesk, Some(enum_cb), &mut ctx as *mut EnumCtx as LPARAM);
         }
         if let Some((h, score)) = pick_window(&ctx) {
-            // A visible, titled, non-zero, unowned window is the target; a
-            // weaker candidate is kept only until the deadline.
             if score >= 3 {
                 return Some(h);
             }
@@ -1451,8 +1387,6 @@ mod tests {
 
     #[test]
     fn command_line_bare_program_is_historically_quoted() {
-        // Zero-args launch keeps the exact historical form: the program
-        // alone, always double-quoted.
         assert_eq!(cmd_line("notepad.exe", &[]), "\"notepad.exe\"");
     }
 
@@ -1471,10 +1405,6 @@ mod tests {
 
     #[test]
     fn command_line_escapes_quotes_and_backslashes() {
-        // CommandLineToArgvW rules: 2n+1 backslashes before a literal
-        // quote, 2n trailing ÔÇö inside a quoted element. An element with no
-        // spaces stays bare (a trailing backslash outside quotes is
-        // literal and needs no doubling).
         assert_eq!(cmd_line("prog", &["a\"b"]), "\"prog\" \"a\\\"b\"");
         assert_eq!(
             cmd_line("prog", &["C:\\dir with space\\"]),

@@ -1,14 +1,6 @@
-// Canonical JSON helpers shared by capture, comparison and tests.
-//
-// A catalogue hash has to survive reformatting by an editor or a different
-// serializer, so hashes are taken over a canonical form (object keys sorted at
-// every level, no insignificant whitespace) and never over file bytes alone.
-// File bytes are still recorded separately, because "the server sent these
-// exact bytes" is a different fact from "the schema is this value".
 
 import { createHash } from "node:crypto";
 
-/** Deterministic JSON: object keys sorted recursively, arrays keep order. */
 export function stableStringify(value) {
   if (value === null || typeof value !== "object") return JSON.stringify(value);
   if (Array.isArray(value)) {
@@ -27,26 +19,18 @@ export function sha256(text) {
   return createHash("sha256").update(text, "utf8").digest("hex");
 }
 
-/** Canonical hash of any JSON value. */
 export function canonicalHash(value) {
   return `sha256:${sha256(stableStringify(value))}`;
 }
 
-/** Pretty printed, key-sorted, so diffs are stable across captures. */
 export function prettyCanonical(value) {
   return `${JSON.stringify(JSON.parse(stableStringify(value)), null, 2)}\n`;
 }
 
-/** Deep structural equality on parsed JSON values. */
 export function deepEqual(a, b) {
   return stableStringify(a) === stableStringify(b);
 }
 
-/**
- * Recursively collect the paths at which two JSON values differ, so a failure
- * names the exact schema location instead of dumping two large objects.
- * `limit` keeps a single broken tool from producing thousands of lines.
- */
 export function diffPaths(a, b, { path = "", out = [], limit = 40 } = {}) {
   if (out.length >= limit) return out;
   const ta = kind(a);

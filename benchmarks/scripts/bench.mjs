@@ -1,18 +1,4 @@
 #!/usr/bin/env node
-// Opt-in MCP stdio benchmark driver for docs/SPEC.md 309-336.
-//
-// One scenario per run. ≥10 warmups, 100 measured sequential requests, p50/p95/max,
-// every failure kept, and machine/binary/fixture/browser fingerprints frozen in
-// the receipt before a product number can be compared.
-//
-//   node benchmarks/scripts/bench.mjs --list
-//   node benchmarks/scripts/bench.mjs --product hand --scenario warm-ping
-//   node benchmarks/scripts/bench.mjs --product gladius --scenario browser-snapshot
-//   node benchmarks/scripts/bench.mjs --product puppet --scenario desktop-enumerate \
-//     --desktop-title-contains "hand-bench-fixture"
-//
-// The driver never launches a personal browser, never creates or resizes a
-// desktop window, and never retries a failed request.
 
 import os from "node:os";
 import { join, resolve } from "node:path";
@@ -359,9 +345,6 @@ async function main() {
       }
 
       const ctx = { origin, target, product: productId };
-      // A baseline's raw pointer flags need an outside explanation. hand's own
-      // `noSteal` block does not, so the probe only exists for desktop runs and
-      // only the no-attribution path reads it.
       if (scenario.domain === "desktop") {
         inputProbe = await startInputProbe(INPUT_PROBE);
         ctx.inputProbe = inputProbe;
@@ -772,7 +755,6 @@ function printList() {
   process.stdout.write(`${lines.join("\n")}\n`);
 }
 
-// Kept for tests that need an isolated scratch directory without touching the repo.
 export { main };
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(import.meta.filename)) {

@@ -225,8 +225,6 @@ impl Gate {
     ) -> Result<Delivery, GateError> {
         match verb {
             "move" => {
-                // A cursor move is not representable as a window message,
-                // and the pointer is never moved.
                 Err(no_cursor_policy("move"))
             }
             "click" => {
@@ -295,9 +293,6 @@ impl Gate {
                 }
             }
             "type" | "key" | "hotkey" => {
-                // `type` on an element is UIA ValuePattern.SetValue: the
-                // provider may FOCUS the control, so it is refused under the
-                // background-only policy (the burst names the control).
                 if verb == "type" && has_element {
                     return Err(background_refusal(
                         "type on an element",
@@ -305,10 +300,6 @@ impl Gate {
                          refusal naming the element",
                     ));
                 }
-                // Posted keyboard to a locked target (the private hidden
-                // desktop keeps its existing posted path); without a target
-                // there is nothing to post to and the foreground is never
-                // an option.
                 if self.has_target {
                     return Ok(Delivery::Posted);
                 }
@@ -318,8 +309,6 @@ impl Gate {
                 if !self.has_target {
                     return Err(target_refusal(verb));
                 }
-                // Invoke/toggle/expand are background-safe (no focus change
-                // observed or documented).
                 Ok(Delivery::Uia)
             }
             "set_value" => {
@@ -332,12 +321,8 @@ impl Gate {
                 ))
             }
             "focus_window" => {
-                // Focusing IS taking the foreground: refused, always.
                 Err(no_foreground_policy("focus_window"))
             }
-            // Writing the clipboard mutates owner-global state that lives
-            // outside the target window: refused, no flag buys it. Reads
-            // (`clipboard_get`) stay free.
             "clipboard_set" => Err(no_clipboard_policy("clipboard_set")),
             _ => Ok(Delivery::None),
         }
@@ -359,9 +344,6 @@ mod tests {
     #[test]
     fn default_gate_refuses_every_injecting_verb() {
         let gate = g(false, false, false);
-        // No target, no flags: every injecting verb is refused, typed.
-        // Pointer verbs name the cursor policy; keyboard names the missing
-        // target (the foreground is never an option).
         assert_eq!(
             code(gate.decide("move", true, false)),
             Some(NO_CURSOR_POLICY)
@@ -430,15 +412,12 @@ mod tests {
             code(gate.decide("scroll", false, true)),
             Some(TARGET_REQUIRED)
         );
-        // Read-only verbs never need a permit.
         assert_eq!(gate.decide("wait", false, false), Ok(Delivery::None));
         assert_eq!(gate.decide("wait_for", false, false), Ok(Delivery::None));
         assert_eq!(
             gate.decide("clipboard_get", false, false),
             Ok(Delivery::None)
         );
-        // Writing the owner's clipboard is refused under the policy, and
-        // no flag buys it.
         assert_eq!(
             code(gate.decide("clipboard_set", false, false)),
             Some(NO_CLIPBOARD_POLICY)
@@ -461,7 +440,6 @@ mod tests {
             "refusal must be typed and state nothing changed: {}",
             e.text()
         );
-        // No flag buys clipboard access ÔÇö not even all three together.
         for gate in [g(false, true, true), g(true, true, true)] {
             assert_eq!(
                 code(gate.decide("clipboard_set", false, false)),
@@ -469,7 +447,6 @@ mod tests {
                 "no flag authorises a clipboard write"
             );
         }
-        // The retained builder changes nothing.
         let allow = g(false, false, false).allow_clipboard(true);
         assert_eq!(
             code(allow.decide("clipboard_set", false, false)),
@@ -491,9 +468,6 @@ mod tests {
 
     #[test]
     fn flags_buy_nothing_no_foreground_path_exists() {
-        // Every flag combination still refuses: there is no escalation path
-        // left to unlock. Without a target, keyboard names the missing
-        // target and pointer verbs name the cursor policy.
         for gate in [g(false, true, false), g(false, true, true)] {
             assert_eq!(
                 code(gate.decide("type", false, false)),
@@ -519,7 +493,6 @@ mod tests {
                 code(gate.decide("focus_window", false, false)),
                 Some(NO_FOREGROUND_POLICY)
             );
-            // ...and flags never authorise a pointer move either.
             assert_eq!(
                 code(gate.decide("move", true, false)),
                 Some(NO_CURSOR_POLICY)
@@ -537,8 +510,6 @@ mod tests {
                 Some(NO_CURSOR_POLICY)
             );
         }
-        // With a target the flags still buy nothing new: posted delivery was
-        // already available without them, and the policy verbs keep refusing.
         let gate = g(true, true, true);
         assert_eq!(gate.decide("type", false, false), Ok(Delivery::Posted));
         assert_eq!(gate.decide("key", false, false), Ok(Delivery::Posted));
@@ -566,7 +537,6 @@ mod tests {
 
     #[test]
     fn pointer_verbs_refuse_with_no_cursor_policy() {
-        // allow_cursor alone changes nothing: the pointer is never moved.
         let cursor_only = g(false, false, true);
         for (verb, coords) in [
             ("move", true),
@@ -580,12 +550,10 @@ mod tests {
                 "{verb} with allow_cursor must still be refused"
             );
         }
-        // ...and the keyboard path never opens from the cursor flag.
         assert_eq!(
             code(cursor_only.decide("type", false, false)),
             Some(TARGET_REQUIRED)
         );
-        // Both flags: still refused, everywhere.
         let both = g(false, true, true);
         assert_eq!(
             both.decide("move", true, false).unwrap_err().code,
@@ -612,14 +580,11 @@ mod tests {
         assert_eq!(gate.decide("click", false, true), Ok(Delivery::Uia));
         assert_eq!(gate.decide("down", true, false), Ok(Delivery::Posted));
         assert_eq!(gate.decide("up", true, false), Ok(Delivery::Posted));
-        // A posted button message needs an exact point.
         let e = gate.decide("down", false, false).unwrap_err();
         assert_eq!(e.code, BACKGROUND_UNAVAILABLE);
         assert_eq!(gate.decide("drag", false, false), Ok(Delivery::Posted));
         assert_eq!(gate.decide("scroll", true, false), Ok(Delivery::Posted));
         assert_eq!(gate.decide("scroll", false, true), Ok(Delivery::Uia));
-        // Keyboard posts to the locked target: `type` on an element is UIA
-        // SetValue, whose provider may focus the control, so it is refused.
         assert_eq!(
             code(gate.decide("type", false, true)),
             Some(BACKGROUND_UNAVAILABLE)
@@ -630,25 +595,19 @@ mod tests {
                 Ok(Delivery::Posted),
                 "{verb} posts to a locked target"
             );
-            // ...but never without one: the foreground is not a fallback.
             let e = g(false, false, false)
                 .decide(verb, false, false)
                 .unwrap_err();
             assert_eq!(e.code, TARGET_REQUIRED, "{verb}");
         }
-        // The private-desktop (hidden) mode keeps its posted path.
         let private = g(true, false, false).private_desktop(true);
         assert_eq!(private.decide("type", false, false), Ok(Delivery::Posted));
         assert_eq!(private.decide("key", false, false), Ok(Delivery::Posted));
-        // UIA invoke/toggle/expand/scroll stay background-safe; UIA text
-        // entry does not (the provider may focus the control).
         assert_eq!(gate.decide("invoke", false, true), Ok(Delivery::Uia));
         assert_eq!(
             code(gate.decide("set_value", false, true)),
             Some(BACKGROUND_UNAVAILABLE)
         );
-        // Verbs with no message equivalent name the reason; a move is never
-        // a posted click.
         let e = gate.decide("move", true, false).unwrap_err();
         assert_eq!(e.code, NO_CURSOR_POLICY);
         assert!(e.text().contains("background-only policy"), "{}", e.text());
@@ -661,15 +620,9 @@ mod tests {
 
     #[test]
     fn no_permits_no_injection_apis() {
-        // The background-only policy holds no permits and no injection API:
-        // SendInput/SetCursorPos/SetForegroundWindow/BringWindowToTop have
-        // zero call sites anywhere, gate.rs included. mouse_event stays
-        // banned outright.
         let gate = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/src/gate.rs"))
             .expect("gate.rs readable");
         let prod = gate.split("#[cfg(test)]").next().unwrap_or("");
-        // Literals are concat!-assembled so the tests/no_steal.rs source
-        // scan never sees a live `Name(` call site in this test.
         for sym in [
             concat!("Send", "Input("),
             concat!("Set", "CursorPos("),
@@ -706,7 +659,6 @@ mod tests {
                 "refusal must state no input: {t}"
             );
         }
-        // The policy refusals name the rule, not a flag to pass.
         for verb in ["focus_window", "clipboard_set", "move"] {
             let e = g(false, false, false)
                 .decide(verb, true, false)

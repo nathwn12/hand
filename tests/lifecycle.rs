@@ -11,7 +11,6 @@ use serde_json::json;
 #[test]
 fn eof_shuts_down_cleanly_after_the_browser_launched() {
     let mut s = Session::spawn();
-    // Launch the owned engine and prove it serves.
     let ua = s.call(
         "browser_evaluate",
         json!({"expression": "navigator.userAgent"}),

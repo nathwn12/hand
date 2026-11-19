@@ -234,30 +234,18 @@ unsafe extern "system" fn wnd_proc(h: Handle, m: u32, w: usize, l: isize) -> isi
 
 fn main() {
     let argv: Vec<String> = std::env::args().collect();
-    // Sleeper mode: the child exists only to be reaped. It creates no window
-    // and has no descendants of its own, so a failed test that has to clean up
-    // by pid cannot leave a grandchild behind.
     if argv.get(1).map(|s| s == "--sleeper").unwrap_or(false) {
         std::thread::sleep(std::time::Duration::from_secs(300));
         return;
     }
     let journal = argv.get(2).cloned().unwrap_or_default();
-    // The child is opt-in: the hard-kill arm requires a descendant to prove the
-    // cover reaches the whole tree, while the graceful arm must not leave a
-    // process holding the private desktop open past the engine's own proof.
     let with_child = argv.get(3).map(|s| s == "child").unwrap_or(false);
     let pid = unsafe { GetCurrentProcessId() };
-    // pid + creation time: a pid alone can be recycled, so the journal carries
-    // the identity the test needs to prove a later open names this process.
     note(
         &journal,
         &format!("boot {} {}", pid, created_of(unsafe { GetCurrentProcess() })),
     );
 
-    // A child of the target: proves the cover reaches the whole owned tree, not
-    // only the process the engine holds a handle to. Its creation is required
-    // by the test that asks for it, so a failure is journalled and fatal rather
-    // than silently skipped.
     if with_child {
         unsafe {
             let self_exe = std::env::current_exe()
@@ -429,8 +417,6 @@ impl Proc {
             let mut exit = FileTime { lo: 0, hi: 0 };
             let mut kernel = FileTime { lo: 0, hi: 0 };
             let mut user = FileTime { lo: 0, hi: 0 };
-            // Creation time is part of the identity (it is what tells two
-            // processes with one pid apart), so an unreadable one is refused.
             if GetProcessTimes(h, &mut creation, &mut exit, &mut kernel, &mut user) == 0 {
                 CloseHandle(h);
                 return None;
@@ -471,8 +457,6 @@ impl Proc {
         if !self.alive() {
             return false;
         }
-        // Named so a cleanup that fires is attributable: pid + image + the
-        // creation time the identity was verified with.
         eprintln!(
             "cleanup: terminating {} ({}, created {})",
             self.pid, self.exe, self.created
@@ -548,8 +532,6 @@ impl Drop for Owned {
             let j = parse_journal(&text);
             for (pid, created) in [(j.pid, j.pid_created), (j.child, j.child_created)] {
                 let (Some(pid), Some(created)) = (pid, created) else {
-                    // No exact creation time means no proven identity: a bare
-                    // pid is never enough to terminate anything.
                     continue;
                 };
                 if self.procs.iter().any(|p| p.pid == pid) {
@@ -558,9 +540,6 @@ impl Drop for Owned {
                 match Proc::open(pid, &self.fixture, Some(created)) {
                     Some(p) => self.procs.push(p),
                     None => {
-                        // Never a bare-pid kill. Name the case that would have
-                        // been dangerous: the pid is alive but is not that
-                        // process instance.
                         if let Some(image) = live_image(pid) {
                             eprintln!(
                                 "cleanup: journal pid {pid} is alive but is not the claimed \
@@ -596,7 +575,6 @@ fn live_image(pid: u32) -> Option<String> {
     }
 }
 
-// ---------------------------------------------------------------- fixture
 
 fn scratch(tag: &str) -> PathBuf {
     let dir = std::env::temp_dir()
@@ -715,7 +693,6 @@ fn hidden_args(exe: &Path, journal: &Path, with_child: bool) -> Value {
     })
 }
 
-// ---------------------------------------------------------------- tests
 
 /// Regression: `desktop:"hidden"` alongside an explicit `target` is the legacy
 /// target-wins path - nothing is launched and the call keeps the ordinary
@@ -849,8 +826,6 @@ fn hard_server_kill_reaps_the_whole_hidden_launch_tree() {
     let mut s = Session::spawn();
     let mut args = hidden_args(&exe, &journal, true);
     args["actions"] = json!([{"type": "wait", "ms": 20000}]);
-    // Sent, deliberately not awaited: the server is inside the launch while the
-    // fixture is already up and journaled.
     s.send(&json!({
         "jsonrpc": "2.0",
         "id": 9001,
@@ -890,9 +865,6 @@ fn hard_server_kill_reaps_the_whole_hidden_launch_tree() {
         "fixture child pid {child_pid} must be alive before the kill"
     );
 
-    // Hard kill: no Drop, no teardown, no explicit closing of the job handle by
-    // the caller. Only the OS closing the dead server's handles is left, which
-    // is exactly what a kill-on-close job keys on.
     s.child.kill().expect("hard kill the server");
     let _ = s.child.wait();
 
@@ -951,8 +923,6 @@ fn hidden_teardown_arms_and_reports_the_kill_on_close_cover() {
     let parent_created = j
         .pid_created
         .expect("fixture journal records its creation time");
-    // Already gone: the launch finished and teardown killed it, so there is
-    // nothing for the guard to adopt (a dead pid is never opened or killed).
     let _ = cleanup.track_pid(parent_pid, parent_created);
     let launched = hd["launched_pid"].as_u64().expect("launched pid") as u32;
     assert_eq!(
@@ -990,11 +960,6 @@ fn refused_hidden_launch_reports_setup_prose_not_a_capture_timeout() {
             "settle_ms": 0,
         }),
     );
-    // A launch that never happened must not masquerade as success: SPEC says a
-    // failure cannot be reported as success, and a target-free action (a `wait`)
-    // trivially succeeding is not evidence about the launch. So the payload is
-    // `ok:false` and the envelope is `isError:true`, even though no *action*
-    // failed (`failed` stays a count of actions).
     assert!(
         is_error(&resp),
         "a hidden launch that never happened must be a tool error: {}",
@@ -1028,8 +993,6 @@ fn refused_hidden_launch_reports_setup_prose_not_a_capture_timeout() {
     assert_eq!(hd["hard_kill_cover"].as_bool(), Some(false), "{hd}");
     assert_eq!(hd["teardown"]["proven"].as_bool(), Some(false), "{hd}");
 
-    // Published catalog: any `name:` token in a caller-facing error must be a
-    // registered code (`claims::ERROR_CODES`), and these two are prose.
     assert_prose_only(setup);
     assert_prose_only(teardown_error);
 
@@ -1073,8 +1036,6 @@ fn owner_hands_the_job_over_last_and_never_reuses_the_handle() {
         body[send..].contains("kill_target"),
         "a failed hand-over must terminate the launched process"
     );
-    // A refusal is prose, not a fake code: `word:` shapes read like entries in
-    // `claims::ERROR_CODES`, and this catalog is closed.
     for banned in ["uncovered:", "refused:"] {
         assert!(
             !src.contains(banned),
@@ -1094,10 +1055,6 @@ fn cleanup_guard_terminates_only_identity_verified_processes() {
     let dir = scratch("guard");
     let exe = build_fixture(&dir);
 
-    // Negative arm 1: a journal naming THIS test process, with the fixture as
-    // the expected image. The identity check must refuse it; if the guard
-    // trusted the bare pid, this process would be terminated and the test
-    // would die.
     let foreign = dir.join("foreign-journal.txt");
     std::fs::write(
         &foreign,
@@ -1115,8 +1072,6 @@ fn cleanup_guard_terminates_only_identity_verified_processes() {
         "the guard must not have terminated this test process"
     );
 
-    // A live sleeper of the fixture image, for the same-image arm. `Child`
-    // holds its own handle, so this pid cannot be recycled while it is alive.
     let mut sleeper = std::process::Command::new(&exe)
         .arg("--sleeper")
         .spawn()
@@ -1124,9 +1079,6 @@ fn cleanup_guard_terminates_only_identity_verified_processes() {
     let pid = sleeper.id();
     let created = Proc::creation_of(pid, &exe).expect("sleeper identity is readable");
 
-    // Negative arm 2, the recycle hazard the image check alone cannot catch:
-    // the SAME image with a creation time that is not the journal's. A pid
-    // recycled onto another run's fixture must not be adopted - nor killed.
     assert!(
         Proc::open(pid, &exe, Some(created.wrapping_add(1))).is_none(),
         "a same-image process with a different creation time must be refused"
@@ -1148,8 +1100,6 @@ fn cleanup_guard_terminates_only_identity_verified_processes() {
         "a journal with the wrong creation time must not terminate the process"
     );
 
-    // Positive arm: the same guard does terminate a positively identified
-    // fixture process, through the handle it holds.
     let mut guard = Owned::new(dir.join("no-such-journal.txt"), exe.clone());
     assert!(
         guard.track_pid(pid, created),

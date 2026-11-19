@@ -1,16 +1,4 @@
 #!/usr/bin/env node
-// Compare benchmark receipts without hiding anything.
-//
-// Reads every *.json receipt under the given directories (or explicit files),
-// re-hashes the binary at each recorded path, then applies the release-gate
-// rules in lib/compare-core.mjs: expected products present, machine/fixture/
-// browser/target/binary hashes present and re-verifiable, release builds only,
-// identical protocol and params, no test-only receipts.
-//
-//   node benchmarks/scripts/compare.mjs --receipts benchmarks/receipts
-//   node benchmarks/scripts/compare.mjs --receipts a.json,b.json --require-pass
-//
-// Exit: 0 report written; 1 --require-pass not satisfied; 3 usage; 4 unreadable input.
 
 import { createHash } from "node:crypto";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";

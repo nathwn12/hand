@@ -189,10 +189,6 @@ fn plain(e: &str) -> String {
     e.to_string()
 }
 
-//
-// Environment-controlled seams used only by `tests/browser_contexts.rs` to
-// exercise cancellation and rollback deterministically (the same precedent as
-// `GLADIUS_TEST_NO_JOB`). Production never sets them.
 
 fn hook_flag(name: &str) -> bool {
     std::env::var(name).map(|v| v == "1").unwrap_or(false)
@@ -421,8 +417,6 @@ impl ContextRegistry {
     /// so a caller whose future is dropped mid-loop (a server grace timeout, an
     /// aborted worker) leaves every unprocessed context tracked and excluded.
     pub async fn shutdown(&self) -> Value {
-        // Teardown begins here: from this point no acquisition may open a
-        // connection (see `create_sequence`).
         self.closed.store(true, Ordering::SeqCst);
         let mut st = self.state.lock().await;
         let rec = reconcile(&self.browser, &mut st, false).await;
@@ -433,8 +427,6 @@ impl ContextRegistry {
         let mut unverified = rec.unverified;
         let mut failed = Vec::new();
         for token in tokens {
-            // Re-read the entry each pass: a concurrent destroy may have
-            // retired it, and its id may have arrived since the snapshot.
             let current = {
                 let st = self.state.lock().await;
                 st.entries.iter().find(|e| e.token == token).map(|e| {
@@ -455,15 +447,12 @@ impl ContextRegistry {
                 continue;
             }
             let Some(id) = id else {
-                // A creating entry that never got an id: nothing to dispose by,
-                // and its task may still learn one, so it stays tracked.
                 failed.push(json!({"name": name,
                     "error": "no browserContextId was ever observed for this creating context; it stays tracked"}));
                 continue;
             };
             match dispose_verified(&self.browser, &id).await {
                 Ok((by, _)) => {
-                    // Removes the entry by token and releases its exclusion.
                     self.remove_entry_by_token(token).await;
                     disposed.push(json!({"name": name, "disposedBy": by.as_str()}));
                 }
@@ -473,8 +462,6 @@ impl ContextRegistry {
                         gone_with_engine.push(name);
                     }
                     EngineOwnership::Attached => {
-                        // The external browser may still hold it: keep the
-                        // entry and the exclusion, and claim nothing.
                         self.mark_unverified(token, &attached_lost_note()).await;
                         unverified.push(name);
                     }
@@ -517,9 +504,6 @@ impl ContextRegistry {
                 ))
             }
         };
-        // Per-action argument gate: a key that belongs to a DIFFERENT action is
-        // refused, never silently ignored (an ignored `expression` or `page`
-        // would let a caller believe an action ran where it did not).
         let allowed: &[&str] = match action.as_str() {
             "create" => &["action", "name", "url"],
             "list" => &["action"],
@@ -669,10 +653,6 @@ impl ContextRegistry {
             );
         match handle.await {
             Ok(r) => r,
-            // The acquisition task itself was aborted (runtime shutdown). The
-            // tracked entry stays visible as `creating` so list/shutdown can
-            // report it and destroy can remove or dispose it; nothing is claimed
-            // created.
             Err(join) => {
                 self.note_failure(
                     token,
@@ -701,9 +681,6 @@ impl ContextRegistry {
         dropped: Vec<String>,
     ) -> Result<Value, ToolErr> {
         hook_slow("before-create").await;
-        // Teardown began while this acquisition slept: refuse BEFORE the first
-        // CDP call, so an owned engine is never launched and an attached one is
-        // never re-attached. The entry we registered is ours alone (by token).
         if self.is_closed() {
             self.remove_entry_by_token(token).await;
             return Err(shutting_down("create"));
@@ -711,7 +688,6 @@ impl ContextRegistry {
         let context_id = match create_browser_context(&self.browser).await {
             Ok(id) => id,
             Err(e) => {
-                // No id observed: nothing can be tracked for disposal. Say so.
                 self.remove_entry_by_token(token).await;
                 if is_engine_dead(&e) {
                     return Err(ToolErr::from(e));
@@ -734,8 +710,6 @@ impl ContextRegistry {
                     e.generation = self.browser.generation();
                 }
                 None => {
-                    // The caller destroyed this acquisition's entry while the
-                    // engine was answering: honour the teardown.
                     drop(st);
                     let _ = dispose_verified(&self.browser, &context_id).await;
                     self.browser.include_browser_context(&context_id);
@@ -814,8 +788,6 @@ impl ContextRegistry {
                     .await)
             }
         };
-        // Target info is empty until the document has a title to report, so a
-        // settled page still needs a live read to say what it is.
         let live = match live_title(&self.browser, &target_id, &mut session).await {
             Ok(v) => Ok(v),
             Err(e) if is_engine_dead(&e) => {
@@ -826,11 +798,6 @@ impl ContextRegistry {
             Err(e) => Err(e),
         };
         let (title, title_origin, title_note) = reported_title(&info.title, live);
-        // One commit section: marking the context ready, making it the registry
-        // default and building the view all happen under the same lock, so the
-        // view can never say `selected: false` for a create that just selected
-        // itself, and a concurrent `select` is neither observed half-applied nor
-        // silently overwritten afterwards.
         let document_id = document_identity(&self.browser, &session, title_origin).await;
         let mut st = self.state.lock().await;
         let others: Vec<String> = st
@@ -852,8 +819,6 @@ impl ContextRegistry {
                 ),
             ));
         }
-        // `create` makes the new context the registry default; setting it in
-        // the same section that builds the view keeps the view truthful.
         st.selected = Some(name.to_string());
         let entry = st
             .entry_by_token_mut(token)
@@ -955,7 +920,6 @@ impl ContextRegistry {
             .filter(|s| !s.is_empty())
             .collect::<Vec<_>>()
             .join("; ");
-        // Keep the cause's code/reason and keep its marker out of the prose.
         ToolErr::wrapping(
             cause,
             format!(
@@ -983,8 +947,6 @@ impl ContextRegistry {
             if refreshable {
                 if let Err(e) = refresh_pages(&self.browser, &mut st.entries[i]).await {
                     if is_engine_dead(&e) {
-                        // The connection went away while listing: re-reconcile
-                        // and report what is now known (never a guess).
                         let again = reconcile(&self.browser, &mut st, false).await;
                         rec.dropped.extend(again.dropped);
                         rec.unverified.extend(again.unverified);
@@ -1163,8 +1125,6 @@ impl ContextRegistry {
                 return Err(ToolErr::from(e));
             }
         };
-        // Record the page at the instant it exists. From here on a cancellation
-        // leaves a TRACKED page, never an invisible one.
         {
             let mut st = self.state.lock().await;
             match st.entry_by_token_mut(token) {
@@ -1232,8 +1192,6 @@ impl ContextRegistry {
                     .await)
             }
         };
-        // Same rule as create: target info is empty until the document has a
-        // title, so ask the document itself.
         let live = match live_title(&self.browser, &target_id, &mut session).await {
             Ok(v) => Ok(v),
             Err(e) if is_engine_dead(&e) => {
@@ -1244,9 +1202,6 @@ impl ContextRegistry {
             Err(e) => Err(e),
         };
         let (title, title_origin, title_note) = reported_title(&info.title, live);
-        // Commit: the entry must still be the SAME acquisition. If it vanished
-        // (the context was destroyed meanwhile) the page is closed and this call
-        // FAILS rather than reporting a success nobody can act on.
         let document_id = document_identity(&self.browser, &session, title_origin).await;
         let mut st = self.state.lock().await;
         let Some(entry) = st.entry_by_token_mut(token) else {
@@ -1379,9 +1334,6 @@ impl ContextRegistry {
         }
         let mut st = self.state.lock().await;
         let Some(entry) = st.entry_by_token_mut(token) else {
-            // The whole context was destroyed while the page was closing. The
-            // page is verifiably gone, but this call's target no longer exists,
-            // so it reports a failure instead of a success about it.
             return Err(err(
                 ToolCode::TargetChanged,
                 ToolReason::Raced,
@@ -1432,7 +1384,6 @@ impl ContextRegistry {
         let created_ms = st.entries[idx].created_ms;
         let page_count = st.entries[idx].pages.len();
         let Some(context_id) = st.entries[idx].context_id.clone() else {
-            // Nothing was ever observed: stop tracking it so the name is free.
             st.entries.retain(|e| e.token != token);
             if st.selected.as_deref() == Some(name.as_str()) {
                 st.selected = None;
@@ -1470,9 +1421,6 @@ impl ContextRegistry {
             }
             Err(e) if is_engine_dead(&e) => match self.browser.ownership() {
                 EngineOwnership::Owned => {
-                    // The connection is gone, so an engine-scoped context is not
-                    // reachable and cannot be verified - but hand did not
-                    // dispose it and does not claim the process exited.
                     st.entries.retain(|e| e.token != token);
                     if st.selected.as_deref() == Some(name.as_str()) {
                         st.selected = None;
@@ -1488,8 +1436,6 @@ impl ContextRegistry {
                     ))
                 }
                 EngineOwnership::Attached => {
-                    // Keep the entry AND its exclusion: the external browser may
-                    // still hold the context.
                     if let Some(entry) = st.entry_by_token_mut(token) {
                         entry.unverified = Some(attached_lost_note());
                     }
@@ -1547,8 +1493,6 @@ impl ContextRegistry {
                 continue;
             }
             let Some(id) = id else {
-                // In-flight acquisition with no id yet: keep it (its task may
-                // still resolve it) and report it separately, exactly once.
                 if !pending.contains(&name) {
                     pending.push(name);
                 }
@@ -1725,7 +1669,6 @@ impl ContextRegistry {
                 self.reconcile_if_dead(&e).await;
                 return Err(ToolErr::from(e));
             }
-            // A live connection answered with a CDP failure: keep the cause.
             Some(Err(e)) => return Err(ToolErr::from(e)),
         };
         let Some(items) = set else {
@@ -1835,8 +1778,6 @@ impl ContextRegistry {
     /// name must keep its successor and its successor's exclusion), release that
     /// entry's exclusion, and report the cause - never as an engine death.
     async fn context_vanished(&self, token: u64, name: &str, cause: &str) -> ToolErr {
-        // Test-only seam: widen the window between the engine's answer and the
-        // retirement so a concurrent destroy + re-create can be reproduced.
         if let Some(ms) = hook_ms("HAND_CONTEXT_TEST_SLOW_BEFORE_VANISH_MS") {
             tokio::time::sleep(Duration::from_millis(ms)).await;
         }
@@ -1852,9 +1793,6 @@ impl ContextRegistry {
                 }
                 true
             }
-            // The acquisition that observed the disappearance is no longer
-            // tracked (destroyed, or replaced by a re-created name). Its
-            // successor is a different context with its own id and exclusion.
             None => false,
         };
         let consequence = if retired {
@@ -2000,9 +1938,6 @@ pub fn tool_schema() -> Value {
                     "sameSite": {"type": "string", "enum": ["Strict", "Lax", "None"]},
                     "expires": {"type": "number"}},
                 "required": ["name", "value"],
-                // Published because it is enforced: without one of these the
-                // engine cannot tell which origin the cookie belongs to, and
-                // the tool refuses the cookie instead of guessing.
                 "anyOf": [{"required": ["url"]}, {"required": ["domain"]}],
                 "additionalProperties": false}}
             },
@@ -2130,12 +2065,6 @@ impl ParsedCookie {
     fn expected_path(&self) -> String {
         match &self.path {
             Some(p) if !p.is_empty() => p.clone(),
-            // Chromium's `Storage.setCookies` default path for a url-only cookie
-            // is "/" - measured on the pinned build (a cookie set from `/a/b`
-            // with no `path` lands with `path=/`). RFC 6265 5.1.4 would derive
-            // the request path's directory instead, so adopting it here would
-            // report a false negative for a cookie the engine accepted: verify
-            // what the engine does, not what the RFC says it should do.
             _ => "/".to_string(),
         }
     }
@@ -2522,9 +2451,6 @@ async fn reconcile(browser: &Browser, st: &mut State, allow_reconnect: bool) -> 
     let ownership = browser.ownership();
     let mut live = browser.is_live().await;
     let mut generation = browser.generation();
-    // Read-side reconciliation may re-establish an explicitly configured
-    // ATTACHED connection (never an owned browser) so entries can be probed.
-    // Mutating actions do not reconnect as a side effect of failing.
     if allow_reconnect
         && !live
         && ownership == EngineOwnership::Attached
@@ -2535,10 +2461,6 @@ async fn reconcile(browser: &Browser, st: &mut State, allow_reconnect: bool) -> 
     }
     let was_selected = st.selected.clone();
     let mut out = Reconciled::default();
-    // The registry is the authority: no entry is removed before its fate is
-    // proven, and a probe awaits with the entry still tracked. A caller whose
-    // future is dropped mid-pass therefore leaves every unproven context in
-    // place (the same rule as `shutdown`).
     let tokens: Vec<u64> = st.entries.iter().map(|e| e.token).collect();
     for token in tokens {
         let Some(idx) = st.entries.iter().position(|e| e.token == token) else {
@@ -2563,8 +2485,6 @@ async fn reconcile(browser: &Browser, st: &mut State, allow_reconnect: bool) -> 
                 st.entries[idx].unverified = None;
             }
             EntryFate::Gone => {
-                // Owned death or an owned relaunch: a new/absent engine cannot
-                // host this browser context, so it is gone.
                 let entry = st.entries.remove(idx);
                 if let Some(id) = entry.id() {
                     browser.include_browser_context(id);
@@ -2575,13 +2495,10 @@ async fn reconcile(browser: &Browser, st: &mut State, allow_reconnect: bool) -> 
                 out.dropped.push(entry.name);
             }
             EntryFate::ProbeOnNewConnection => {
-                // Re-attached: the external browser may still hold it.
                 let Some(id) = st.entries[idx].id().map(str::to_string) else {
                     continue;
                 };
                 let name = st.entries[idx].name.clone();
-                // The await happens with the entry still tracked: a dropped
-                // future cannot erase it.
                 let probe = probe_context(browser, &id).await;
                 let Some(idx) = st.entries.iter().position(|e| e.token == token) else {
                     continue;
@@ -2608,9 +2525,6 @@ async fn reconcile(browser: &Browser, st: &mut State, allow_reconnect: bool) -> 
                 }
             }
             EntryFate::Unverified => {
-                // The connection is gone; that proves nothing about the
-                // external browser. Keep tracking, keep the exclusion, claim
-                // nothing.
                 let name = st.entries[idx].name.clone();
                 st.entries[idx].unverified = Some(attached_lost_note());
                 out.unverified.push(name);
@@ -2742,8 +2656,6 @@ fn page_view(p: &Page) -> Value {
         "title": p.title,
         "session": if p.session.is_some() { "attached" } else { "none" },
         "sessionSource": "hand-tracked (not a live probe)",
-        // The record's provenance: url and membership are target info, the
-        // title is a live read when one produced it.
         "source": p.title_origin.as_str(),
     });
     if let (Some(note), Some(o)) = (&p.title_note, v.as_object_mut()) {
@@ -2791,17 +2703,8 @@ fn pick_page<'a>(entry: &'a Entry, want: Option<&str>) -> Result<&'a str, ToolEr
     }
 }
 
-//
-// Only `create_browser_context` may launch an engine (a context is created on
-// demand). Everything else uses the live-only path, so a shutdown or a query
-// against a dead engine can never resurrect one.
 
 async fn create_browser_context(browser: &Browser) -> Result<String, String> {
-    // disposeOnDetach: ask the engine to dispose a hand-created context when
-    // this connection closes. Measured to work on a CLEAN close only; it is not
-    // a guarantee for a hard kill, where no close frame is sent (see the
-    // module's residual note). It is a second line of defence, never the
-    // cleanup contract.
     let r = browser
         .cdp_raw(
             "Target.createBrowserContext",
@@ -2971,12 +2874,6 @@ async fn refresh_pages(browser: &Browser, entry: &mut Entry) -> Result<(), Strin
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
-        // Document identity, not a URL string: fragment and pushState navigation
-        // move the URL while the document (and its live-read title) stays.
-        // `performance.timeOrigin` changes per document and is stable across
-        // same-document navigation, and a cached page session was measured to
-        // survive a real navigation on the pinned build, so asking it is enough
-        // - refresh never attaches.
         match entry.pages.iter_mut().find(|p| p.target_id == tid) {
             Some(p) => {
                 let new_document = if p.url == url {
@@ -2985,19 +2882,11 @@ async fn refresh_pages(browser: &Browser, entry: &mut Entry) -> Result<(), Strin
                     match p.session.as_deref() {
                         Some(session) => match live_document_id(browser, session).await {
                             Ok(now) => p.document_id.as_deref() != Some(now.as_str()),
-                            // Cannot prove the document did or did not change:
-                            // adopt the engine's value rather than present a
-                            // title the document may have replaced.
                             Err(_) => true,
                         },
-                        // A live-read title with no cached session: identity is
-                        // unproven, so keep the title instead of overwriting it
-                        // with a cached value on a guess.
                         None => false,
                     }
                 } else {
-                    // No live-read title to protect: target info is the best
-                    // value available.
                     true
                 };
                 p.url = url;
@@ -3103,11 +2992,9 @@ async fn live_title(
 /// case-insensitive because URL schemes are.
 fn commit_pending(requested: Option<&str>, document: Option<&str>) -> bool {
     let Some(want) = requested.map(str::trim).filter(|w| !w.is_empty()) else {
-        // Nothing was requested (a context with no url): nothing is pending.
         return false;
     };
     if want.eq_ignore_ascii_case("about:blank") {
-        // The caller asked for the blank document: that IS the page.
         return false;
     }
     match document {
@@ -3179,9 +3066,6 @@ async fn settle_page(
                     let url = eval_in(browser, session, "document.URL").await;
                     let document = match &url {
                         Ok(v) => Some(v.as_str().unwrap_or("")),
-                        // The read failed: that is not evidence the requested
-                        // page committed, so `commit_pending` treats it as
-                        // pending and this loop keeps observing until the cap.
                         Err(e) if is_engine_dead(e) => return Err(e.clone()),
                         Err(_) => None,
                     };
@@ -3193,9 +3077,6 @@ async fn settle_page(
                 }
             }
             Ok(Err(e)) if is_session_death(&e) => {
-                // Same target, new execution context (or a dropped session):
-                // re-attach and keep observing instead of inventing "not
-                // settled" or claiming the page is gone.
                 *session = attach_page(browser, target_id).await?;
             }
             Ok(Err(e)) if is_engine_dead(&e) => return Err(e),
@@ -3297,8 +3178,6 @@ async fn dispose_verified(
     browser: &Browser,
     context_id: &str,
 ) -> Result<(DisposedBy, Value), String> {
-    // Test-only seam: make a disposal slow enough to drop a teardown future
-    // mid-loop and prove the remaining entries stay tracked.
     if let Some(ms) = hook_ms("HAND_CONTEXT_TEST_SLOW_DISPOSE_MS") {
         tokio::time::sleep(Duration::from_millis(ms)).await;
     }
@@ -3315,9 +3194,6 @@ async fn dispose_verified(
     {
         Ok(None) => return Err(not_live("disposing a context")),
         Ok(Some(_)) => DisposedBy::Hand,
-        // Somebody (an earlier hand call whose reply was lost, or another
-        // client) already removed it: the goal state holds, but hand did not
-        // perform this disposal and says so after verifying.
         Err(e) if is_unknown_context(&e) => DisposedBy::AlreadyGone,
         Err(e) => return Err(e),
     };
@@ -3466,9 +3342,6 @@ mod tests {
 
     #[test]
     fn an_owned_engine_that_is_not_running_drops_its_contexts() {
-        // Owned ownership, no open connection: a browser context is
-        // engine-scoped, so it is not reachable and is dropped. The test says
-        // nothing about the process having exited.
         let browser = Browser::new();
         let mut st = state_with(&["a", "b"]);
         st.entries[1].generation = 0; // current generation of a never-launched engine
@@ -3484,18 +3357,14 @@ mod tests {
     #[test]
     fn the_ownership_matrix_never_reports_attached_loss_as_gone() {
         use EngineOwnership::{Attached, Owned};
-        // Live, same connection: always live.
         assert_eq!(entry_fate(Owned, true, true), EntryFate::Live);
         assert_eq!(entry_fate(Attached, true, true), EntryFate::Live);
-        // Owned death/relaunch: genuinely gone.
         assert_eq!(entry_fate(Owned, false, true), EntryFate::Gone);
         assert_eq!(entry_fate(Owned, true, false), EntryFate::Gone);
-        // Attached re-attach: probe, then decide.
         assert_eq!(
             entry_fate(Attached, true, false),
             EntryFate::ProbeOnNewConnection
         );
-        // Attached connection loss: UNKNOWN, never "gone".
         assert_eq!(entry_fate(Attached, false, true), EntryFate::Unverified);
         assert_eq!(entry_fate(Attached, false, false), EntryFate::Unverified);
     }
@@ -3510,15 +3379,11 @@ mod tests {
 
     #[test]
     fn the_initial_empty_document_never_counts_as_the_requested_page() {
-        // Measured: a target created with a real URL answers complete/about:blank
-        // until the navigation commits, so it must not be reported as settled.
         assert!(commit_pending(
             Some("http://127.0.0.1/a"),
             Some("about:blank")
         ));
         assert!(commit_pending(Some("http://127.0.0.1/a"), Some("")));
-        // URL schemes are case-insensitive, and whitespace from a live read is
-        // not a different document.
         assert!(commit_pending(
             Some("http://127.0.0.1/a"),
             Some("ABOUT:BLANK")
@@ -3527,9 +3392,7 @@ mod tests {
             Some("http://127.0.0.1/a"),
             Some("  about:blank  ")
         ));
-        // A failed read is not evidence that the requested page committed.
         assert!(commit_pending(Some("http://127.0.0.1/a"), None));
-        // The committed document is settled, whatever its URL (redirects too).
         assert!(!commit_pending(
             Some("http://127.0.0.1/a"),
             Some("http://127.0.0.1/a")
@@ -3538,25 +3401,20 @@ mod tests {
             Some("http://127.0.0.1/a"),
             Some("http://127.0.0.1/elsewhere")
         ));
-        // A caller who asked for about:blank gets about:blank.
         assert!(!commit_pending(Some("about:blank"), Some("about:blank")));
         assert!(!commit_pending(Some("ABOUT:BLANK"), Some("about:blank")));
-        // Nothing was requested (a context with no url): nothing is pending.
         assert!(!commit_pending(None, Some("about:blank")));
         assert!(!commit_pending(Some("   "), Some("about:blank")));
     }
 
     #[test]
     fn a_title_is_labelled_by_how_it_was_obtained() {
-        // A live read is used and labelled as a live read.
         let (title, origin, note) = reported_title("cached", Ok(Some("Titled A".into())));
         assert_eq!(title, "Titled A");
         assert_eq!(origin, TitleOrigin::LiveRead);
         assert_eq!(origin.as_str(), "targetInfo+liveRead");
         assert!(note.is_none(), "a successful read has nothing to explain");
 
-        // No string title from the document: the cached value is kept, labelled
-        // as a cached value - never presented as a live read.
         for live in [Ok(None), Ok(Some(String::new()))] {
             let (title, origin, note) = reported_title("cached", live);
             assert_eq!(title, "cached");
@@ -3565,7 +3423,6 @@ mod tests {
             assert!(note.is_none());
         }
 
-        // A failed read keeps the value and says why: never an invented title.
         let (title, origin, note) = reported_title("cached", Err("session died".into()));
         assert_eq!(title, "cached");
         assert_eq!(origin, TitleOrigin::TargetInfo);
@@ -3620,15 +3477,10 @@ mod tests {
         abandoned.name = "abandoned".into();
         abandoned.acquiring = false;
 
-        // An in-flight acquisition is never dropped by a liveness pass, even
-        // with a dead engine: its task is the one that will record the failure.
         assert_eq!(pre_fate(&creating), PreFate::Acquiring);
-        // An abandoned creating entry with no id can never be resolved.
         assert_eq!(pre_fate(&abandoned), PreFate::Abandoned);
         assert_eq!(pre_fate(&ready), PreFate::ApplyPolicy);
 
-        // Live engine at generation 3: the stale sibling goes, the live one
-        // stays - one entry's generation never condemns another.
         assert_eq!(
             entry_fate(EngineOwnership::Owned, true, true),
             EntryFate::Live
@@ -3682,7 +3534,6 @@ mod tests {
         };
         let parse = |v: Value| parse_cookie(&v).unwrap();
 
-        // Identity: same name+value at /a must not verify a request for /b.
         let want_b =
             parse(json!({"name":"k","value":"two","url":"http://127.0.0.1:1/","path":"/b"}));
         let before = jar(&[("k", "/a", "two", false)]);
@@ -3695,7 +3546,6 @@ mod tests {
         );
         assert_eq!(refusal["observedSameName"][0]["path"], json!("/a"));
 
-        // Attribute: httpOnly requested, plain cookie present -> refused.
         let want_ho = parse(json!({"name":"k","value":"two","url":"http://127.0.0.1:1/",
             "path":"/b","httpOnly":true}));
         let after = jar(&[("k", "/b", "two", false)]);
@@ -3703,7 +3553,6 @@ mod tests {
         assert_eq!(refusal["reason"], json!("attribute-mismatch"));
         assert_eq!(refusal["attribute"], json!("httpOnly"));
 
-        // Verified, and preexisting reported honestly.
         let after = jar(&[("k", "/b", "two", true)]);
         let ok = want_ho.verify(&[], &after).unwrap();
         assert_eq!(ok["verified"], json!(true));
@@ -3787,8 +3636,6 @@ mod tests {
             schema["outputSchema"]["additionalProperties"].as_bool(),
             Some(false)
         );
-        // Every key the surface can emit must be declared, or the schema lies
-        // about its own outputs (it forbids additional properties).
         for key in [
             "ok",
             "name",
@@ -3812,8 +3659,6 @@ mod tests {
                 "outputSchema must declare `{key}`"
             );
         }
-        // The cookie input schema publishes what the tool enforces: a cookie
-        // needs name+value AND one of url|domain, or `parse_cookie` refuses it.
         let item = &schema["inputSchema"]["properties"]["cookies"]["items"];
         assert_eq!(
             item["required"],

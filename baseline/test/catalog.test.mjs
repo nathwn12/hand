@@ -1,16 +1,3 @@
-// Executable checks on the baseline itself. Run from the repository root:
-//
-//   node --test baseline/test/
-//
-// Two things are proven here. First, that the committed files are what the
-// pinned revisions emitted and what the generator derives (an integrity check,
-// so an edited baseline cannot pass silently). Second, that the comparison used
-// as the compatibility gate is not vacuous: each test below breaks a copy of
-// the baseline in one specific way and requires the comparator to reject it.
-//
-// Live tests re-spawn the pinned binaries named in `pins.json`; they skip (not
-// pass) when the binary is absent, and are disabled entirely by
-// HAND_BASELINE_SKIP_LIVE=1.
 
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
@@ -34,13 +21,6 @@ function readTools(relativePath) {
   return JSON.parse(readFileSync(resolve(ROOT, relativePath), "utf8")).tools;
 }
 
-/**
- * The committed file minus everything the live capture adds. The `live` block,
- * `counts.live` and the `live:` notes come from a running binary; the block is
- * the one part the capture-only derivation cannot reproduce, and the notes are
- * its commentary. Everything else must still equal the generator's output byte
- * for byte.
- */
 function withoutLive(catalog) {
   const clone = JSON.parse(JSON.stringify(catalog));
   delete clone.live;
@@ -49,7 +29,6 @@ function withoutLive(catalog) {
   return clone;
 }
 
-/** Set a dotted path in a plain object, creating intermediate objects. */
 function setPath(root, dotted, value) {
   const segments = dotted.split(".");
   const last = segments.pop();
@@ -61,20 +40,12 @@ function setPath(root, dotted, value) {
 }
 
 function prefixed() {
-  // Deep clone: a shallow spread would share the nested schema objects with the
-  // fixtures, so a test that mutates one candidate would corrupt later tests.
   const candidate = {
     tools: [
       ...gladiusTools.map((tool) => ({ ...clone(tool), name: `browser_${tool.name}` })),
       ...puppetTools.map((tool) => ({ ...clone(tool), name: `desktop_${tool.name}` })),
     ],
   };
-  // The candidate a live server emits: the pinned floor plus exactly what
-  // `declared-additions.json` declares - the schema additions and the rewritten
-  // descriptions. A test that breaks one thing then fails for that reason alone,
-  // and the allowance is exercised here as it is in production. Stub schema
-  // values are enough because the comparator strips those paths before comparing;
-  // for a description only "differs from the pin" matters.
   for (const [key, tools] of Object.entries({ inputSchema: DECLARED_ADDITIONS.inputSchema, outputSchema: DECLARED_ADDITIONS.outputSchema })) {
     for (const [name, paths] of Object.entries(tools)) {
       const tool = candidate.tools.find((entry) => entry.name === name);
@@ -92,7 +63,6 @@ test("committed catalogues match the pinned canonical hashes", () => {
   for (const [key, source] of Object.entries(pins.sources)) {
     const captured = readTools(source.capture.tools);
     assert.equal(captured.length, source.expectedToolCount, `${key} tool count`);
-    // The hash is over the tools/list *result*, not the array, so rebuild it.
     const result = JSON.parse(readFileSync(resolve(ROOT, source.capture.tools), "utf8"));
     assert.equal(canonicalHash(result), source.capture.expectCatalogCanonicalHash, `${key} canonical hash`);
   }
@@ -104,10 +74,6 @@ test("captured names are exactly the spec's 25 browser and 7 desktop tools", () 
 });
 
 test("hand-catalog.json is exactly what the generator derives, not a hand edit", () => {
-  // Whole-file equality, including the provenance block: a stale executable
-  // hash, pin or tool body all show up here rather than only a changed schema.
-  // The `live` block is excluded because it comes from a running binary, not
-  // from the pinned captures; the next test holds it to its own contract.
   const derived = buildFromDisk({ root: ROOT }).hand;
   assert.deepEqual(withoutLive(handCatalog), derived);
   assert.equal(handCatalog.tools.length, 32);
@@ -116,23 +82,17 @@ test("hand-catalog.json is exactly what the generator derives, not a hand edit",
 
 test("the live block records the server's own tools/list beside the 32-name floor", () => {
   const live = handCatalog.live;
-  // The count the docs quote and the block itself must agree three ways.
   assert.equal(live.toolCount, 35);
   assert.equal(live.toolCount, live.names.length);
   assert.equal(handCatalog.counts.live, live.toolCount);
   assert.equal(new Set(live.names).size, live.names.length, "live names are unique");
   assert.deepEqual(live.names, [...live.names].sort(), "live names are sorted");
 
-  // The floor is served: every derived name is in the live set.
   const floor = handCatalog.tools.map((tool) => tool.name);
   assert.deepEqual(live.names.filter((name) => !floor.includes(name)), [...live.extra]);
 
-  // The three additions hand makes on top, named in README.md and
-  // docs/CAPABILITIES.md, are exactly what the server publishes above the floor.
   assert.deepEqual(live.extra, ["browser_context", "browser_drag", "browser_wheel"]);
 
-  // A capture is provenance, not a log: no timestamp, no environment, no paths
-  // beyond the executable itself.
   assert.deepEqual(Object.keys(live.capture).sort(), ["executable", "executableSha256", "reportedVersion"]);
   assert.match(live.capture.executableSha256, /^sha256:[0-9a-f]{64}$/);
   assert.ok(live.capture.reportedVersion.includes("hand"), live.capture.reportedVersion);
@@ -230,9 +190,6 @@ test("an unprefixed legacy name is a missing tool, not a match", () => {
   const report = compareCatalogs({ baseline: handCatalog, candidate, profile: "hand" });
   assert.equal(report.ok, false);
   assert.equal(report.missing.length, 32);
-  // 31, not 32: the two legacy suites both name a tool `screenshot`, so the
-  // unprefixed union has one repeated name. That collision is why the prefix
-  // exists; it is asserted directly in the next test.
   assert.equal(report.extra.length, 31);
   assert.deepEqual(report.duplicateNames.candidate, ["screenshot"]);
 });
@@ -271,7 +228,6 @@ test("a duplicate tool name is rejected", () => {
 });
 
 test("a rewritten description is a failure, not drift, unless the tool is declared", () => {
-  // `browser_navigate` is not in the declared list: description is contract.
   const candidate = prefixed();
   const navigate = candidate.tools.find((tool) => tool.name === "browser_navigate");
   navigate.description = "Go somewhere";
@@ -281,8 +237,6 @@ test("a rewritten description is a failure, not drift, unless the tool is declar
   assert.equal(report.metadataDrift[0].tool, "browser_navigate");
   assert.equal(report.metadataDrift[0].kind, "description");
 
-  // A declared tool's rewrite is the allowance itself: it stays green, and the
-  // report names it once, because only "differs from the pin" is compared.
   const declared = prefixed();
   const click = declared.tools.find((tool) => tool.name === "browser_click");
   assert.notEqual(

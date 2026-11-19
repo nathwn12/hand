@@ -1,17 +1,4 @@
 #!/usr/bin/env node
-// Controlled 1280x720 desktop fixture launcher and benchmark coordinator.
-//
-// The fixture is shown with WS_EX_NOACTIVATE and ShowWithoutActivation, after a
-// short wait for a quiet desktop so it does not cover an active window
-// unannounced. Desktop changes during measurement are attributed, not hidden: a
-// pointer or foreground delta with real input behind it is the owner's, a delta
-// with no input is unattributable, and the fixture taking the foreground always
-// fails. `GetLastInputInfo` supplies the input tick; the before/after samples
-// stay in the output.
-//
-// On success it runs desktop-enumerate and desktop-capture for hand and Puppet
-// against the fixture title, then terminates the fixture, confirms its window is
-// gone and classifies the final desktop state again.
 
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -80,9 +67,6 @@ function findCsc() {
 
 async function compileFixture() {
   await mkdir(CACHE_DIR, { recursive: true });
-  // Content-addressed: the fixture binary is named by its source hash and reused,
-  // so hand and Puppet measure the identical bytes. A per-run rebuild would give
-  // every receipt a different target hash and no two products could be compared.
   const source = await readFile(FIXTURE_SOURCE);
   const hash = createHash("sha256").update(source).digest("hex").slice(0, 16);
   const exe = join(CACHE_DIR, `hand-desktop-fixture-${hash}.exe`);
@@ -130,7 +114,6 @@ function desktopChanged(before, after) {
   );
 }
 
-/** A physical event advances `GetLastInputInfo`; a synthetic pointer write does not. */
 function inputAdvanced(before, after) {
   return (
     Number.isInteger(before.inputTick) &&
@@ -139,12 +122,6 @@ function inputAdvanced(before, after) {
   );
 }
 
-/**
- * Attribute a desktop change. The fixture never activates and the launcher owns
- * no pointer API, so a change to another window, or a pointer delta with real
- * input behind it, is the owner's. Only the fixture taking the foreground or a
- * pointer delta with no input at all is unattributable.
- */
 function classifyDesktopChange(before, after, fixtureHwnd) {
   if (!desktopChanged(before, after)) return "same";
   if (fixtureHwnd && after.foreground === fixtureHwnd && before.foreground !== fixtureHwnd) {
@@ -158,11 +135,6 @@ async function sleep(ms) {
   await new Promise((resolveWait) => setTimeout(resolveWait, ms));
 }
 
-/**
- * Wait for a quiet second before showing the fixture. The desktop can be in use;
- * this only avoids covering an active window unannounced. It never hides a
- * change during measurement, which the per-scenario checks attribute instead.
- */
 async function waitForQuietDesktop(timeoutMs) {
   const started = Date.now();
   let previous = readState(0);
@@ -241,9 +213,6 @@ async function main() {
   await rm(readyPath, { force: true });
   const quiet = await waitForQuietDesktop(options.quietWaitMs);
   const before = quiet.state;
-  // A short quiet wait is a courtesy, not a precondition: the fixture never
-  // activates, and every change during measurement is attributed. Proceeding
-  // on an active desktop is recorded, not hidden.
   const quietDeferred = !quiet.ok;
   const child = spawn(compiled.exe, [readyPath, options.title], {
     windowsHide: true,

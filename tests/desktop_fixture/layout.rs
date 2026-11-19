@@ -1,14 +1,3 @@
-// The one contract shared by the private-desktop fixture app and the test
-// that drives it: window geometry, control rectangles and the journal
-// vocabulary. Plain data only, no FFI, no state.
-//
-// The app (`fixture_app.rs`) is compiled by the test at run time with this file
-// `include!`d; the test pulls it in as a module. Both sides therefore read the
-// SAME numbers and the SAME event names, so a geometry or keyword change
-// cannot land on one side only.
-//
-// The header is `//` rather than `//!` on purpose: `include!` splices this
-// file into a crate root, where an inner doc comment is not allowed.
 
 /// Window class registered by the fixture app. The test asserts the engine
 /// resolved THIS window (not another window on the private desktop, such as a

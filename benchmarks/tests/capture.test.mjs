@@ -1,9 +1,3 @@
-// Capture-evidence validation tests. These are pure checks of the rule that a
-// 1280x720 image is not enough: the response must prove which window it is,
-// that the frame came from PrintWindow, that it was not blank, moved or stale,
-// and that neither the capture's process nor its target touched the pointer or
-// the foreground. A raw pointer delta is accepted only when external input
-// explains it and the binary's import table has no writer.
 
 import test from "node:test";
 import assert from "node:assert/strict";

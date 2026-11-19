@@ -239,9 +239,6 @@ pub fn list() -> Value {
             "properties": {"ok": {"type": "boolean"}}, "required": ["ok"], "additionalProperties": false},
          "annotations": {"readOnlyHint": false, "destructiveHint": true, "idempotentHint": true, "openWorldHint": false}}
     ]});
-    // G5: inserted after tabs (before close) programmatically so the
-    // single literal above stays under the macro recursion limit; the count
-    // in serverInfo derives from this array (now 25 tools).
     {
         let tools = listed["tools"].as_array_mut().expect("tools array");
         let pos = tools
@@ -268,9 +265,6 @@ pub fn list() -> Value {
                  "fileOrigin": {"type": "string"}, "redacted": {"type": "boolean"}, "note": {"type": "string"}},
              "required": ["ok", "action"], "additionalProperties": false},
           "annotations": {"readOnlyHint": false, "destructiveHint": true, "idempotentHint": false, "openWorldHint": false}}));
-        // Geometry + visual-regression primitives: geometry needs no pixels,
-        // appearance does - both are engine measurements, never guesses.
-        // Inserted before `close` so the shutdown tool stays last.
         let at = tools
             .iter()
             .position(|t| t.get("name").and_then(|v| v.as_str()) == Some("close"))
@@ -339,16 +333,11 @@ pub fn list() -> Value {
           "outputSchema": {"type": "object",
              "properties": {"ok": {"type": "boolean"}, "action": {"type": "string"},
                  "name": {"type": "string"},
-                 // The two questions, then the 0.7.x alias that can only ever
-                 // equal the second.
                  "pixelsIdentical": {"type": "boolean"},
                  "passWithinTolerance": {"type": "boolean"},
                  "pass": {"type": "boolean"}, "updated": {"type": "boolean"},
                  "diffPixels": {"type": "integer"}, "totalPixels": {"type": "integer"},
                  "ratio": {"type": "number"},
-                 // `null` in the documented cases: bbox only exists when
-                 // something differed, diffPath only once a diff image was
-                 // written, and compare{update:true} returns neither.
                  "bbox": {"type": ["object", "null"]},
                  "maxChannelDelta": {"type": "integer"}, "baselinePath": {"type": "string"},
                  "diffPath": {"type": ["string", "null"]}, "bytes": {"type": "integer"},
@@ -371,9 +360,6 @@ pub fn list() -> Value {
                  "maxDiffRatio": {"type": "number"}, "fullPage": {"type": "boolean"}},
              "required": ["ok", "action"], "additionalProperties": false},
           "annotations": {"readOnlyHint": false, "destructiveHint": true, "idempotentHint": false, "openWorldHint": false}}));
-        // Pointer completeness: a drag and a wheel are distinct primitives, so
-        // they are distinct tools (the click tool gained button/clickCount
-        // parameters instead of a second click tool).
         tools.insert(at + 3, json!({"name": "drag", "title": "Drag",
           "description": "Drag from one element (or point) to another with real trusted input: one positioning Input.dispatchMouseEvent mouseMoved at the source, one mousePressed there, `steps` interpolated mouseMoved events with buttons:1, then mouseReleased at the target. The opening move is what routes pointer input to the renderer that owns the source (a cross-process frame receives nothing without it - measured), and the move at the source is also what starts a drag. from/to are a CSS selector (first match), an @eN ref from snapshot, or an AX selector (role=/name=/text=/label=); fromPoint/toPoint {x,y} in viewport CSS px stand in for an element on either side, so a drag between bare coordinates needs no DOM at all. Both endpoints run the same visibility/occlusion preflight click uses: a hidden or occluded endpoint is a typed not_actionable refusal and NOTHING is dispatched. Every event is trusted, so the engine's own HTML5 drag-and-drop machinery and the page's pointer handlers both fire - no synthetic DragEvent, no DataTransfer construction, no .value writes. steps (default 8, 2-64) splits the path into that many move events. Reply: the two points, the events dispatched and the step count. frame=<CDP frameId> resolves from/to inside that iframe (CSS or AX selectors; refs are main-frame only) and the dispatch point is mapped to main-viewport coordinates.",
           "inputSchema": {"type": "object", "properties": {
@@ -927,8 +913,6 @@ pub async fn call(name: &str, args: &Value, browser: &Browser) -> Value {
                     }
                 },
             };
-            // A quality on a lossless encoding would be silently dropped by
-            // the engine, so it is refused by name instead.
             if quality.is_some() && !format.takes_quality() {
                 return ToolErr::typed(
                     "screenshot: 'quality' applies to format jpeg/webp only (png is lossless)".to_string(),
@@ -936,9 +920,6 @@ pub async fn call(name: &str, args: &Value, browser: &Browser) -> Value {
                 )
                 .envelope();
             }
-            // Metric overrides only mean something under a pinned
-            // capture; accept them otherwise and they would silently do
-            // nothing, so refuse instead.
             if !deterministic && (width.is_some() || height.is_some()) {
                 return ToolErr::typed(
                         "screenshot: 'width'/'height' require deterministic:true (a plain capture uses the live viewport)".to_string(),
@@ -946,8 +927,6 @@ pub async fn call(name: &str, args: &Value, browser: &Browser) -> Value {
                     )
                     .envelope();
             }
-            // Two different framings: full page or one region. Picking one
-            // silently would capture something the caller did not ask for.
             if full && (element.is_some() || args.get("clip").is_some()) {
                 return ToolErr::typed(
                     "screenshot: 'fullPage' cannot be combined with 'element'/'clip' (capture one or the other)".to_string(),
@@ -1000,10 +979,6 @@ pub async fn call(name: &str, args: &Value, browser: &Browser) -> Value {
             .await
         }
         "assert_layout" => {
-            // Boxed on purpose: the geometry body would otherwise be
-            // inlined into this already-large dispatch future, and the
-            // debug-profile poll frame is the tightest stack budget on
-            // the launch path (see main.rs on stack depth).
             Box::pin(tool_assert_layout(browser, args)).await
         }
         "layout" => Box::pin(tool_layout(browser, args)).await,
@@ -1029,16 +1004,10 @@ pub async fn call(name: &str, args: &Value, browser: &Browser) -> Value {
                 .get("frame")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
-            // Hover is opt-in: a click sends press+release only unless the
-            // caller explicitly asks for the hover state first.
             let hover_first = args
                 .get("hoverFirst")
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
-            // Pointer completeness rides the same press/release path: the
-            // button and the click count are CDP's own parameters, so right,
-            // middle and double clicks need no second tool and no synthetic
-            // event. An unknown button is a typed refusal, never a default.
             let button = match args.get("button").and_then(|v| v.as_str()) {
                 None | Some("left") => "left",
                 Some("right") => "right",
@@ -1169,9 +1138,6 @@ pub async fn call(name: &str, args: &Value, browser: &Browser) -> Value {
             let from = args.get("from").and_then(|v| v.as_str());
             let to = args.get("to").and_then(|v| v.as_str());
             let frame = args.get("frame").and_then(|v| v.as_str());
-            // Each endpoint needs exactly one addressing form; neither is a
-            // typed refusal because a drag with no source or no target is not
-            // a smaller drag, it is a missing instruction.
             let endpoint = |name: &str, el: Option<&str>, pt: Option<(f64, f64)>| {
                 match (el, pt) {
                     (Some(_), Some(_)) => Err(ToolErr::typed(
@@ -1583,7 +1549,6 @@ async fn tool_navigate(browser: &Browser, url: &str) -> Result<Value, ToolErr> {
             return Err(ToolErr::fallback(format!("navigate: {err}")));
         }
     }
-    // Wait for load (event-driven: wakes on Page.loadEventFired, 10s cap).
     browser
         .wait_for_load(std::time::Duration::from_secs(10))
         .await;
@@ -1599,24 +1564,9 @@ async fn tool_navigate(browser: &Browser, url: &str) -> Result<Value, ToolErr> {
         .as_str()
         .unwrap_or(url)
         .to_string();
-    // NOTE: no HTTP status is reported. The tool speaks CDP, not HTTP: it
-    // never sees the main-frame response status (there is no Network-domain
-    // capture here), and a hardcoded 200 lies on every 404. A wrong field is
-    // worse than no field, so the envelope is just url + title.
-    //
-    // Transient blank-load race (a commit of an EMPTY DOM - empty title,
-    // empty body - at the right URL, historically observed as a double-fetch
-    // race where the losing request won the commit):
-    // when the committed page is non-blank yet title AND body text are both
-    // empty, say so in a `warning` field so the caller can see it (and
-    // re-navigate - the flake is retryable). One extra eval, only on
-    // suspicious pages; no retry magic here.
     if !title.is_empty() || cur.is_empty() || cur == "about:blank" {
         return Ok(ok_text(json!({"url": cur, "title": title}).to_string()));
     }
-    // NOTE: `.length` arrives as an int on some engines but as a float on
-    // others (`42` vs `42.0` number shape), so compare as f64 - `as_i64`
-    // would miss the empty case on float-shaping engines entirely.
     let body_len = browser
         .eval("(((document.body && document.body.innerText) || '') + '').length")
         .await
@@ -1730,9 +1680,6 @@ fn snapshot_name(ax_name: &str, tag: &str, sens: bool, info: Option<&Value>) -> 
         s("selText"),
         s("ty"),
     );
-    // Ordering runs on the RAW candidates (a whitespace-only string is truthy
-    // in the legacy `||` chain, so it blocks fallthrough and then normalizes
-    // to ""); the pick is normalized and capped exactly like the renderer.
     let mut fb = String::new();
     if tag == "select" {
         if !sel_text.is_empty() {
@@ -1809,12 +1756,6 @@ fn ax_sel_parse(tool: &str, raw: &str) -> Result<Option<AxSel>, ToolErr> {
         }
     }
     let Some((rest, kind)) = found else {
-        // A near miss - the keyword, optional spaces, then `=` (`role = button`,
-        // `text = "x"`) - is a malformed AX selector, not a CSS selector:
-        // falling through would spend the CSS presence wait and then answer a
-        // JS syntax error, which tells the caller nothing about the form it
-        // almost wrote. Anything else (a `<label>` element, `label[for=x]`,
-        // `[name="x"]`, `input[name=x]`) is untouched legacy CSS.
         let near = ["role", "name", "text", "label"].iter().any(|kw| {
             t.get(..kw.len())
                 .is_some_and(|p| p.eq_ignore_ascii_case(kw))
@@ -1973,9 +1914,6 @@ async fn frame_ax_tree(
                     )),
                 };
             }
-            // Unmapped OOPIF or a detached frame: say what it is. A silent
-            // main-frame action here would be the one failure this policy
-            // exists to prevent.
             Err(ToolErr::typed(
                 format!("{tool}: frame '{f}' has no AX tree readable from this session ({e}); nothing was resolved and the page was not searched instead - the frame is detached or out of process with no mapped session, and retrying this call cannot help; re-read targets for a live frameId, or address an element on the page"),
                 json!({"code": ToolCode::InvalidTarget.as_str(), "reason": ToolReason::Unreachable.as_str(), "tool": tool, "frame": f}),
@@ -2036,25 +1974,12 @@ async fn ax_resolve(
             name,
         });
     }
-    // Visible text per element, accumulated from the StaticText leaves that
-    // belong to it. StaticText carries the whole text of one text node
-    // (InlineTextBox splits it into fragments and owns no DOM node), so it is
-    // the only leaf source. Fragments are concatenated with no separator, so
-    // `<p>Hel<span>lo</span></p>` reads "Hello" exactly as rendered; an
-    // ignored leaf contributes nothing.
-    //
-    // Measured on the pinned engine: hidden content (display:none,
-    // visibility:hidden, aria-hidden, content-visibility:hidden) is pruned
-    // from the tree entirely, so a hidden leaf is rare - and every VISIBLE
-    // element carries ignored ancestors (body/html wrappers), so skipping an
-    // ignored ancestor would erase the page's text. Only the leaf is filtered.
     let mut text_of: Vec<String> = vec![String::new(); nodes.len()];
     for n in nodes.iter() {
         if n.role != "statictext" || n.name.is_empty() || n.ignored {
             continue;
         }
         let mut cur = n.parent.as_str();
-        // Depth guard: a malformed parent chain must not loop.
         for _ in 0..64 {
             let Some(&p) = index.get(cur) else { break };
             text_of[p].push_str(&n.name);
@@ -2063,15 +1988,11 @@ async fn ax_resolve(
     }
     let mut hits: Vec<usize> = Vec::new();
     for (i, n) in nodes.iter().enumerate() {
-        // Text leaves own the words, not an element a caller can act on, and
-        // the snapshot mints no ref for them: they are never candidates.
         if n.ignored || n.backend.is_none() || n.role == "statictext" || n.role == "inlinetextbox" {
             continue;
         }
         let matched = match sel.kind {
             AxKind::Role => n.role == sel.role,
-            // The printed name (snapshot cap included) is accepted as well as
-            // the raw AX name: an agent copies what the snapshot shows.
             AxKind::RoleName => {
                 n.role == sel.role
                     && (ax_eq(&n.name, &sel.want) || ax_eq(&ax_cap(&n.name), &sel.want))
@@ -2080,10 +2001,6 @@ async fn ax_resolve(
             AxKind::Label => {
                 n.from_label && (ax_eq(&n.name, &sel.want) || ax_eq(&ax_cap(&n.name), &sel.want))
             }
-            // Visible text only: an element whose text lives nowhere in the
-            // tree (an unlabeled control, an aria-label-only box) has no
-            // visible text to match, so the accessible name is NOT a fallback
-            // here - `name=` is the form that reads names.
             AxKind::Text => ax_eq(&text_of[i], &sel.want),
         };
         if matched {
@@ -2091,11 +2008,6 @@ async fn ax_resolve(
         }
     }
     if sel.kind == AxKind::Text && hits.len() > 1 {
-        // Containment, not identity: a wrapper whose only text is the matched
-        // text is the same words in a bigger box. Keep the innermost owner -
-        // the element with no matching descendant - so `text=` names a
-        // target, and a wrapper that also contains the text can never be
-        // picked over the element that actually owns it.
         let set: std::collections::HashSet<usize> = hits.iter().copied().collect();
         let mut outer: std::collections::HashSet<usize> = std::collections::HashSet::new();
         for &h in hits.iter() {
@@ -2110,10 +2022,6 @@ async fn ax_resolve(
         }
         hits.retain(|h| !outer.contains(h));
     }
-    // A name the snapshot PRINTS for an unlabeled control comes from its live
-    // fallback (placeholder/id/name/type), which the AX tree does not carry.
-    // Only when the printed half has already missed do we pay for the live
-    // read, and only for the controls that can have such a name at all.
     let mut synthesized: std::collections::HashMap<usize, String> =
         std::collections::HashMap::new();
     if hits.is_empty() && matches!(sel.kind, AxKind::Name | AxKind::RoleName) {
@@ -2141,12 +2049,7 @@ async fn ax_resolve(
                    "tool": tool, "element": raw, "frame": fid}),
         ));
     }
-    // One candidate per element: the same backend can appear on more than one
-    // AX node, and a duplicate would read as a second "match" and turn a
-    // unique selector into a false ambiguity.
     let mut seen: std::collections::HashSet<i64> = std::collections::HashSet::new();
-    // Resolve every candidate's ref before deciding: an ambiguity error must
-    // list the @eN the caller can act on, not just a count.
     let mut cands: Vec<AxHit> = Vec::with_capacity(hits.len());
     for i in hits.iter().copied() {
         let backend = nodes[i].backend.unwrap_or_default();
@@ -2160,9 +2063,6 @@ async fn ax_resolve(
         cands.push(AxHit {
             backend,
             role: nodes[i].role.clone(),
-            // The name a snapshot prints, so the reply and the selector that
-            // matched agree - including the fallback name of an unlabeled
-            // control, which the AX node itself does not carry.
             name: synthesized
                 .get(&i)
                 .cloned()
@@ -2213,8 +2113,6 @@ async fn ax_synthesized_name_hits(
     nodes: &[AxNode],
     sel: &AxSel,
 ) -> Vec<(usize, String)> {
-    // Only nodes that can reach the fallback: an empty AX name on a control
-    // role (the renderer's own gate is the tag, which enrichment supplies).
     const CONTROL_ROLES: &[&str] = &[
         "textbox",
         "searchbox",
@@ -2232,14 +2130,11 @@ async fn ax_synthesized_name_hits(
             || n.backend.is_none()
             || !n.name.is_empty()
             || !CONTROL_ROLES.contains(&n.role.as_str())
-            // A role+name selector narrows to its role here too, so both
-            // name-bearing forms accept exactly the same printed names.
             || (sel.kind == AxKind::RoleName && n.role != sel.role)
         {
             continue;
         }
         cands.push(i);
-        // A pathological page cannot make one selector resolve unbounded work.
         if cands.len() >= 200 {
             break;
         }
@@ -2265,8 +2160,6 @@ async fn ax_synthesized_name_hits(
                     keep.push(i);
                 }
             }
-            // A node that no longer resolves is not this pass's business: the
-            // action path reports it typed if it is the one that matched.
             Err(_) => continue,
         }
     }
@@ -2278,8 +2171,6 @@ async fn ax_synthesized_name_hits(
             let tag = info.get("tag").and_then(|v| v.as_str()).unwrap_or("");
             let sens = info.get("sens").and_then(|v| v.as_bool()).unwrap_or(false);
             let printed = snapshot_name(&nodes[i].name, tag, sens, Some(&info));
-            // The printed name is carried back: the reply reports it, so the
-            // name that matched is the name the caller is shown.
             (!printed.is_empty() && ax_eq(&printed, &sel.want)).then_some((i, printed))
         })
         .collect()
@@ -2302,8 +2193,6 @@ async fn ax_object(
         )
     };
     match match hit.session.as_deref() {
-        // An out-of-process node's backend id is only meaningful in the
-        // renderer that issued it, so the resolve runs on that session.
         Some(sid) => browser.resolve_node_in_session(sid, hit.backend).await,
         None => {
             browser
@@ -2455,9 +2344,6 @@ pub(crate) async fn resolve_ref_object(
     let Some(backend) = browser.ref_backend(id).await else {
         return Ok(None);
     };
-    // A ref minted in a mapped OOPIF resolves in its own session: its backend
-    // id is meaningless to the page session, and asking there would read as a
-    // detached node.
     let session = browser.ref_session(id).await;
     let resolved = match session.as_deref() {
         Some(sid) => browser.resolve_node_in_session(sid, backend).await,
@@ -2671,8 +2557,6 @@ async fn frame_owner_hit_ok(
         .await
         .map_err(|e| frame_lookup_err(tool, fid, e))?;
     if levels.is_empty() {
-        // `frame` names the main frame itself: no owners exist, the point is
-        // already main-viewport, and the frame-local preflight hit-tested.
         return Ok((lx, ly));
     }
     let nodes = browser
@@ -2684,7 +2568,6 @@ async fn frame_owner_hit_ok(
             "{tool}: frame owner chain mismatch for frame '{fid}'"
         )));
     }
-    // Stamp every owner; a stamping error still runs the cleanup below.
     let mut verdict: Result<(), ToolErr> = Ok(());
     for nid in &nodes {
         if let Err(e) = browser
@@ -2699,9 +2582,6 @@ async fn frame_owner_hit_ok(
             break;
         }
     }
-    // Per-level verdicts, immediate parent first, main last. Skipped when
-    // stamping failed (a partial stamp would false-negative the identity
-    // check into a misleading occluded).
     if verdict.is_ok() {
         for (realm, x, y) in &levels {
             let expr = format!("((x, y, attr) => {{ const h = document.elementFromPoint(x, y); if (!h) return 'NONE'; let n = h; while (n) {{ try {{ if (n.hasAttribute && n.hasAttribute(attr)) return 'OWNER'; }} catch (e) {{}} n = n.parentElement; }} return (h.tagName || 'NONE'); }})({x}, {y}, {attr_lit})");
@@ -2722,10 +2602,6 @@ async fn frame_owner_hit_ok(
             }
         }
     }
-    // Cleanup guard: the temp stamp is removed from EVERY ancestor document
-    // (each level's own realm, main last) whatever happened above - a
-    // stamping error, a level failure, or an eval failure must never leave
-    // stamps behind. Best-effort: cleanup errors never replace the verdict.
     for realm in levels.iter().map(|(r, _, _)| r) {
         let cleanup = format!("((attr) => {{ try {{ document.querySelectorAll('[' + attr + ']').forEach((n) => n.removeAttribute(attr)); }} catch (e) {{}} return 'ok'; }})({attr_lit})");
         match realm {
@@ -2822,9 +2698,6 @@ async fn emit_paged_snapshot(
         browser.store_snapshot(c.clone()).await;
         c
     } else {
-        // Paging reads the render a concurrent offset:0 snapshot may be
-        // rewriting: take the same lock every render holds and clone the
-        // cache under it, so the id check and the slice see ONE render.
         let _paging_guard = browser.lock_snapshot().await;
         let c = browser.cached_snapshot().await.ok_or_else(|| {
             ToolErr::typed(
@@ -2921,11 +2794,6 @@ async fn emit_paged_snapshot(
         }
     }
     let Some((full, end, tail_cut)) = last_fit else {
-        // Degenerate: one line plus its footer exceeds the cap, so no page
-        // boundary exists that would make progress. The old shape returned
-        // the cut line with `truncated:true` AND `nextOffset:null`, which
-        // says "there is more, and there is no next page" - a dead end for
-        // the caller. Refuse with the line length and the way out instead.
         let line_chars = cache.lines[offset].chars().count();
         return Err(ToolErr::typed(
             format!(
@@ -3028,21 +2896,10 @@ async fn tool_snapshot_legacy(
     offset: usize,
     snapshot_id: Option<&str>,
 ) -> Result<Value, ToolErr> {
-    // Legacy DOM-heuristic mode (explicit `mode:"legacy"` only): enumerate actionable nodes in
-    // document order, stamp each with an exact data-gladius-ref id, and
-    // report role/name/value. Refs are unique across snapshots: the lock
-    // serializes concurrent snapshots and the base offset keeps @eN from
-    // ever being reassigned. With frame= the same heuristic runs inside
-    // that iframe's realm (isolated world, works cross-origin).
     let _snap_guard = browser.lock_snapshot().await;
     let start = browser.ref_start();
     let raw_js = r#"(() => {
   const base = __REF_BASE__;
-  // Secret hygiene: password inputs and inputs carrying a credential-ish
-  // autocomplete token never expose their value (see isSensitive). Their
-  // displayed/structured value is the literal mask "ÔÇóÔÇóÔÇóÔÇó", and the raw
-  // value is NOT used as the AX name fallback (aria-label, placeholder,
-  // id, name, type instead, in that order).
   const SENS_AUTOCOMPLETE = new Set(["current-password", "new-password", "cc-number", "cc-exp", "cc-csc", "one-time-code"]);
   const isSensitive = (el) => {
     if ((el.tagName || "").toUpperCase() !== "INPUT") return false;
@@ -3108,9 +2965,6 @@ async fn tool_snapshot_legacy(
         .and_then(|t| t.as_str())
         .unwrap_or("")
         .to_string();
-    // Store the ref table for exact ref resolution + stale detection. Legacy
-    // keeps its single in-page stamp (one eval, not a per-node CDP round
-    // trip); AX stores backend ids instead and never touches the page.
     let mut table = std::collections::HashMap::new();
     for it in items.iter() {
         if let (Some(r), role, name) = (
@@ -3132,8 +2986,6 @@ async fn tool_snapshot_legacy(
     browser.store_refs(url.clone(), table).await;
     let total = items.len();
     browser.ref_advance(total);
-    // Page text keeps old callers (marker asserts) working on AX output.
-    // With frame= the frame's own text is reported.
     let tv = match frame {
         Some(fid) => {
             browser
@@ -3320,9 +3172,6 @@ async fn tool_snapshot_ax(
 ) -> Result<Value, ToolErr> {
     let _snap_guard = browser.lock_snapshot().await;
     let start = browser.ref_start();
-    // The page session for a same-process frame; the frame's OWN session for a
-    // mapped OOPIF. An unmapped out-of-process frame is a typed error here and
-    // never falls back to the page's tree.
     let (tree, frame_session) = frame_ax_tree(browser, "snapshot", frame).await?;
     let empty_nodes = Vec::new();
     let ax_nodes = tree
@@ -3354,9 +3203,6 @@ async fn tool_snapshot_ax(
             continue;
         }
         let role = role_raw.to_lowercase();
-        // Text leaves point at text nodes (no element to stamp, no ref to
-        // act on); their text already surfaces in the page-text tail and in
-        // their element ancestors' accessible names.
         if role == "statictext" || role == "inlinetextbox" {
             continue;
         }
@@ -3402,14 +3248,7 @@ async fn tool_snapshot_ax(
             ax_disabled: disabled,
         });
     }
-    // Resolve the AX backend ids straight to JS objects: no attribute
-    // stamping, no page mutation. Resolves are pipelined (join_all), so the
-    // old one-sequential-round-trip-per-node stamp loop is gone, and
-    // DOM.resolveNode pierces open shadow roots - which is why a shadow ref
-    // is now actionable with the same resolver as a light-DOM ref.
     browser.command("DOM.enable", json!({}), true).await?;
-    // Each resolve happens on the session that owns the node: the page session
-    // for a same-process frame, the frame's own session for an OOPIF.
     let mut resolves = Vec::with_capacity(cands.len());
     for c in cands.iter() {
         let backend = c.backend;
@@ -3445,11 +3284,6 @@ async fn tool_snapshot_ax(
         }));
         object_ids.push(oid);
     }
-    // Live enrichment in one callFunctionOn per 100 objects: the same fields
-    // the old selector eval produced, now read from the resolved objects
-    // themselves (shadow included). The first object of each chunk is the
-    // receiver so every call stays in that node's execution context; a chunk
-    // that mixes worlds is split rather than nulled (see `enrich_objects`).
     let enrich_vals: Vec<Value> = enrich_objects_in(browser, frame_session.as_deref(), &object_ids).await;
     let enrich_map: serde_json::Map<String, Value> = items
         .iter()
@@ -3476,12 +3310,6 @@ async fn tool_snapshot_ax(
             .unwrap_or(false);
         match enrich_map.get(&r) {
             Some(Value::Null) | None => {
-                // Enrichment could not read this node (detached mid-snapshot,
-                // or an object the engine would not hand back): keep the
-                // AX-side tag/disabled and the G0 mask. The AX value is
-                // whatever the engine exposed; a text-entry control is
-                // masked here because sensitivity cannot be re-checked
-                // without the element.
                 it["tag"] = json!("");
                 let role = it.get("role").and_then(|x| x.as_str()).unwrap_or("");
                 it["value"] = json!(unreadable_value(role, &ax_value));
@@ -3510,10 +3338,6 @@ async fn tool_snapshot_ax(
                 } else {
                     ax_value
                 };
-                // Unlabeled-control fallback: the shared `snapshot_name`
-                // rule, so an agent can copy exactly what this prints. The
-                // ordering, the sensitive-value exclusion and the 80-char
-                // normalization are documented and enforced there.
                 let ax_name = it
                     .get("name")
                     .and_then(|x| x.as_str())
@@ -3529,9 +3353,6 @@ async fn tool_snapshot_ax(
             }
         }
     }
-    // url/title/text: the frame's own when scoped, else the main page. A
-    // frame-scoped read goes through the frame's realm resolver, so an OOPIF
-    // is read from its own session instead of failing on the page one.
     let (url, title, text) = match frame {
         Some(fid) => {
             let pair = frame_realm_eval(
@@ -3587,11 +3408,6 @@ async fn tool_snapshot_ax(
             (u, t, tx)
         }
     };
-    // Store the ref table (label + backend node id) for exact resolution,
-    // shadow actionability, and stale detection. A frame-scoped snapshot
-    // records the frame and the owning session per ref, because a backend id
-    // only resolves in the renderer that issued it; the staleness URL stays the
-    // PAGE's, since that is what a later action compares against.
     let mut table = std::collections::HashMap::new();
     for it in items.iter() {
         if let (Some(r), role, name) = (
@@ -3645,10 +3461,6 @@ async fn tool_snapshot_text_frame(
     browser: &Browser,
     frame: Option<&str>,
 ) -> Result<Value, ToolErr> {
-    // Cap the transfer at the source: the page returns an already-sliced
-    // string so huge pages never balloon memory on this side; the 8000-char
-    // cap below still applies after whitespace collapsing. With frame= the
-    // frame's own text is reported (isolated world, works cross-origin).
     let v = match frame {
         Some(fid) => {
             browser
@@ -3666,8 +3478,6 @@ async fn tool_snapshot_text_frame(
     };
     let raw = v.as_str().unwrap_or("").to_string();
     let collapsed = raw.split_whitespace().collect::<Vec<_>>().join(" ");
-    // Text-only note (no AX refs exist): reserve its room so the total
-    // never exceeds the 8000-char cap the suite asserts.
     let lines = raw.lines().count().max(1);
     let suffix = format!("\n[text-only snapshot: {lines} lines, no element refs]");
     let budget = 8000usize.saturating_sub(suffix.len());
@@ -3849,13 +3659,6 @@ async fn tool_screenshot(
     format: crate::capture::Format,
     quality: Option<u8>,
 ) -> Result<Value, ToolErr> {
-    // Capability gate: a dom-only backend has no rendering pipeline, so
-    // there are no pixels to capture. Refuse with the backend and the
-    // reason, never a fake or blank image. Checked before any browser
-    // launch, so a dom-only refusal never spawns an engine.
-    // (`upload` needs no gate: it speaks DOM CDP only -
-    // DOM.enable/getDocument/querySelector/setFileInputFiles - with no
-    // compositor/pixel path. Verified, not assumed.)
     match crate::browser::backend_caps() {
         Ok(crate::browser::BackendCaps::DomOnly) => {
             return Err(ToolErr::typed(
@@ -3866,20 +3669,11 @@ async fn tool_screenshot(
         Ok(crate::browser::BackendCaps::Render) => {}
         Err(e) => return Err(ToolErr::fallback(format!("screenshot: {e}"))),
     }
-    // A plain capture is lock-free (mcp.rs `needs_exec_lock`), so a mutating
-    // tool may switch the active target while it runs: `tabs select`/
-    // `targets select` move the very page the caption names, and `visual`
-    // opens a scratch target. Read the target before and after and refuse a
-    // capture whose page changed - a PNG of another page under "the active
-    // page" is a lie, and re-widening the lock would serialise every read.
     let target_before = if deterministic {
         None
     } else {
         Some(browser.active_target_id().await)
     };
-    // Element framing resolves to a page-space box BEFORE the capture, so a
-    // bad ref or an unrendered node is a typed error and never a shot of
-    // something else.
     let clip = match element {
         Some(el) => Some(screenshot_element_box(browser, el).await?),
         None => clip,
@@ -4087,7 +3881,6 @@ async fn tool_visual(browser: &Browser, args: &Value) -> Result<Value, ToolErr> 
         ],
     )?;
     let action = args.get("action").and_then(|v| v.as_str()).unwrap_or("");
-    // save/compare need a rendering pipeline; list/delete touch files only.
     if matches!(action, "save" | "compare") {
         match crate::browser::backend_caps() {
             Ok(crate::browser::BackendCaps::DomOnly) => {
@@ -4147,9 +3940,6 @@ async fn tool_visual(browser: &Browser, args: &Value) -> Result<Value, ToolErr> 
             if !crate::visual::exists(safe) {
                 return Err(not_found_baseline(safe));
             }
-            // `antialias` (default true) and `includeAA` (default false) are
-            // inverses. Both may be sent only when they agree; a contradiction
-            // is refused rather than silently resolved.
             let antialias_arg = args.get("antialias").and_then(|v| v.as_bool());
             let include_aa = args.get("includeAA").and_then(|v| v.as_bool());
             if let (Some(a), Some(i)) = (antialias_arg, include_aa) {
@@ -4212,17 +4002,12 @@ async fn tool_visual(browser: &Browser, args: &Value) -> Result<Value, ToolErr> 
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false),
             };
-            // A per-channel threshold is a 0..1 fraction; a value outside
-            // that range would silently compare nothing (or everything), so
-            // refuse it instead.
             if !(0.0..=1.0).contains(&opt.threshold) {
                 return Err(ToolErr::typed(
                     "visual: 'threshold' must be a fraction in 0..=1 (per-channel share of the 0-255 range)".to_string(),
                     json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "visual", "arg": "threshold"}),
                 ));
             }
-            // `compare` carries its own typed errors (scratch refusal, unknown
-            // baseline environment), so they pass through unchanged.
             crate::visual::compare(browser, safe, &opt)
                 .await
                 .map(|v| ok_text(v.to_string()))
@@ -4377,11 +4162,6 @@ async fn click_dispatch(
     click_count: i64,
     cross_process_frame: bool,
 ) -> Result<String, ToolErr> {
-    // The button and the click count are CDP's own parameters: a right,
-    // middle or double click is the same trusted press/release pair, never a
-    // synthetic DOM event. A cross-process frame click additionally positions
-    // the pointer first, because that is the only way the browser routes input
-    // into the child renderer.
     let sent = if cross_process_frame {
         browser
             .mouse_click_cross_process(x, y, button, click_count)
@@ -4407,21 +4187,14 @@ async fn tool_click(
     button: &str,
     click_count: i64,
 ) -> Result<Value, ToolErr> {
-    // Drain any earlier dialog record so one found below belongs to THIS click.
     browser.take_dialog().await;
     let fid = frame_id_ok("click", frame)?;
 
-    // Additive AX selector forms (role=/name=/text=/label=) resolve on the AX
-    // tree first and act on that exact node. Legacy strings (CSS, @eN) skip
-    // this and keep their path byte-for-byte.
     if let Some(sel) = ax_sel_parse("click", element)? {
         let hit = ax_resolve(browser, "click", &sel, element, fid.as_deref()).await?;
         return ax_click(browser, element, &hit, fid.as_deref(), hover_first, button, click_count).await;
     }
     if let Some(f) = fid.as_deref() {
-        // Frame policy: a ref is actionable only in the frame whose own
-        // snapshot minted it. A main-frame ref, or another frame's ref, is a
-        // typed `invalid_args` (never a silent main-frame click).
         if let Some(id) = parse_ref(element) {
             if browser.ref_frame(&id).await.as_deref() == Some(f) {
                 return ref_click_frame(
@@ -4450,8 +4223,6 @@ async fn tool_click(
         };
         return match v.as_str() {
             Some(s) if s.starts_with("GLADIUS_FALLBACK:") => {
-                // Documented <option> fallback only (no layout box for a
-                // pointer sequence); settle + dialog reporting as before.
                 click_settle(browser, &s["GLADIUS_FALLBACK:".len()..]).await;
                 Ok(click_ok(browser).await)
             }
@@ -4489,18 +4260,9 @@ async fn tool_click(
         };
     }
     let sel = serde_json::to_string(element).map_err(|e| e.to_string())?;
-    // Bounded presence wait (3s cap): page load is navigate's job (10s load
-    // poll); once the page reports complete, a static element is either
-    // present or never will be. True misses (err-02, click-03's removed
-    // link) return the IDENTICAL error text at 3s as at 10s (measured H2H:
-    // both burned the full 10s for nothing); slow-page arrivals stay covered
-    // by navigate's poll, not here.
     {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
         loop {
-            // Clip each probe to the REMAINING budget (the same wrap the
-            // `wait_for` tool already uses): a stalled peer must not turn
-            // this 3s presence cap into a 30s `send_raw` timeout.
             let remaining = deadline.saturating_duration_since(std::time::Instant::now());
             let probe = format!("(!!document.querySelector({sel}))");
             if let Ok(Ok(Value::Bool(true))) =
@@ -4540,7 +4302,6 @@ async fn tool_click(
             Ok(click_ok(browser).await)
         }
         Some("GLADIUS_NOTFOUND") => {
-            // The element may exist where no selector can look (S2.5).
             if closed_shadow_hit(browser, element).await {
                 return Err(shadow_closed("click", element));
             }
@@ -4614,8 +4375,6 @@ async fn ax_click(
         }
     };
     let (x, y, h0) = match fid {
-        // The preflight's href belongs to the leaf realm; a frame click
-        // settles against the MAIN href (same reason as the CSS frame path).
         Some(f) => {
             let (mx, my) = frame_owner_hit_ok(browser, "click", element, f, x, y).await?;
             let h0 = browser
@@ -4653,9 +4412,6 @@ async fn ax_hover(
 ) -> Result<Value, ToolErr> {
     let oid = ax_object(browser, "hover", element, hit).await?;
     let v = call_on_object_in(browser, hit.session.as_deref(), &oid, hover_preflight_fn(), vec![]).await?;
-    // The preflight answers a JSON STRING (`{"x":..,"y":..}`) on success and a
-    // `GLADIUS_*` marker on failure, exactly like the CSS frame path: parse it
-    // as text, never as an object value.
     let point = v
         .as_str()
         .filter(|s| s.starts_with('{'))
@@ -4826,7 +4582,6 @@ async fn tool_click_frame(
     click_count: i64,
 ) -> Result<Value, ToolErr> {
     let sel = serde_json::to_string(element).map_err(|e| e.to_string())?;
-    // Bounded presence wait inside the frame realm (same 3s cap shape as main).
     {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
         loop {
@@ -4848,9 +4603,6 @@ async fn tool_click_frame(
     let v = frame_realm_eval(browser, "click", fid, &expr).await?;
     match v.as_str() {
         Some(s) if s.starts_with("GLADIUS_FALLBACK:") => {
-            // Frame `<option>` fallback: no pointer sequence, no navigation;
-            // settle empty (the frame-href tail would mismatch the main href
-            // and burn the load wait).
             click_settle(browser, "").await;
             Ok(click_ok(browser).await)
         }
@@ -4863,19 +4615,12 @@ async fn tool_click_frame(
                 .map_err(|_| "click: no layout point".to_string())?;
             let lx = pt.get("x").and_then(|n| n.as_f64()).unwrap_or(0.0);
             let ly = pt.get("y").and_then(|n| n.as_f64()).unwrap_or(0.0);
-            // h0 must be the MAIN href (click_settle compares top-level
-            // flight): the frame realm's own href would always mismatch and
-            // burn the 10s load wait on every frame click.
             let h0 = browser
                 .eval("window.location.href")
                 .await
                 .ok()
                 .and_then(|v| v.as_str().map(|s| s.to_string()))
                 .unwrap_or_default();
-            // Per-level parent-side hit-test against the TRUE owners plus the
-            // main-viewport point: a covering overlay or a different iframe
-            // at ANY level is typed occluded, never a click into the wrong
-            // surface.
             let (mx, my) = frame_owner_hit_ok(browser, "click", element, fid, lx, ly).await?;
             let cross = browser.oop_session_for_frame(fid).await.is_some();
             let st = click_dispatch(browser, mx, my, &h0, hover_first, button, click_count, cross)
@@ -5062,9 +4807,6 @@ async fn tool_wheel(
         .mouse_wheel(x, y, dx, dy)
         .await
         .map_err(ToolErr::from)?;
-    // Bounded settle: scrolling can be delegated to the compositor and eased,
-    // so read until the offset stops moving (or the budget ends). The LAST
-    // read is the reply, never the first.
     let deadline = std::time::Instant::now() + std::time::Duration::from_millis(1200);
     let mut last = before;
     let mut stable = 0u32;
@@ -5130,8 +4872,6 @@ async fn tool_drag(
         .mouse_drag(from_pt, to_pt, steps)
         .await
         .map_err(ToolErr::from)?;
-    // Give the page's own handlers a turn before the caller reads the DOM:
-    // the drop logic runs in the release task, not in the CDP acknowledgement.
     tokio::time::sleep(std::time::Duration::from_millis(80)).await;
     Ok(ok_text(
         json!({
@@ -5209,7 +4949,6 @@ async fn ref_click_frame(
         }
     };
     let (mx, my) = frame_owner_hit_ok(browser, "click", element, fid, lx, ly).await?;
-    // Settle against the MAIN href: the leaf realm's own href never matches.
     let h0 = browser
         .eval("window.location.href")
         .await
@@ -5260,10 +4999,6 @@ async fn click_settle(browser: &Browser, state: &str) {
     }
     let deadline = std::time::Instant::now() + std::time::Duration::from_millis(120);
     loop {
-        // A dialog record means the page's JS thread was blocked by THIS
-        // click (drained before dispatch, so it is ours); the reader already
-        // accepted it, so hand off to the load wait - one eval when nothing
-        // further navigates - and let click_ok report it as before.
         if browser.last_dialog().await.is_some() {
             browser
                 .wait_for_load(std::time::Duration::from_secs(10))
@@ -5294,8 +5029,6 @@ async fn click_settle(browser: &Browser, state: &str) {
 async fn click_ok(browser: &Browser) -> Value {
     match browser.last_dialog().await {
         Some(d) => {
-            // Truthful verb: the record keeps the policy it ran under, so a
-            // dismissed dialog reports dismissed, an accepted one accepted.
             let verb = if d.accepted { "accepted" } else { "dismissed" };
             ok_text(
             json!({"ok": true, "dialog": {"type": d.dtype, "message": d.message, "url": d.url},
@@ -5365,8 +5098,6 @@ async fn tool_type(
     frame: Option<&str>,
 ) -> Result<Value, ToolErr> {
     let fid = frame_id_ok("type", frame)?;
-    // Additive AX selector forms resolve on the AX tree (scoped by frame when
-    // named) and act on that exact node; legacy strings are untouched.
     if let Some(sel) = ax_sel_parse("type", element)? {
         let hit = ax_resolve(browser, "type", &sel, element, fid.as_deref()).await?;
         return ax_type(browser, element, &hit, text, submit).await;
@@ -5413,8 +5144,6 @@ async fn tool_type(
                 ));
             }
         }
-        // Focus + select-all ran in the frame realm; `Input.insertText`
-        // dispatches to the frame's focused editable on the page session.
         browser.insert_text(text).await.map_err(|e| {
             type_not_editable(
                 "type",
@@ -5479,9 +5208,6 @@ async fn tool_type(
                 &json!({"ref": at_id}),
             )
         })?;
-        // Truthful reply: read the field's LENGTH ONLY (never its value; the
-        // G0 sensitivity mask stays intact). Some fields legitimately
-        // transform input, so a mismatch is a note, never a failure.
         let value_length = match &oid {
             Some(o) => call_on_object(browser, o, VALUE_LEN_FN, vec![])
                 .await
@@ -5533,7 +5259,6 @@ async fn tool_type(
             ));
         }
         Some("GLADIUS_NOTFOUND") => {
-            // The element may exist where no selector can look (S2.5).
             if closed_shadow_hit(browser, element).await {
                 return Err(shadow_closed("type", element));
             }
@@ -5567,8 +5292,6 @@ async fn tool_type(
 }
 
 async fn submit_enter(browser: &Browser) -> Result<(), String> {
-    // Full keyDown (with text) so Enter triggers default actions like
-    // form submission; rawKeyDown alone does not.
     browser
         .command(
             "Input.dispatchKeyEvent",
@@ -5604,13 +5327,8 @@ async fn tool_evaluate(
     browser.take_dialog().await;
     let v = match (target, frame) {
         (Some(tid), None) => browser.eval_in_target(tid, expression).await?,
-        // A frame routinely means an OOPIF, whose realm is only reachable on
-        // its own session; `frame_realm_eval` prefers that session and falls
-        // back to the page-session frame realm for a same-process iframe.
         (None, Some(fid)) => match frame_realm_eval(browser, "evaluate", fid, expression).await {
             Ok(v) => v,
-            // The realm router reports a frame-shape failure as a String from
-            // the session; keep it typed here.
             Err(e) => return Err(e),
         },
         (None, None) => browser.eval(expression).await?,
@@ -5618,8 +5336,6 @@ async fn tool_evaluate(
     };
     let mut obj = serde_json::Map::new();
     obj.insert("value".to_string(), v);
-    // An evaluate that opened a dialog (e.g. `alert(1)`) was auto-accepted
-    // by the reader; report it instead of returning a bare value.
     if let Some(d) = browser.last_dialog().await {
         obj.insert(
             "dialog".to_string(),
@@ -5642,13 +5358,10 @@ async fn tool_console(
     action: &str,
     limit: Option<i64>,
 ) -> Result<Value, ToolErr> {
-    // Cap the RETURNED slice; the ring itself is CONSOLE_CAP (browser.rs).
     let lim = limit.unwrap_or(100).clamp(1, 200) as usize;
     match action {
         "get" => Ok(ok_text(browser.console_get(lim).await.to_string())),
         "drain" => {
-            // Atomic take-and-return (single lock inside `console_drain`):
-            // arrivals during a drain are either returned or kept, never lost.
             Ok(ok_text(browser.console_drain(lim).await.to_string()))
         }
         "clear" => {
@@ -5684,12 +5397,7 @@ async fn tool_upload(
             ));
         }
     }
-    // AX refs resolve to their stamped selector so both paths share the
-    // DOM lookup below; the guard gives the typed stale-ref error.
-    // Frame policy first: refs cannot resolve safely in a frame realm.
     let fid = frame_id_ok("upload", frame)?;
-    // Additive AX selector forms: resolve on the AX tree (scoped by frame when
-    // named), then set files on that exact node by backend id.
     if let Some(sel) = ax_sel_parse("upload", element)? {
         let hit = ax_resolve(browser, "upload", &sel, element, fid.as_deref()).await?;
         return ax_upload(browser, element, &hit, paths).await;
@@ -5726,13 +5434,6 @@ async fn tool_upload(
                 ));
             }
         }
-        // CDP file path scoped to the frame realm. When the frame is an OOPIF
-        // with a mapped session, the file input resolves through that
-        // session's own DOM document (it is unreachable from the page
-        // session); otherwise the frame's own querySelector object resolves
-        // to a page-session node (no file-chooser dialog). The probe above
-        // already validated the element is a file input in THIS frame, so the
-        // resolved node is exact - never a main-frame upload.
         if let Some((_, sid)) = browser.oop_session_for_frame(f).await {
             return match browser.upload_in_session(&sid, element, paths).await {
                 Ok(n) => Ok(ok_text(json!({"ok": true, "files": n as i64}).to_string())),
@@ -5751,9 +5452,6 @@ async fn tool_upload(
                     return Err(frame_lookup_err("upload", f, e));
                 }
                 if l.contains("not reachable") {
-                    // OOPIF probe for a sharper typed error (mapped target vs
-                    // unmapped), but typed either way - never a main-frame
-                    // upload.
                     let mapped = browser.oop_target_for_frame(f).await;
                     let prose = match mapped {
                         Some(tid) => format!("upload: frame '{f}' is out-of-process (target {tid}); frame upload needs a mapped same-process document (no upload dispatched)"),
@@ -5791,9 +5489,6 @@ async fn tool_upload(
             json!({"ok": true, "files": paths.len()}).to_string(),
         ));
     }
-    // AX ref path: resolve the recorded backend id and set files on it
-    // directly (`DOM.setFileInputFiles` accepts backendNodeId), so a file
-    // input inside a shadow root works without a querySelector.
     if let Some(id) = parse_ref(element) {
         guard_ref(browser, "upload", element, &id).await?;
         if let Some(backend) = browser.ref_backend(&id).await {
@@ -5885,8 +5580,6 @@ async fn tool_upload(
             });
         }
     }
-    // CDP file path: document node -> querySelector -> setFileInputFiles.
-    // Works headless (no file-chooser dialog involved).
     browser.command("DOM.enable", json!({}), true).await?;
     let doc = browser
         .command("DOM.getDocument", json!({"depth": 0}), true)
@@ -5937,40 +5630,24 @@ async fn tool_wait_for(
 ) -> Result<Value, ToolErr> {
     let budget_ms: i64 = ms.unwrap_or(5000).clamp(0, 15000);
     let budget = std::time::Duration::from_millis(budget_ms.max(0) as u64);
-    // One condition per call: `expression` never combines with
-    // `selector`/`text`. Validated before any waiting so a conflicting call
-    // fails fast instead of burning the budget on the wrong leg.
     if expression.is_some() && (selector.is_some() || text.is_some()) {
         return Err(ToolErr::typed(
             "wait_for: 'expression' is mutually exclusive with 'selector'/'text' (one condition per call)".to_string(),
             json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "wait_for"}),
         ));
     }
-    // ms:0 is a no-op: return immediately without any CDP round-trip. The
-    // network-idle path keeps its own zero-budget behavior below, where the
-    // lazy enable is inside the deadline like every other await.
     if budget_ms == 0 && !network_idle {
         return Ok(ok_text(json!({"ok": true}).to_string()));
     }
-    // HARD deadline shared by both phases below: checked before AND after
-    // every await, so the total can never exceed `ms` no matter how slow
-    // one step is. Phase 1 (selector/text) eats into phase 2's
-    // (network-idle) budget by construction.
     let deadline = std::time::Instant::now() + budget;
-    // Session-continuity pin: the wait belongs to the page it started on.
-    // A vanished/changed session mid-wait is a dead page, never a reason
-    // to migrate the wait onto a fresh page and burn the budget there.
     let mut pinned: Option<String> = None;
     if selector.is_some() || text.is_some() {
         let sel_expr = selector.map(|s| {
             let lit = serde_json::to_string(s).unwrap_or_else(|_| "\"\"".to_string());
-            // Visibility, not mere existence: a display:none node must NOT
-            // satisfy the wait (same shape the click/hover guards use).
             format!("(() => {{ const el = document.querySelector({lit}); if (!el) return false; const cs = getComputedStyle(el); if (cs.display === 'none' || cs.visibility === 'hidden' || cs.visibility === 'collapse') return false; const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; }})()")
         });
         let text_lit =
             text.map(|t| serde_json::to_string(t).unwrap_or_else(|_| "\"\"".to_string()));
-        // Each per-await CDP evaluation is clipped to the remaining budget.
         loop {
             let mut done = true;
             if let Some(ref e) = sel_expr {
@@ -6040,14 +5717,10 @@ async fn tool_wait_for(
             tokio::time::sleep(remaining.min(std::time::Duration::from_millis(100))).await;
         }
     } else if !network_idle && expression.is_none() {
-        // Legacy bare delay: no condition, just sleep the budget.
         let remaining = deadline.saturating_duration_since(std::time::Instant::now());
         tokio::time::sleep(remaining).await;
         return Ok(ok_text(json!({"ok": true}).to_string()));
     }
-    // Predicate form: poll a computed JS condition on the active page with a
-    // backoff cadence inside the same hard deadline. Expiry is the typed
-    // timeout; a throwing condition is a real error (not "not yet true").
     if let Some(expr) = expression {
         let remaining = deadline.saturating_duration_since(std::time::Instant::now());
         match browser.wait_for_expression(expr, remaining).await {
@@ -6057,17 +5730,8 @@ async fn tool_wait_for(
         }
     }
     if network_idle {
-        // Quiet-network window on the REMAINING budget (zero when phase 1
-        // ate it all): drains in-flight requests, then requires `idle`
-        // continuous quiet. Never hangs - expiry is the typed timeout.
         let idle_win =
             std::time::Duration::from_millis(idle_ms.unwrap_or(500).clamp(0, 5000).max(0) as u64);
-        // The lazy `Network.enable` enable is INSIDE the
-        // deadline as well. Its CDP call allows `send_raw`'s 30s
-        // per-call timeout - double the largest budget this tool accepts
-        // (15s) - so with an established session and a peer holding the
-        // `Network.enable` response the unwrapped await answered a 100ms
-        // wait ~300x late (as a raw CDP error) instead of the typed timeout.
         let remaining = deadline.saturating_duration_since(std::time::Instant::now());
         match tokio::time::timeout(remaining, browser.ensure_network()).await {
             Ok(Ok(())) => {
@@ -6075,10 +5739,7 @@ async fn tool_wait_for(
                     return Err(ToolErr::from(msg));
                 }
             }
-            // Budget spent while the enable was still outstanding: no quiet
-            // window can be observed inside `ms`, so the budget IS the answer.
             Err(_) => return Err(wait_timeout()),
-            // A real CDP failure keeps its own message (the pre-fix `?`).
             Ok(Err(e)) => return Err(e.into()),
         }
         let remaining = deadline.saturating_duration_since(std::time::Instant::now());
@@ -6123,15 +5784,7 @@ async fn tool_hover(
     element: &str,
     frame: Option<&str>,
 ) -> Result<Value, ToolErr> {
-    // G4a: same cheap hit-test/occlusion guard as click (elementFromPoint at
-    // the hover point). An occluded hover target is a typed
-    // not_actionable/occluded instead of a pointer move to the overlay. The
-    // dispatch itself stays the trusted CDP mouseMoved it already was.
-    // G4b: with frame= the guard runs in the frame realm and the leaf point
-    // maps through the owner rect chain; dispatch stays on the page session.
     let fid = frame_id_ok("hover", frame)?;
-    // Additive AX selector forms: resolve on the AX tree (scoped by frame when
-    // named) and hover that exact node; legacy strings keep their path.
     if let Some(sel) = ax_sel_parse("hover", element)? {
         let hit = ax_resolve(browser, "hover", &sel, element, fid.as_deref()).await?;
         return ax_hover(browser, element, &hit, fid.as_deref()).await;
@@ -6167,8 +5820,6 @@ async fn tool_hover(
             .map_err(|_| "hover: no layout box".to_string())?;
         let lx = pt.get("x").and_then(|n| n.as_f64()).unwrap_or(0.0);
         let ly = pt.get("y").and_then(|n| n.as_f64()).unwrap_or(0.0);
-        // Same per-level parent-side owner check as click: no hover into a
-        // surface that is not the requested frame.
         let (mx, my) = frame_owner_hit_ok(browser, "hover", element, f, lx, ly).await?;
         browser.mouse_move(mx, my).await?;
         return Ok(ok_text(json!({"ok": true}).to_string()));
@@ -6208,7 +5859,6 @@ async fn tool_hover(
     );
     let v = browser.eval(&expr).await?;
     if v.as_str() == Some("GLADIUS_NOTFOUND") {
-        // The element may exist where no selector can look (S2.5).
         if closed_shadow_hit(browser, element).await {
             return Err(shadow_closed("hover", element));
         }
@@ -6256,11 +5906,7 @@ async fn tool_select(
             json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::NeedOption.as_str(), "tool": "select"}),
         ));
     }
-    // G4b: with frame= the same JS selection runs in the frame realm via
-    // eval_in_frame (no coordinates involved). Refs are main-frame only.
     let fid = frame_id_ok("select", frame)?;
-    // Additive AX selector forms: resolve on the AX tree (scoped by frame when
-    // named) and select on that exact node; legacy strings keep their path.
     if let Some(sel) = ax_sel_parse("select", element)? {
         let hit = ax_resolve(browser, "select", &sel, element, fid.as_deref()).await?;
         return ax_select(browser, element, &hit, value, text).await;
@@ -6270,7 +5916,6 @@ async fn tool_select(
             return Err(ref_in_frame("select", element, f));
         }
         let sel = serde_json::to_string(element).map_err(|e| e.to_string())?;
-        // `value` wins when both are given.
         let val_lit = match value {
             Some(s) => serde_json::to_string(s).map_err(|e| e.to_string())?,
             None => "null".to_string(),
@@ -6347,7 +5992,6 @@ async fn tool_select(
         };
     }
     let sel = serde_json::to_string(element).map_err(|e| e.to_string())?;
-    // `value` wins when both are given.
     let val_lit = match value {
         Some(s) => serde_json::to_string(s).map_err(|e| e.to_string())?,
         None => "null".to_string(),
@@ -6363,7 +6007,6 @@ async fn tool_select(
     match v.as_str() {
         Some("GLADIUS_OK") => Ok(ok_text(json!({"ok": true}).to_string())),
         Some("GLADIUS_NOTFOUND") => {
-            // The element may exist where no selector can look (S2.5).
             if closed_shadow_hit(browser, element).await {
                 return Err(shadow_closed("select", element));
             }
@@ -6409,11 +6052,8 @@ fn key_map(key: &str) -> Option<(String, String, u32, Option<String>)> {
         "shift" => ("Shift".into(), "ShiftLeft".into(), 16, None),
         "control" | "ctrl" => ("Control".into(), "ControlLeft".into(), 17, None),
         "alt" => ("Alt".into(), "AltLeft".into(), 18, None),
-        // G4b: the fourth modifier (mask bit Meta=4). Aliases cover the common
-        // spellings agents reach for; vk 91 is VK_LWIN.
         "meta" | "cmd" | "command" => ("Meta".into(), "MetaLeft".into(), 91, None),
         _ => {
-            // F1..F12.
             if lower.len() > 1
                 && lower.len() <= 3
                 && lower.as_bytes()[0] == b'f'
@@ -6426,7 +6066,6 @@ fn key_map(key: &str) -> Option<(String, String, u32, Option<String>)> {
                     }
                 }
             }
-            // Single printable char: real text entry path.
             if key.chars().count() == 1 {
                 let c = key.chars().next().unwrap();
                 let up = c.to_ascii_uppercase();
@@ -6441,7 +6080,6 @@ fn key_map(key: &str) -> Option<(String, String, u32, Option<String>)> {
                 };
                 return Some((c.to_string(), code, up as u32, Some(c.to_string())));
             }
-            // Unknown multi-char name: reject (fail loud, never a silent no-op).
             return None;
         }
     })
@@ -6454,10 +6092,6 @@ async fn tool_key(browser: &Browser, key: &str) -> Result<Value, ToolErr> {
             json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::MissingArg.as_str(), "tool": "key"}),
         ));
     }
-    // G4b key combos: `Ctrl+A`, `Shift+Tab`, `Alt+...`, `Meta+...`
-    // (case-insensitive modifiers, '+'-joined, last token is the base key
-    // through the existing key_map). A key WITHOUT '+' keeps the exact
-    // single-key behavior below (no modifiers field, identical params).
     if key.contains('+') {
         return tool_key_combo(browser, key).await;
     }
@@ -6524,7 +6158,6 @@ async fn tool_key_combo(browser: &Browser, key: &str) -> Result<Value, ToolErr> 
             json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "key", "arg": "key", "want": k}),
         )
     }
-    // Split, keeping a trailing '+' as the base key `+` (e.g. `Ctrl++`).
     let raw_parts: Vec<String> = key.split('+').map(|s| s.trim().to_string()).collect();
     let (mod_parts, base_str): (Vec<String>, String) =
         if raw_parts.last().map(|s| s.is_empty()).unwrap_or(false) {
@@ -6533,8 +6166,6 @@ async fn tool_key_combo(browser: &Browser, key: &str) -> Result<Value, ToolErr> 
                 .filter(|s| !s.is_empty())
                 .cloned()
                 .collect();
-            // A bare `+` (or `++`) has no modifiers: single-key `+` dispatch
-            // with the historical params (no `modifiers` field).
             if mods.is_empty() {
                 let Some(mapped) = key_map("+") else {
                     return Err(unknown(key));
@@ -6547,16 +6178,12 @@ async fn tool_key_combo(browser: &Browser, key: &str) -> Result<Value, ToolErr> 
             let m = raw_parts[..raw_parts.len().saturating_sub(1)].to_vec();
             (m, b)
         };
-    // Any empty token in the middle (`Ctrl++A`) is a typo, not a key.
     if mod_parts.iter().any(|s| s.is_empty()) || base_str.is_empty() {
         return Err(unknown(key));
     }
-    // No modifiers after normalization (e.g. base `+` handled above): refuse
-    // rather than guess - the only no-modifier '+' shape already returned.
     if mod_parts.is_empty() {
         return Err(unknown(key));
     }
-    // Modifier set (case-insensitive) with mask bits.
     let mut mods: Vec<(String, String, u32)> = Vec::new();
     let mut mask: u32 = 0;
     for m in &mod_parts {
@@ -6743,7 +6370,6 @@ async fn tool_storage(browser: &Browser, args: &Value) -> Result<Value, ToolErr>
             json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "storage", "arg": "scope", "want": scope}),
         ));
     }
-    // Live page identity for every page-scoped leg (and the reply).
     let pair = browser
         .eval("JSON.stringify([window.location.href, window.location.origin])")
         .await
@@ -7123,10 +6749,6 @@ async fn apply_cookies(
             })),
         }
     }
-    // Read-back diff against the WHOLE jar (`Storage.getCookies`): a
-    // cookie stored under a non-current path (or another readable scope)
-    // is stored, not rejected - the page-URL jar cannot see it, so it must
-    // not judge it. Comparison is by name/domain/path, not current URL.
     if !cookies.is_empty() {
         let live = browser
             .cdp_raw("Storage.getCookies", json!({}), None)
@@ -7229,8 +6851,6 @@ async fn apply_items(
     } else {
         "sessionStorage"
     };
-    // Array-of-pairs, never an object literal: `{"__proto__": v}` would set
-    // the prototype instead of an own property and silently drop the key.
     let pairs: Vec<(&String, &String)> = items.iter().collect();
     let lit = serde_json::to_string(&pairs).map_err(|e| e.to_string())?;
     let expr = format!("((pairs) => {{ const s = {store}; const failed = []; for (const [k, v] of pairs) {{ try {{ s.setItem(k, v); }} catch (e) {{ failed.push(k); }} }} return JSON.stringify({{failed}}); }})({lit})");
@@ -7263,8 +6883,6 @@ async fn storage_set(r: &StorageReq<'_>, args: &Value) -> Result<Value, ToolErr>
         url,
         origin,
     } = *r;
-    // Validate everything before anything applies (a bad entry changes
-    // nothing).
     let mut cookies = Vec::new();
     if want_cookies {
         match args.get("cookies") {
@@ -7312,8 +6930,6 @@ async fn storage_set(r: &StorageReq<'_>, args: &Value) -> Result<Value, ToolErr>
     failed.extend(failed_local);
     failed.extend(failed_session);
     if !failed.is_empty() {
-        // Cookie failures carry the typed rejection; storage-only failures
-        // (quota) keep the engine-shaped fallback.
         if let Some(first) = failed.iter().find(|f| f.get("cookie").is_some()) {
             return Err(cookie_rejected(first, &failed));
         }
@@ -7349,8 +6965,6 @@ async fn storage_clear(
     let mut cleared = (0usize, 0usize, 0usize);
     if want_cookies {
         if all_sites {
-            // Browser-wide wipe: on an attached engine that is somebody
-            // else's profile, so it needs explicit confirmation.
             if crate::browser::cdp_url_override().is_some() && !flag(args, "confirm") {
                 return Err(ToolErr::typed(
                     "storage: clear with allSites:true on an attached engine needs confirm:true (browser-wide cookie wipe)".to_string(),
@@ -7474,7 +7088,6 @@ async fn storage_save(r: &StorageReq<'_>, args: &Value, all_sites: bool) -> Resu
             json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "storage", "arg": "path"}),
         ));
     }
-    // Gather (storage reads gate opaque origins themselves).
     let cookies: Vec<Value> = if want_cookies {
         let r = if all_sites {
             browser
@@ -7515,7 +7128,6 @@ async fn storage_save(r: &StorageReq<'_>, args: &Value, all_sites: bool) -> Resu
         "localStorage": local.len(),
         "sessionStorage": session.len(),
     });
-    // The reply carries counts/bytes/origin only - never values.
     Ok(ok_text(
         json!({
             "ok": true, "action": "save", "scope": scope,
@@ -7578,9 +7190,6 @@ async fn storage_load(r: &StorageReq<'_>, args: &Value) -> Result<Value, ToolErr
             json!({"code": ToolCode::OriginMismatch.as_str(), "reason": ToolReason::Mismatch.as_str(), "tool": "storage", "fileOrigin": file_origin, "origin": origin, "path": path}),
         ));
     }
-    // Validate everything before anything applies. Malformed rows fail
-    // open into the failed list (the file is caller data, not the schema),
-    // so the reply accounts for every row.
     let mut cookies = Vec::new();
     let mut failed: Vec<Value> = Vec::new();
     if want_cookies {
@@ -7685,9 +7294,6 @@ async fn tool_viewport(browser: &Browser, args: &Value) -> Result<Value, ToolErr
             .to_string(),
         ));
     }
-    // Positive integers only: a zero/negative viewport is not a smaller
-    // page, it is a silent no-op (or an engine error) - refuse it instead
-    // of reporting a size that will never be honoured.
     let dim = |name: &str| -> Result<i64, ToolErr> {
         let v = args.get(name).ok_or_else(|| {
             ToolErr::typed(
@@ -7695,8 +7301,6 @@ async fn tool_viewport(browser: &Browser, args: &Value) -> Result<Value, ToolErr
                 json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::MissingArg.as_str(), "tool": "viewport"}),
             )
         })?;
-        // JSON numbers arrive as int or float depending on the client
-        // (1440 vs 1440.0); accept an integral float, reject the rest.
         let n = match v.as_i64() {
             Some(n) => n,
             None => match v.as_f64() {
@@ -7822,9 +7426,6 @@ async fn tool_targets(
 ) -> Result<Value, ToolErr> {
     match action {
         "list" => {
-            // Frames first: it ensures a page session exists (attach), so
-            // the `active` flag below names the tracked page even on a cold
-            // start. Either leg failing is the tool's error.
             let frames = browser
                 .frame_tree()
                 .await
@@ -7959,7 +7560,6 @@ async fn tool_network(
     filter: Option<&str>,
     limit: Option<i64>,
 ) -> Result<Value, ToolErr> {
-    // Cap the RETURNED slice; the ring itself is NET_CAP (browser.rs).
     let lim = limit.unwrap_or(100).clamp(1, 500) as usize;
     match action {
         "get" => Ok(ok_text(browser.network_get(filter, lim).await.to_string())),
@@ -8076,7 +7676,6 @@ mod error_taxonomy_tests {
 mod screenshot_file_tests {
     use super::write_screenshot_file;
 
-    // 1x1 transparent PNG, decoded with the same `base64` crate the tool uses.
     const TINY_PNG_B64: &str =
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
     const PNG_MAGIC: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
@@ -8113,7 +7712,6 @@ mod screenshot_file_tests {
     }
 }
 
-// ---------------------------------------------------------------- hand shim
 
 /// hand integration shim: mint the engine's own typed error envelope for a
 /// failure decided outside the tool table (per-call budget, client

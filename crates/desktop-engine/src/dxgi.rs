@@ -121,9 +121,6 @@ fn create_device_on(
 }
 
 fn open_session(adapter_idx: u32, output_idx: u32) -> windows::core::Result<Session> {
-    // Enumerate to the MATCHED adapter and create the device on it ÔÇö never
-    // the default adapter by flattened index (a matched monitor could
-    // otherwise fail or address another adapter's output).
     let factory: windows::Win32::Graphics::Dxgi::IDXGIFactory1 = unsafe { CreateDXGIFactory1()? };
     let adapter1 = unsafe { factory.EnumAdapters1(adapter_idx)? };
     let adapter: IDXGIAdapter = adapter1.cast()?;
@@ -180,7 +177,6 @@ fn copy_frame(
             for x in 0..desc_w as usize {
                 let s = row.add(x * 4);
                 let d = px.as_mut_ptr().add((y * desc_w as usize + x) * 3);
-                // BGRA -> RGB (same channel order the GDI path produces).
                 *d = *s.add(2);
                 *d.add(1) = *s.add(1);
                 *d.add(2) = *s;
@@ -384,8 +380,6 @@ pub fn dxgi_grab(adapter: u32, output: u32, w: i32, h: i32) -> Result<Img, Strin
                 }
             }
         }
-        // Cold session on a static screen: the first acquire may legitimately
-        // find no new frame, so allow one settle + retry before GDI fallback.
         for attempt in 0..2 {
             let r = {
                 let slot = slots.get_mut(&key).unwrap();
@@ -425,9 +419,6 @@ pub fn dxgi_grab(adapter: u32, output: u32, w: i32, h: i32) -> Result<Img, Strin
                                 px: c.px.clone(),
                             });
                         }
-                        // Stale cache after a resolution change: drop it so the
-                        // caller falls through to GDI instead of surfacing a
-                        // size-mismatched frame as `capture_failed`.
                         ses.cached = None;
                     }
                     if attempt == 0 {
@@ -462,8 +453,6 @@ mod tests {
 
     #[test]
     fn driver_type_for_explicit_adapter_is_unknown() {
-        // Probe result: HARDWARE with an explicit adapter fails device
-        // creation (0x80070057); UNKNOWN succeeds (0x0).
         assert_eq!(driver_type_for(true), D3D_DRIVER_TYPE_UNKNOWN);
         assert_eq!(driver_type_for(false), D3D_DRIVER_TYPE_HARDWARE);
     }
@@ -499,7 +488,6 @@ mod tests {
 
     #[test]
     fn pick_output_hmon_wins_without_rect() {
-        // Stale rect (moved monitor): the handle still identifies it.
         let outs = two_outputs();
         assert_eq!(
             pick_output([0, 0, 1, 1], 22, "", &outs),
@@ -550,8 +538,6 @@ mod tests {
 
     #[test]
     fn pick_output_rotated_swap_matches() {
-        // 90/270-degree rotation swaps w/h: a portrait request matches the
-        // landscape output when it is the only size candidate.
         let outs = vec![DxgiOutput {
             adapter: 0,
             output: 0,
@@ -568,8 +554,6 @@ mod tests {
 
     #[test]
     fn pick_output_duplicate_size_is_err() {
-        // The old display-index assumption would serve output 0 here and a
-        // same-size wrong monitor would pass check_size: never do that.
         let outs = two_outputs();
         let r = pick_output([7, 7, 7 + 1920, 7 + 1080], 0, "", &outs);
         assert!(
@@ -594,8 +578,6 @@ mod tests {
                 hmon: 11,
                 device: "\\\\.\\DISPLAY1".to_string(),
             },
-            // Same per-adapter output index on a second adapter: a
-            // flattened index would address output 1 on adapter 0 instead.
             DxgiOutput {
                 adapter: 1,
                 output: 0,
@@ -628,9 +610,6 @@ mod tests {
 
     #[test]
     fn pick_output_clone_rect_handle_device_is_err() {
-        // Cloned outputs share rect, Monitor handle, and device name: every
-        // identity tier is ambiguous, so the matcher must refuse (GDI
-        // fallback) instead of serving the first pair.
         let outs = vec![
             DxgiOutput {
                 adapter: 0,
@@ -662,8 +641,6 @@ mod tests {
 
     #[test]
     fn pick_output_identity_beats_size_match() {
-        // Two same-size outputs: a rect hit on one of them wins outright;
-        // the size tier is never reached.
         let outs = vec![
             DxgiOutput {
                 adapter: 0,
@@ -689,9 +666,6 @@ mod tests {
 
     #[test]
     fn stale_cache_size_mismatch_rejected() {
-        // Resolution change with a warm cache: the cached 1920x1080 frame
-        // must NOT validate for a 2560x1440 output; the caller drops it
-        // and falls through to GDI.
         assert!(check_size(&img(1920, 1080), 2560, 1440).is_err());
     }
 }

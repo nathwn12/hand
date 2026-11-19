@@ -1,15 +1,4 @@
 #!/usr/bin/env node
-/**
- * Install the built binary without killing the running server.
- *
- * Windows locks a running image, so the old routine stopped the process first —
- * which the MCP client shows as a transport error until it respawns. Windows does
- * allow *renaming* a running executable, so this renames the old file aside and
- * copies the new one into place. The live process keeps the old image (and keeps
- * serving); the next reload picks up the new one.
- *
- * Run: node scripts/install.mjs [--source <exe>] [--dest <exe>]
- */
 import { copyFileSync, existsSync, renameSync, rmSync, statSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { homedir } from "node:os";
@@ -49,7 +38,6 @@ if (existsSync(dest)) {
   try {
     rmSync(previous, { force: true });
   } catch {
-    // A stale .prev still locked by an older process is harmless; the rename below reports the real problem.
   }
   renameSync(dest, previous);
   console.log(`kept the previous binary at ${previous}`);

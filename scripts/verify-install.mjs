@@ -1,25 +1,4 @@
 #!/usr/bin/env node
-/**
- * Two proofs, because a fresh install is not a running server.
- *
- * Memory 04.05: installed bytes and the loaded process are separate lifetimes.
- * Memory 04.43: prove an artifact from its content, never from its file name.
- *
- * `oc-hand` runs whatever binary sits at the configured path, and that copy has
- * silently drifted from the branch before: a live probe answered from old code
- * while the suite was green on new code. So this asserts, in order:
- *
- *   1. the installed binary exists and prints a commit stamp (not "no stamp");
- *   2. that stamp is HEAD, undirty;
- *   3. with `--loaded`, a process is actually running *that* file, started at or
- *      after it was last written — bytes on disk are not a loaded image.
- *
- * The binary name is read from Cargo.toml, so renaming the crate cannot leave a
- * stale default path behind here.
- *
- * Run: node scripts/verify-install.mjs [--installed <path>] [--loaded]
- * Exits 1 on either unproven claim.
- */
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
@@ -51,10 +30,8 @@ if (!existsSync(installed)) fail(`no binary at ${installed}`);
 
 const git = (args) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
 
-/** The commits that can change the binary. A docs-only HEAD must not force a reinstall. */
 const BUILD_INPUTS = ["src", "crates", "build.rs", "Cargo.toml", "Cargo.lock"];
 
-// 1+2: the bytes on disk say which commit they are.
 const version = execFileSync(installed, ["--version"], { encoding: "utf8" }).trim();
 const stamp = version.match(/\(([0-9a-f]{7,40})(-dirty)?[,)]/);
 if (!stamp) fail(`${installed} prints no commit stamp: "${version}"`);
@@ -62,8 +39,6 @@ const [, sha, dirty] = stamp;
 const head = git(["rev-parse", "HEAD"]);
 const sameCommit = head.startsWith(sha) || sha.startsWith(head.slice(0, sha.length));
 if (!sameCommit) {
-  // The stamp records HEAD at build time. That is fine as long as the binary's
-  // inputs have not moved since: no build-input file may differ in between.
   let ancestor = true;
   try {
     git(["merge-base", "--is-ancestor", sha, "HEAD"]);
@@ -83,7 +58,6 @@ console.log(
   `PASS install bytes: ${installed} is ${sha.slice(0, 12)}${sameCommit ? ", HEAD" : ", with no build input changed since"}`,
 );
 
-// 3: the loaded process, proven by image path and start time.
 if (flag("--loaded")) {
   const written = statSync(installed).mtimeMs;
   const query = [
@@ -103,7 +77,6 @@ if (flag("--loaded")) {
     fail(`nothing is running ${installed} — installed, not loaded; restart the OpenCode service`);
   }
   const started = (row) => {
-    // ConvertTo-Json renders /Date(ms)/ on Windows PowerShell and ISO on pwsh 7.
     const raw = row.CreationDate;
     if (typeof raw === "number") return raw;
     const fromDate = String(raw).match(/\/Date\((\d+)\)\//);

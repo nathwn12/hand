@@ -1,4 +1,3 @@
-// Build identity is read from the binary's embedded metadata, never its path.
 
 import test from "node:test";
 import assert from "node:assert/strict";

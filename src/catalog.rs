@@ -103,8 +103,6 @@ fn prefixed(prefix: &str, tools: Value) -> Vec<Value> {
 /// The combined catalog: `browser_*` then `desktop_*`.
 pub fn combined_list() -> Value {
     let mut tools = prefixed(BROWSER_PREFIX, browser_engine::list());
-    // hand's own browser capability, published through the same prefixing so a
-    // client sees one namespace and one schema shape.
     tools.extend(prefixed(
         BROWSER_PREFIX,
         json!({ "tools": [browser_engine::contexts::tool_schema()] }),

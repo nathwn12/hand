@@ -1,5 +1,3 @@
-// Percentile and verdict tests. These prove the arithmetic the receipt claims;
-// they do not measure any product.
 
 import test from "node:test";
 import assert from "node:assert/strict";

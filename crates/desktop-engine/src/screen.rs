@@ -156,9 +156,6 @@ fn parse_region(region: &Option<Vec<Value>>) -> Result<Option<[i64; 4]>, String>
             }
             let mut r = [0i64; 4];
             for (i, x) in v.iter().enumerate() {
-                // F4: overflow rejects with the one shared message so the
-                // same out-of-range input errors identically in every tool;
-                // other garbage keeps the legacy bad_region shape.
                 if crate::is_int_overflow(x) {
                     return Err(crate::int_overflow_err(x));
                 }
@@ -198,8 +195,6 @@ fn monitors_block() -> (Vec<[i32; 4]>, i64, VirtualRect) {
 fn cmaps_monitors(n: i64, v: VirtualRect, rects: &[[i32; 4]]) -> Map<String, Value> {
     let mut m = Map::new();
     m.insert("count".to_string(), Value::from(n));
-    // Per-monitor rects, in the same [l,t,r,b] shape `cursor.screens` uses,
-    // so a caller can map a monitor index without a second round-trip.
     m.insert(
         "rects".to_string(),
         Value::from(
@@ -231,14 +226,7 @@ pub fn screenshot_window(a: &ShotArgs) -> String {
             None
         }
     };
-    // The pointer and the foreground are process-global: keep the raw samples
-    // and let `no_steal` attribute a delta (external input vs this process).
     let evidence = crate::no_steal::Evidence::begin(fg_before, cur_before);
-    // Target lock first: one window, resolved once, and KEPT as a lock so the
-    // identity can be revalidated immediately before the capture (the handle
-    // alone would let a recycled hwnd be captured as somebody else's window).
-    // `window:` is parsed with the SAME grammar as `target:` (a plain string
-    // is a TargetSpec), so the two arguments differ only in spelling.
     let spec_v: Option<Value> = match (a.target.as_ref(), a.window.as_ref()) {
         (Some(v), _) => Some(v.clone()),
         (None, Some(sel)) => Some(Value::String(sel.clone())),
@@ -280,8 +268,6 @@ pub fn screenshot_window(a: &ShotArgs) -> String {
         Ok(r) => r,
         Err(e) => return shot_err_list(vec![e]),
     };
-    // Revalidate the lock immediately before the capture: the window may
-    // have closed or been recycled between resolution and here.
     if let Err(e) = revalidate_locked(&locked) {
         return shot_err_list(vec![format!("error: {}", e)]);
     }
@@ -334,9 +320,6 @@ pub fn screenshot_window(a: &ShotArgs) -> String {
         Ok(v) => v,
         Err(e) => return shot_err_list(vec![e]),
     };
-    // `out`: the exact returned bytes also land on disk (parents created);
-    // a write failure refuses the call instead of returning pixels without
-    // the file half. The inline image still returns below.
     let out_obj: Option<Map<String, Value>> = match a.out.as_deref() {
         None => None,
         Some(path) => match crate::cap::write_bytes_out(path, &data) {
@@ -437,11 +420,6 @@ pub fn screenshot_window(a: &ShotArgs) -> String {
     if let Some(o) = out_obj {
         cmap.insert("out".to_string(), Value::from(o));
     }
-    // Invariant telemetry: a window capture resolves + PrintWindows the
-    // target and never activates or restores it. The raw booleans stay; the
-    // attribution says whether a change came from the owner's input or from
-    // this process, and the import audit proves this binary cannot write the
-    // pointer or take the foreground.
     let cur_after = crate::no_steal::Evidence::cursor_now();
     evidence.finish(
         unsafe { GetForegroundWindow() as i64 },
@@ -462,8 +440,6 @@ pub fn screenshot_window(a: &ShotArgs) -> String {
         text_block(&crate::py_dumps(&Value::Object(cmap.clone()))),
     ];
     if a.elements {
-        // The element walk runs after the capture: revalidate again so the
-        // listing cannot describe a different window than the image.
         if let Err(e) = revalidate_locked(&locked) {
             return shot_err_list(vec![format!("error: {}", e)]);
         }
@@ -499,11 +475,6 @@ fn dxgi_match_output(display: i64, mons: &[[i32; 4]]) -> Result<(u32, u32), Stri
     pick_output(rect, hmon, &device, &outputs)
 }
 
-// Test seam: the foreground values `foreground_window()` returns, in order.
-// The last value sticks once the script runs dry; an empty script means the
-// real `GetForegroundWindow()`. Thread-local so each `#[test]` scripts only
-// its own call, and so a test can force the ambient foreground to move
-// mid-call and prove the reply never mixes two samples.
 #[cfg(test)]
 thread_local! {
     static FG_SCRIPT: std::cell::RefCell<Vec<i64>> =
@@ -544,8 +515,6 @@ fn foreground_window() -> HWND {
 }
 
 pub fn screenshot_desktop(a: &ShotArgs) -> String {
-    // One sample for the whole call: the elements path below names and walks
-    // this exact handle, and `foregroundUnchanged` measures against it.
     let fg_at_entry = foreground_window();
     let fg_before = fg_at_entry as i64;
     let mut cur0 = POINT { x: 0, y: 0 };
@@ -589,10 +558,6 @@ pub fn screenshot_desktop(a: &ShotArgs) -> String {
         Err(e) => return shot_err_list(vec![e]),
     };
     if let Some(r) = &region {
-        // Overflow-safe region gate: the shared validator never subtracts
-        // in i64 before validating, so MIN/MAX extremes are typed errors
-        // (no debug panic, no release wraparound bypass). Checked
-        // pre-intersection so a huge off-desktop rect cannot slip through.
         match crate::validate_region(r[0], r[1], r[2], r[3], MAX_GRAB_EDGE) {
             Ok(_) => {}
             Err(crate::RegionReject::Order) => {
@@ -640,12 +605,6 @@ pub fn screenshot_desktop(a: &ShotArgs) -> String {
         None
     };
     let t0 = Instant::now();
-    // Region captures grab the crop rect directly with GDI: no full-frame
-    // grab followed by an in-memory crop, so peak memory is the region
-    // itself rather than the whole monitor or desktop.
-    // Otherwise (puppet.py _grab_rect parity): DXGI serves whole outputs, so
-    // a virtual-desktop span across >1 monitor goes straight to GDI;
-    // otherwise try the DXGI fast path and fall back to GDI per call.
     let force_gdi = n_mon > 1 && grab_scope == "virtual";
     let (mut img, backend): (Img, String) = if kind == "region" {
         let (cw, ch) = (cx1 - cx0, cy1 - cy0);
@@ -666,11 +625,6 @@ pub fn screenshot_desktop(a: &ShotArgs) -> String {
                 Err(e) => return shot_err_list(vec![format!("error: capture_failed: {e}")]),
             }
         } else {
-            // No default pair: every scope resolves the real DXGI (adapter,
-            // output) pair through matching. Monitor scope uses its rect;
-            // single-monitor virtual scope matches the whole span. An unmatched
-            // monitor goes straight to GDI with a note ÔÇö a same-size wrong
-            // output would pass check_size and poison the cache.
             let matched: Result<(u32, u32), String> = if grab_scope == "monitor" {
                 dxgi_match_output(a.display, &mons)
             } else {
@@ -717,8 +671,6 @@ pub fn screenshot_desktop(a: &ShotArgs) -> String {
             }
         }
     };
-    // Region grabs are already cropped: rebase the grab origin onto the
-    // crop origin so the shared size check and crop below are no-ops.
     let (gl, gt, gw, gh) = if kind == "region" {
         (cx0, cy0, cx1 - cx0, cy1 - cy0)
     } else {
@@ -759,16 +711,11 @@ pub fn screenshot_desktop(a: &ShotArgs) -> String {
         };
     }
     let (sw, sh) = (img.w, img.h);
-    // W3.4: the blank-frame measurement is taken on the captured frame, before
-    // `finalize` consumes it for the wire.
     let blank_check = crate::cap::blank_check_json(crate::cap::max_channel_of(&img));
     let (data, iw, ih, scale, f, q) = match finalize(img, a.max_px, &a.fmt, a.quality, a.grid) {
         Ok(v) => v,
         Err(e) => return shot_err_list(vec![e]),
     };
-    // `out`: the exact returned bytes also land on disk (parents created);
-    // a write failure refuses the call instead of returning pixels without
-    // the file half. The inline image still returns below.
     let out_obj: Option<Map<String, Value>> = match a.out.as_deref() {
         None => None,
         Some(path) => match crate::cap::write_bytes_out(path, &data) {
@@ -815,17 +762,11 @@ pub fn screenshot_desktop(a: &ShotArgs) -> String {
     let mut capt = Map::new();
     capt.insert("backend".to_string(), Value::from(backend));
     capt.insert("ms".to_string(), Value::from(py_round_n(cap_ms, 3)));
-    // W3.4: every successful capture reports what the blank rule measured.
-    // This path has no window detector, so the frame's own maximum is read
-    // here in one pass rather than left unstated.
     capt.insert("blank_check".to_string(), Value::from(blank_check));
     if let Some(n) = note {
         capt.insert("note".to_string(), Value::from(n));
     }
     cmap.insert("capture".to_string(), Value::from(capt));
-    // Invariant telemetry: a desktop capture is pixels-only (BitBlt/DXGI),
-    // no activation and no pointer call anywhere on this path. The raw
-    // booleans stay and `no_steal` attributes a delta to external input.
     let cur_after = crate::no_steal::Evidence::cursor_now();
     evidence.finish(foreground_window() as i64, cur_after, 0, &mut cmap);
     cmap.insert("formula".to_string(), Value::from(FORMULA));
@@ -836,11 +777,6 @@ pub fn screenshot_desktop(a: &ShotArgs) -> String {
     if let Some(o) = out_obj {
         cmap.insert("out".to_string(), Value::from(o));
     }
-    // The element block describes `fg_at_entry`, not the image: with
-    // display/region the image is the desktop but the elements are that
-    // window's. Naming it from the same handle the walk receives is the whole
-    // point - a second read here is how the reply came to name one window and
-    // enumerate another on a CI runner whose foreground moved mid-call.
     let elements_hwnd = if a.elements {
         if fg_at_entry.is_null() {
             return shot_err_list(vec![
@@ -1134,8 +1070,6 @@ mod tests {
             "a foreground switch after the first sample must not re-name the block; \
              got {ew}"
         );
-        // Same handle on both halves of the reply: the appended block
-        // enumerates the window the payload named.
         let blocks = outer["content"].as_array().expect("content blocks");
         let block: Value = serde_json::from_str(
             blocks

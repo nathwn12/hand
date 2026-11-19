@@ -79,10 +79,6 @@ fn initialize_identifies_version_platform_and_both_engines() {
     assert_eq!(browser["engine"].as_str(), Some("gladius"));
     assert_eq!(browser["sourcePin"].as_str(), Some("59c6d77"));
     assert_eq!(browser["version"].as_str(), Some("0.8.0"));
-    // `browser_context` is published from `browser_engine::contexts::tool_schema()`
-    // beside the engine's own `list()`, so the engine's own count is one below the
-    // number of `browser_*` bodies on the wire. Both numbers are asserted so a
-    // dropped body cannot pass as a smaller count.
     assert_eq!(
         browser["toolCount"].as_u64(),
         Some((BROWSER_TOOLS.len() - 1) as u64),
@@ -218,8 +214,6 @@ fn strip_path(schema: &mut Value, path: &str) {
             object.remove(*key);
         }
     }
-    // A declared property can also be listed in `required`; that entry has to go
-    // with it, or the strip leaves a name the pin never carried.
     if parents.last() == Some(&"properties") {
         if let Some(holder) = chain_mut(schema, &parents[..parents.len() - 1]) {
             if let Some(required) = holder.get_mut("required").and_then(|value| value.as_array_mut()) {
@@ -248,9 +242,6 @@ fn tool_bodies_are_engine_bodies_under_the_prefix() {
         serde_json::from_str(DECLARED_ADDITIONS).expect("baseline/declared-additions.json parses");
     assert_eq!(declared["version"], json!(1), "the allowance file is versioned");
 
-    // `title` has no declared exceptions at all, so a `title` allowance would
-    // silently turn this gate into a different one. `description` is the only
-    // metadata key the file may name.
     if let Some(metadata) = declared["metadata"].as_object() {
         for key in metadata.keys() {
             assert_eq!(
@@ -271,8 +262,6 @@ fn tool_bodies_are_engine_bodies_under_the_prefix() {
 
         for key in ["inputSchema", "outputSchema"] {
             let paths = declared_paths(&declared, key, name);
-            // Presence first: a declared addition that was deleted or renamed is
-            // a failure, exactly as an undeclared one is.
             for path in &paths {
                 assert!(
                     has_path(&got[key], path),
@@ -299,10 +288,6 @@ fn tool_bodies_are_engine_bodies_under_the_prefix() {
             "{name} title drifted from baseline/hand-catalog.json: title has no declared exceptions"
         );
 
-        // A description is a failing comparison by default, exactly like a schema.
-        // A declared tool is the one exception, and it must actually differ: the
-        // declaration says this one was rewritten, so the pin's own string is a
-        // stale declaration rather than a satisfied one.
         if declared_descriptions.iter().any(|declared| declared == name) {
             assert_ne!(
                 got["description"], want["description"],
@@ -318,9 +303,6 @@ fn tool_bodies_are_engine_bodies_under_the_prefix() {
         }
     }
 
-    // A declared name that is not a floor tool is never reached by the loop
-    // above, so it is checked here: a declaration that no longer names a
-    // published floor tool is stale too.
     let floor_names: Vec<&str> = floor_tools
         .iter()
         .filter_map(|tool| tool["name"].as_str())
@@ -370,7 +352,6 @@ fn unknown_tool_is_a_typed_tool_error_and_the_session_survives() {
         "{text}"
     );
 
-    // Still serving.
     let pong = s.request("ping", json!({}));
     assert_eq!(pong["result"], json!({}));
 }

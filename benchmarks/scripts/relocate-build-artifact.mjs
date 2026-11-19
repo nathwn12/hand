@@ -1,11 +1,4 @@
 #!/usr/bin/env node
-// Relocate an already-recorded build artifact to durable storage without
-// pretending a new build happened. The copied bytes must hash to the build
-// receipt's output hash; the new receipt records the source receipt and the
-// original artifact path under `relocation`.
-//
-//   node benchmarks/scripts/relocate-build-artifact.mjs \
-//     --receipt benchmarks/receipts/builds/hand-....json
 
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";

@@ -124,9 +124,6 @@ unsafe fn render_frame(hwnd: HWND, ww: i32, wh: i32) -> Result<(Img, u32), Strin
 /// # Safety
 /// `hwnd` must be a live window handle; it is passed to the Win32 window APIs as a raw pointer.
 pub unsafe fn capture_window(hwnd: HWND, allow_crop_fallback: bool) -> Result<CapOk, String> {
-    // Bounded: `PrintWindow` blocks until the target's UI thread answers, so it
-    // runs on a helper thread under a wall-clock deadline and a hung window
-    // returns `capture_timeout` instead of taking the worker with it.
     let h = hwnd as i64;
     crate::deadline::bound(
         crate::deadline::Family::Capture,
@@ -239,12 +236,6 @@ unsafe fn capture_window_inner(hwnd: HWND, allow_crop_fallback: bool) -> Result<
                 }
             }
         }
-        // Post-render geometry: the rect read BEFORE PrintWindow is only a
-        // guess. Re-read it now; if the window moved, report the current
-        // rect as the image origin (never a stale one) and flag the capture.
-        // A pure translation is recaptured once so the pixels agree with the
-        // reported origin. A resize cannot be recaptured into the same frame
-        // size, so it is flagged and the post rect is reported.
         let (post_v, post_fb) = dwm_rect(hwnd);
         let post = [post_v[0], post_v[1], post_v[2], post_v[3]];
         let mut moved = false;
@@ -254,9 +245,6 @@ unsafe fn capture_window_inner(hwnd: HWND, allow_crop_fallback: bool) -> Result<
             RectChange::Translated => {
                 moved = true;
                 let (pww, pwh) = (post[2] - post[0], post[3] - post[1]);
-                // Only a recapture that actually re-rendered the pixels may
-                // adopt the post-render rect: the image is at `post` then, and
-                // at `dwm` (the pre-capture rect) otherwise.
                 let mut recaptured: Option<([i32; 4], String)> = None;
                 if pww > 0 && pwh > 0 {
                     if let Ok((im2, pf2)) = unsafe { render_frame(hwnd, pww, pwh) } {
@@ -266,8 +254,6 @@ unsafe fn capture_window_inner(hwnd: HWND, allow_crop_fallback: bool) -> Result<
                             let mut rect = post;
                             let mut source =
                                 if post_fb { "gwr_fallback" } else { "dwm" }.to_string();
-                            // One recapture only: whatever rect the window
-                            // holds after it is what the caller is told.
                             let (last_v, last_fb) = dwm_rect(hwnd);
                             let last = [last_v[0], last_v[1], last_v[2], last_v[3]];
                             if last != post {
@@ -284,10 +270,6 @@ unsafe fn capture_window_inner(hwnd: HWND, allow_crop_fallback: bool) -> Result<
                         rect_source = source;
                     }
                     None => {
-                        // The recapture failed: the image still comes from the
-                        // PRE-capture rect, so reporting `post` would pair new
-                        // coordinates with old pixels. Keep the rect the pixels
-                        // were rendered at and say what happened.
                         let (rect, note) = translation_rect(dwm, post, false);
                         dwm = rect;
                         translation_note = note;
@@ -295,10 +277,6 @@ unsafe fn capture_window_inner(hwnd: HWND, allow_crop_fallback: bool) -> Result<
                 }
             }
             RectChange::Resized => {
-                // Cannot be recaptured into the same frame size: the image IS
-                // from the pre-capture rect, and the post rect is reported so
-                // a caller sees where the window is now. That divergence is
-                // already flagged by `moved_during_capture`.
                 moved = true;
                 dwm = reported_rect(dwm, post);
                 rect_source = if post_fb { "gwr_fallback" } else { "dwm" }.to_string();
@@ -334,8 +312,6 @@ unsafe fn capture_window_inner(hwnd: HWND, allow_crop_fallback: bool) -> Result<
             title,
             cloaked: cloak,
             note: Some(match translation_note {
-                // A failed recapture note comes FIRST: it says the reported
-                // rect is the one the pixels are at, not the window's.
                 Some(n) => format!("{n} {MODE_B_NOTE}"),
                 None => MODE_B_NOTE.to_string(),
             }),
@@ -353,10 +329,6 @@ unsafe fn capture_window_inner(hwnd: HWND, allow_crop_fallback: bool) -> Result<
                         verdict.reason.clone().unwrap()
                     ));
                 }
-                // Same honesty rule as the PrintWindow path: a crop taken at
-                // the pre-read rect must not report that origin if the window
-                // moved during the grab. No recapture here ÔÇö the crop is the
-                // foreground fallback, so the flag names the best-effort map.
                 let (crop_v, crop_fb) = dwm_rect(hwnd);
                 let crop_post = [crop_v[0], crop_v[1], crop_v[2], crop_v[3]];
                 let crop_moved = crop_post != dwm;
@@ -405,7 +377,6 @@ unsafe fn capture_window_inner(hwnd: HWND, allow_crop_fallback: bool) -> Result<
     ))
 }
 
-// ---------------------------------------------------------------- element model (Win32 fallback)
 
 fn role_of_class(cls: &str) -> &str {
     match cls {
@@ -433,10 +404,6 @@ type ElementPage = (Vec<Map<String, Value>>, bool, Option<usize>);
 
 fn win32_element_list(hwnd: HWND, offset: usize) -> Result<ElementPage, String> {
     let kids = enum_child_windows(hwnd)?;
-    // Pager policy shared with the UIA walk: skip-first-N, cap at 200,
-    // next_offset only when more accepted entries remain past the page.
-    // (The flat child list is fully enumerated first, so the page math is
-    // exact here.)
     let mut pager = crate::uia::Pager::new(offset, ELEMENT_CAP);
     let mut entries: Vec<Map<String, Value>> = Vec::new();
     for (i, h) in kids.iter().enumerate() {
@@ -539,12 +506,6 @@ pub fn element_fp(role: &str, name: &str, auto_id: &str, invokable: bool) -> Str
 }
 
 pub fn element_model(hwnd: HWND, max_depth: i64, offset: usize) -> ElementModel {
-    // puppet.py:1253-1331: UIA first (wins iff >=1 entry), else the Win32
-    // EnumChildWindows fallback. detail carries uia_available (COM loadable),
-    // uia_error (why UIA failed, else null), fallback (which fallback ran,
-    // else null), empty + empty_reason, depth_capped + depth_limit.
-    // max_depth bounds UIA recursion (reported back as depth_limit);
-    // offset skips that many accepted entries for paging (both backends).
     let uia_avail = crate::uia::uia_available();
     let mut uia_error: Option<String> = None;
     match crate::uia::uia_element_list(hwnd, max_depth, offset) {
@@ -710,8 +671,6 @@ pub fn elements_object(
 }
 
 pub fn elements_block(hwnd: HWND) -> String {
-    // Screenshot path: the documented defaults (depth 8, offset 0,
-    // cap 200) ÔÇö unchanged behaviour, new paging evidence included.
     let m = element_model(hwnd, UIA_DEPTH_LIMIT, 0);
     let entries: Vec<Value> = m.entries.into_iter().map(Value::Object).collect();
     let o = elements_object(&m.backend, m.truncated, entries, &m.detail, m.next_offset);
@@ -798,9 +757,6 @@ mod tests {
 
     #[test]
     fn element_fp_stable_and_identity_sensitive() {
-        // The stale-ref gate stands on this: same identity hashes equal
-        // (deterministic across processes), any identity change re-hashes,
-        // and geometry never participates.
         let a = element_fp("Button", "OK", "2", true);
         assert_eq!(a.len(), 16, "fp is 16 hex chars, got: {a}");
         assert_eq!(a, element_fp("Button", "OK", "2", true));
@@ -824,12 +780,6 @@ mod tests {
 
     #[test]
     fn element_fp_ignores_geometry() {
-        // Geometry-independence proof: the walk hashes identity fields
-        // only. Read the identity out of one entry and hash it through
-        // the production function (fp1); move the rect, re-read the SAME
-        // identity and hash it again (fp2); then rename and hash (fp3).
-        // Every hash below is a fresh `element_fp` call, never a cached
-        // or stored value.
         let mut e = full_win32_entry();
         let ident = |e: &Map<String, Value>| {
             (
@@ -858,7 +808,6 @@ mod tests {
             Some(fp1.as_str()),
             "the walk must store exactly what element_fp returns"
         );
-        // Move the control on screen: identity fields untouched.
         e.insert(
             "rect".to_string(),
             Value::from(vec![
@@ -882,7 +831,6 @@ mod tests {
             fp1, fp2,
             "same role/name/auto_id/invokable at a new rect must hash equal"
         );
-        // Rename at the moved rect: identity changed, hash must change.
         e.insert("name".to_string(), Value::from("Cancel"));
         let (role3, name3, aid3, inv3, _) = ident(&e);
         let fp3 = element_fp(&role3, &name3, &aid3, inv3);
@@ -905,12 +853,10 @@ mod tests {
     fn rect_change_classifies_translation_and_resize() {
         let pre = [100, 200, 900, 800];
         assert_eq!(classify_rect_change(pre, pre), RectChange::Unchanged);
-        // Same size, new origin: pure translation, safe to recapture once.
         assert_eq!(
             classify_rect_change(pre, [140, 260, 940, 860]),
             RectChange::Translated
         );
-        // Any edge move that changes the size is a resize.
         assert_eq!(
             classify_rect_change(pre, [100, 200, 1000, 800]),
             RectChange::Resized
@@ -923,10 +869,6 @@ mod tests {
 
     #[test]
     fn reported_rect_is_the_post_capture_rect_when_the_window_moved() {
-        // Unit/fake-rect path: a live window cannot be moved deterministically
-        // between the pre-read and PrintWindow from a test, so the geometry
-        // policy is pinned directly. The invariant under test: a moved window's
-        // reported origin is the POST rect, never the stale pre-read one.
         let pre = [100, 200, 900, 800];
         let translated = [140, 260, 940, 860];
         assert_eq!(reported_rect(pre, translated), translated);
@@ -953,9 +895,7 @@ mod tests {
     fn translation_rect_keeps_the_pre_capture_origin_when_the_recapture_failed() {
         let pre = [100, 200, 900, 800];
         let post = [140, 260, 940, 860];
-        // Recaptured: the pixels are at the new origin, so it is reported.
         assert_eq!(translation_rect(pre, post, true), (post, None));
-        // Not recaptured: the pixels are still at the old origin.
         let (rect, note) = translation_rect(pre, post, false);
         assert_eq!(
             rect, pre,
@@ -978,8 +918,6 @@ mod tests {
         }
         let _g = crate::fixture::desktop();
         let f = crate::fixture::Fixture::new();
-        // The constructor waited for the fixture's first composited frame, so
-        // this capture is the frame the test measures: no retry here.
         let cap = unsafe { capture_window(f.hwnd(), false) }.expect("fixture captures");
         assert!(
             !cap.moved_during_capture,
@@ -1019,9 +957,6 @@ mod tests {
 
     #[test]
     fn element_fp_excludes_text() {
-        // Editing text must not invalidate the identity fingerprint: fp
-        // is computed from role/name/auto_id/invokable only, so adding a
-        // `text` key (or changing it) leaves fp untouched.
         let mut e = full_win32_entry();
         let before = element_fp(
             e.get("role").and_then(|v| v.as_str()).unwrap_or(""),
@@ -1052,9 +987,6 @@ mod tests {
     #[test]
     fn element_fp_same_control_across_rewalks() {
         let _g = crate::fixture::desktop();
-        // Cheap integration without window-manager dependence: two walks
-        // of the owned fixture list the same OK button; its fp must match
-        // even though ref/path tokens are per-enumeration.
         let f = crate::fixture::Fixture::new();
         let first = element_model(f.hwnd(), UIA_DEPTH_LIMIT, 0);
         let second = element_model(f.hwnd(), UIA_DEPTH_LIMIT, 0);
@@ -1074,8 +1006,6 @@ mod tests {
 
     #[test]
     fn detail_entry_retains_win_and_hwnd() {
-        // The detail path returns the walk entry unprojected, so the raw
-        // `win`/`hwnd` identifiers stay available for correlation.
         let full = full_win32_entry();
         assert_eq!(full.get("win").and_then(|v| v.as_i64()), Some(199210));
         assert_eq!(full.get("hwnd").and_then(|v| v.as_i64()), Some(199340));
@@ -1088,9 +1018,6 @@ mod tests {
 
     #[test]
     fn top_level_key_set_matches_screenshot_block_shape() {
-        // Both the screenshot elements block (`elements_block`) and the
-        // standalone `elements` tool assemble through `elements_object`,
-        // so this key set is the contract for both.
         let entries = vec![Value::Object(compact_entry(&full_win32_entry()))];
         let o = elements_object("win32", false, entries, &test_detail(false), None);
         let keys: Vec<&str> = o.keys().map(|k| k.as_str()).collect();
@@ -1129,8 +1056,6 @@ mod tests {
 
     #[test]
     fn next_offset_round_trips_through_envelope() {
-        // The paging continuation rides the top-level object next to the
-        // entries, not inside them.
         let entries = vec![Value::Object(compact_entry(&full_win32_entry()))];
         let o = elements_object("win32", true, entries, &test_detail(false), Some(200));
         assert_eq!(
@@ -1148,9 +1073,6 @@ mod tests {
     #[test]
     fn win32_offset_skips_leading_controls() {
         let _g = crate::fixture::desktop();
-        // The owned fixture exposes three accepted controls (writable EDIT,
-        // read-only EDIT, OK button): offset 1 must drop exactly the first
-        // and report no next page.
         let f = crate::fixture::Fixture::new();
         let (all, _, next_all) =
             win32_element_list(f.hwnd(), 0).expect("fixture window enumerates");
@@ -1199,8 +1121,6 @@ mod tests {
                 e["invokable"].as_bool().expect("invokable"),
             )
         };
-        // One entry, built the way the walk builds it, with the three
-        // non-identity facts varying.
         let entry = |rect: [i64; 4], path: &str, text: &str| {
             let mut e = Map::new();
             e.insert("role".to_string(), Value::from("Button"));
@@ -1216,7 +1136,6 @@ mod tests {
             e
         };
         let base = fp_of(&entry([10, 10, 80, 24], "0/1", ""));
-        // A move, a re-enumeration address and new text change nothing.
         assert_eq!(
             fp_of(&entry([400, 900, 4, 4], "0/1", "")),
             base,
@@ -1232,7 +1151,6 @@ mod tests {
             base,
             "text must never participate in fp"
         );
-        // Every identity field does: role, name, auto_id, invokable.
         for (role, name, auto_id, invokable) in [
             ("Edit", "OK", "101", true),
             ("Button", "Cancel", "101", true),
@@ -1245,8 +1163,6 @@ mod tests {
                 "({role}, {name}, {auto_id}, {invokable}) must be a different identity"
             );
         }
-        // The walk passes exactly those four: a fifth input would put geometry
-        // or state back into the identity.
         let walk = include_str!("uia.rs");
         assert!(
             walk.contains("element_fp(&role, &name, &aid, inv)"),

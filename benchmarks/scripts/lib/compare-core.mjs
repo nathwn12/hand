@@ -1,8 +1,3 @@
-// Pure comparison and release-gate logic for benchmark receipts.
-//
-// No file I/O here, so the gate rules are directly testable with synthetic
-// receipts. The CLI supplies current binary hashes and receipt hashes; this
-// module never treats a missing or malformed fingerprint as comparable.
 
 import { buildConfiguration } from "./build.mjs";
 import { canonicalHash, stableStringify } from "./fingerprint.mjs";

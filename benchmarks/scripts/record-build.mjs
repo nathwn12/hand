@@ -1,17 +1,4 @@
 #!/usr/bin/env node
-// Record a genuine local release build as evidence.
-//
-// This tool runs cargo itself. It never accepts a caller-supplied binary hash,
-// build profile or "verified" flag. The receipt binds a successful
-// `cargo build --release` command to its output hash, source HEAD, tracked-diff
-// state and toolchain. compare.mjs re-checks the artifact and source state.
-//
-//   node benchmarks/scripts/record-build.mjs --product hand \
-//     --source-root . --manifest-path Cargo.toml --bin hand \
-//     --target-dir C:\scratch\hand-release
-//
-// Build output stays wherever --target-dir points. The receipt is written under
-// benchmarks/receipts/builds unless --out says otherwise.
 
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";

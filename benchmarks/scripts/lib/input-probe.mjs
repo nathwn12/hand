@@ -1,15 +1,3 @@
-// A persistent Win32 input probe for the benchmark driver.
-//
-// A pinned baseline (Puppet) reports raw `cursorUnchanged`/`foregroundUnchanged`
-// flags but not the attribution hand now carries. On an active desktop those raw
-// flags are false whenever the owner moves the mouse during the call, which
-// says nothing about the product. This probe samples GetCursorPos,
-// GetForegroundWindow and the GetLastInputInfo tick immediately before and
-// after the measured call, from outside the product, so the driver can accept a
-// raw delta only when real input explains it.
-//
-// It is one PowerShell process per run, in a read-loop, so a sample is a pipe
-// round trip rather than a process start. `close()` always reaps it.
 
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
@@ -110,13 +98,11 @@ export async function startInputProbe(scriptPath) {
       child.stdin.write("quit\n");
       child.stdin.end();
     } catch {
-      // The pipe may already be gone; the exit wait below still reaps it.
     }
     const timer = setTimeout(() => {
       try {
         child.kill();
       } catch {
-        // Already gone.
       }
     }, CLOSE_TIMEOUT_MS);
     try {

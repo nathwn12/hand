@@ -1,6 +1,3 @@
-// stage.mjs — put the release binary into the package before `npm pack`.
-// The tarball ships the executable, so it must be the built one, never a stale
-// copy and never a debug build.
 import { copyFileSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";

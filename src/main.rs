@@ -4,7 +4,6 @@
 //! `hand` with no arguments serves MCP over stdio. Diagnostics go to
 //! stderr; stdout carries protocol frames only.
 
-// No console window: an MCP client spawns this process and owns its pipes.
 #![windows_subsystem = "windows"]
 
 mod catalog;
@@ -53,8 +52,6 @@ fn version_line() -> String {
 const RUNTIME_EXIT_BOUND: std::time::Duration = std::time::Duration::from_secs(2);
 
 fn run_server() -> i32 {
-    // The browser launch + ws connect chain is deep in a debug profile. Give
-    // the runtime a known stack instead of trusting the process default.
     let handle = std::thread::Builder::new()
         .name("hand".to_string())
         .stack_size(8 * 1024 * 1024)
@@ -79,9 +76,6 @@ fn run_server() -> i32 {
                     1
                 }
                 Err(_) => {
-                    // The hook already printed the location, not the payload.
-                    // The normal shutdown did NOT run, so say exactly what that
-                    // leaves unverified; do not claim a restore or a detach.
                     eprintln!(
                         "[hand] server loop panicked; its normal shutdown did not run, so an \
                          attached browser was NOT detached and any page state it changed is \
@@ -90,9 +84,6 @@ fn run_server() -> i32 {
                     1
                 }
             };
-            // `serve()` has closed/detached the browser and flushed the writer.
-            // Only blocking threads can remain; bound their teardown so the
-            // process cannot hang behind a desktop job that cannot be aborted.
             let started = std::time::Instant::now();
             rt.shutdown_timeout(RUNTIME_EXIT_BOUND);
             if started.elapsed() >= RUNTIME_EXIT_BOUND {
@@ -129,10 +120,6 @@ fn doctor_report() -> serde_json::Value {
         Ok(path) => serde_json::json!({"path": path.display().to_string(), "provisioned": true}),
         Err(e) => serde_json::json!({"provisioned": false, "error": e}),
     };
-    // The served catalog is the single source of truth: the engine lists alone
-    // miss hand's own `browser_context`, which is how doctor used to report 32
-    // while the server published 33. Both counts and the split come from the
-    // same names `tools/list` emits.
     let names = catalog::catalog_names();
     let browser_tools = names
         .iter()

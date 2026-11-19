@@ -1,18 +1,8 @@
-// Scenario definitions for the measured protocol (docs/SPEC.md 309-336).
-//
-// Four scenarios, each with an explicit p95 target. Tool names are resolved per
-// product: hand exposes the prefixed browser_/desktop_ surface, the pinned
-// baselines expose unprefixed names. A missing name is "unsupported", never a
-// fallback to a different call.
 
 import { basename } from "node:path";
 
 import { canonicalHash, desktopTargetFingerprint } from "./fingerprint.mjs";
 
-// The pinned desktop engine always includes this documented Mode B deferral on
-// a successful PrintWindow capture (`MODE_B_NOTE` in shot.rs). It is a benign
-// scope note, not a fallback: the crop path has a different backend and an
-// explicit "PrintWindow refused" note. Accept exactly this note or null.
 export const MODE_B_NOTE =
   "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.";
 
@@ -163,7 +153,6 @@ export function resolveScenarioPlan({ productId, scenarioId, origin, target }) {
     };
   }
 
-  // desktop scenarios need an explicitly configured controlled target
   if (!target) {
     return {
       ok: false,
@@ -473,9 +462,6 @@ export function validateCapture(payload, ctx) {
       reason: `capture moved_during_capture is ${JSON.stringify(capture.moved_during_capture)}; required false`,
     };
   }
-  // `stale` is the unchanged-frame retry flag for static content, not a stale
-  // origin. A static 1280x720 fixture legitimately reports it. The screen-space
-  // source rect and moved flag are the safety evidence here.
   if (typeof capture.stale !== "boolean") {
     return { ok: false, incomplete: true, reason: "capture stale flag is missing or not boolean" };
   }
@@ -509,21 +495,12 @@ export function validateCapture(payload, ctx) {
       reason: `capture blank_check max_channel is ${JSON.stringify(blank.max_channel)}; required at least ${Math.max(8, blankThreshold)}`,
     };
   }
-  // A capture is read-only, but the pointer and the foreground are shared with
-  // every other process and with the owner. `noSteal` carries the attribution:
-  // the raw before/after booleans, the input tick around the call, and this
-  // binary's own import table. A delta with real input in the window is the
-  // owner's; a delta without input, or a foreground this process/target took,
-  // is a defect. The boolean alone is not evidence either way.
   const noSteal = payload.noSteal;
   const hasAttribution = Boolean(noSteal && typeof noSteal === "object");
   let cursorExternal = false;
   let foregroundExternal = false;
   let baselineProbe = null;
   if (!hasAttribution) {
-    // A pinned baseline cannot report the attribution hand owns. It is held to
-    // the stricter rule: raw equality, no explanation accepted. hand must
-    // report noSteal, so its own release cannot opt out of the mechanism proof.
     if (ctx.product === "hand") {
       return {
         ok: false,
@@ -615,8 +592,6 @@ export function validateCapture(payload, ctx) {
   ) {
     return { ok: false, incomplete: true, reason: "capture pointer before/after samples are malformed" };
   }
-  // The samples decide the flags; a response that contradicts itself is not
-  // evidence. The input tick must be present on both sides to attribute.
   const pointerMoved = pointer.before[0] !== pointer.after[0] || pointer.before[1] !== pointer.after[1];
   if ((pointer.moved === true) !== pointerMoved) {
     return { ok: false, incomplete: true, reason: "capture pointer.moved contradicts the before/after samples" };

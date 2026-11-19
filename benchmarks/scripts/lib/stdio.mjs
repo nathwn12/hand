@@ -1,15 +1,3 @@
-// One MCP stdio session for benchmarking.
-//
-// This is intentionally stricter than a convenience client:
-// - one request in flight at a time (a second request throws);
-// - no retries, no reconnection, no batch support;
-// - a reply is matched by JSON-RPC id; anything else is a protocol violation;
-// - every request resolves with {ok, elapsedMs, ...}; a transport failure or
-//   JSON-RPC error is data, not an exception, because failures must be counted;
-// - latency is measured from the stdin write to the complete response frame.
-//
-// Both pinned baseline servers speak newline-delimited JSON-RPC over stdio with
-// logging on stderr. The driver never assumes Content-Length framing.
 
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -188,7 +176,6 @@ export class BenchClient {
           timedOut: true,
           dispatched: true,
         });
-        // The late reply is recorded as a protocol violation by #onLine.
       }, timeoutMs);
       this.pending.set(id, {
         resolve: (value) => resolve(value),
@@ -257,7 +244,6 @@ export class BenchClient {
     try {
       this.child.stdin.end();
     } catch {
-      // stdin may already be closed
     }
     const timer = new Promise((resolve) => setTimeout(() => resolve({ code: null, signal: "timeout" }), graceMs));
     const outcome = await Promise.race([this.exitPromise, timer]);

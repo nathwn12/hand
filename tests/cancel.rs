@@ -15,8 +15,6 @@ use serde_json::json;
 #[test]
 fn browser_cancel_answers_typed_then_discards_the_late_result() {
     let mut s = Session::spawn();
-    // Warm the engine first: the cancellation is about a running call, not
-    // about launch timing.
     let warm = s.call("browser_evaluate", json!({"expression": "1 + 1"}));
     assert_eq!(structured(&warm)["value"], json!(2));
 
@@ -51,14 +49,12 @@ fn browser_cancel_answers_typed_then_discards_the_late_result() {
         text_of(&cancelled)
     );
 
-    // The engine call finishes later; its result must never be written.
     let late = s.recv_timeout(Duration::from_millis(3500));
     assert!(
         late.is_none(),
         "a cancelled browser call must not emit a second response: {late:?}"
     );
 
-    // The session and the engine are still usable.
     let pong = s.request("ping", json!({}));
     assert_eq!(pong["result"], json!({}));
     let after = s.call("browser_evaluate", json!({"expression": "2 + 3"}));
@@ -67,7 +63,6 @@ fn browser_cancel_answers_typed_then_discards_the_late_result() {
 
 #[test]
 fn desktop_cancel_token_published_before_the_worker_suppresses_the_result() {
-    // The reader publishes this key before the job is handed to a thread.
     desktop_engine::register_call("hand-cancel-1");
     desktop_engine::cancel_call("hand-cancel-1");
     let out = desktop_engine::call_tool(
@@ -80,7 +75,6 @@ fn desktop_cancel_token_published_before_the_worker_suppresses_the_result() {
         "a cancelled desktop job stays silent, got: {out:?}"
     );
 
-    // An uncancelled call through the same wrapper still answers.
     let ok = desktop_engine::call_tool(
         json!("hand-cancel-2"),
         "hand-cancel-2",
@@ -88,7 +82,6 @@ fn desktop_cancel_token_published_before_the_worker_suppresses_the_result() {
     )
     .expect("an uncancelled job answers");
     assert!(ok.get("result").is_some(), "result frame: {ok}");
-    // Cancelling a completed id is a no-op and cannot rewrite its answer.
     desktop_engine::cancel_call("hand-cancel-2");
     let again = desktop_engine::call_tool(
         json!("hand-cancel-3"),

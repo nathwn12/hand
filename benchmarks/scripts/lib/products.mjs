@@ -1,6 +1,3 @@
-// Product resolution. A benchmark never guesses: a missing executable is
-// "unsupported" with the paths that were tried, and the driver does not build
-// anything on the owner's behalf.
 
 import { access, stat } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";

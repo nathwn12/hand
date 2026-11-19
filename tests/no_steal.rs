@@ -109,19 +109,12 @@ fn forbidden_apis_live_nowhere() {
             "{sym} must have no call site anywhere ÔÇö the escalation path is deleted, found: {offenders:#?}"
         );
     }
-    // `mouse_event` was always banned outright; now the other four join it.
     println!("NO_STEAL_STATIC_OK symbols={FORBIDDEN:?} banished from src/");
 }
 
 #[test]
 fn gate_holds_no_permits_and_no_injection_apis() {
     let gate = std::fs::read_to_string(src_dir().join("gate.rs")).expect("gate.rs readable");
-    // No permit may exist: the ONLY mints were the three flag-only
-    // constructors, and the background-only policy deleted all of them.
-    // (No unflagged constructor may ever bypass the flags ÔÇö there is
-    // nothing left to mint.)
-    // Production half only: this test's own string literals sit below
-    // `#[cfg(test)]`, and a naive whole-file contains would match them.
     let prod = gate.split("#[cfg(test)]").next().unwrap_or("");
     for mint in [
         "ForegroundPermit",
@@ -135,9 +128,6 @@ fn gate_holds_no_permits_and_no_injection_apis() {
             "gate production half must not contain {mint}: the escalation path is deleted"
         );
     }
-    // Production half only: this test's own banned-name literals sit below
-    // `#[cfg(test)]` (spelled via concat! so the source scan never sees a
-    // live `Name(` call site here).
     let prod = gate.split("#[cfg(test)]").next().unwrap_or("");
     for banned in [
         concat!("fn send", "_input"),
@@ -303,7 +293,6 @@ fn every_acting_tool_declares_target_and_the_gate_flags() {
             .contains("global clipboard"),
         "allow_clipboard must state what it permits, got: {ab}"
     );
-    // Read-only listing needs no target: it never acts on a window.
     let lw = tool(&tools, "desktop_list_windows")["inputSchema"]["properties"]
         .as_object()
         .expect("properties");
@@ -363,7 +352,6 @@ fn malformed_target_is_bad_target() {
         text.contains("bad_target"),
         "unknown target field must be bad_target, got: {text}"
     );
-    // Structural (pydantic-shaped) rejection for a non-object target.
     let resp = s.call(
         12,
         "desktop_do",
@@ -449,8 +437,6 @@ fn clipboard_write_is_refused_over_the_wire() {
 #[test]
 fn window_focus_is_the_only_explicit_focus_and_reports_telemetry() {
     let mut s = Session::spawn();
-    // No foreground session in some CI environments: a refusal is fine, but
-    // the response must be typed, never a silent ok.
     let resp = s.call(
         14,
         "desktop_window",
@@ -558,13 +544,9 @@ fn live_read_only_target_capture_keeps_foreground() {
         })
         .cloned()
         .collect();
-    // Prefer a window that is NOT foreground: that is the case the no-steal
-    // contract exists for (capture a background window without raising it).
     cands.sort_by_key(|w| w["foreground"].as_bool() == Some(true));
     cands.truncate(6);
     if cands.is_empty() {
-        // In live mode an empty candidate set is a FAILED proof, not a skip:
-        // the skip above only covers `PUPPET_LIVE_DESKTOP` being unset.
         panic!(
             "NO_STEAL_LIVE_FAILED: live mode is on but no safe visible window exists to capture \
              (the capture contract is unproven)"
@@ -606,14 +588,9 @@ fn live_read_only_target_capture_keeps_foreground() {
             continue;
         }
         let shot_sc = shot["result"]["structuredContent"].clone();
-        // The server-side boolean is a measurement too, but the foreground is
-        // the property this tool can violate, so it is asserted strictly: a
-        // window the tool answers for fails, a third party re-baselines.
         if shot_sc["foregroundUnchanged"].as_bool() != Some(true) {
             fg_baseline = assert_foreground_held(fg_baseline, &tw, "window capture telemetry");
         }
-        // Pointer telemetry: reported with its delta, never a failure (see
-        // `report_pointer`). The foreground below stays strict.
         let _ = shot_sc["cursorUnchanged"].as_bool();
         report_pointer(cur_before, "window capture");
         fg_baseline = assert_foreground_held(fg_baseline, &tw, "window capture");
@@ -624,8 +601,6 @@ fn live_read_only_target_capture_keeps_foreground() {
         );
         return;
     }
-    // Live mode must PROVE a capture, not skip past a total failure. The
-    // skip above is only for `PUPPET_LIVE_DESKTOP` being unset.
     panic!(
         "NO_STEAL_LIVE_FAILED: none of {} existing windows was captured without activation \
          (elements succeeded read-only, but the capture half of the contract is unproven). \
@@ -913,8 +888,6 @@ fn foreground_gate_classifies_by_tool_ownership_not_by_change() {
         server_pid: 0x00bb_bbbb,
         targets: vec![0x1000, 0x2000],
     };
-    // Synthetic handles (no window behind them): pid_of yields None, so the
-    // target-set rule is what decides. Nothing is activated.
     assert!(
         tw.is_tool(0x1000),
         "a candidate target is the tool's to answer for"
@@ -923,7 +896,6 @@ fn foreground_gate_classifies_by_tool_ownership_not_by_change() {
     assert!(!tw.is_tool(0x3000), "an unrelated handle is a third party");
     assert!(!tw.is_tool(0), "no foreground window is nobody's");
 
-    // (a) The tool raises a target it answers for: immediate typed fail.
     let e = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         assert_foreground_held_with(0x5000, &tw, "scripted tool steal", scripted(&[0x1000]));
     }))
@@ -932,8 +904,6 @@ fn foreground_gate_classifies_by_tool_ownership_not_by_change() {
     assert!(text.contains("NO_STEAL_FAILED"), "typed failure: {text}");
     assert!(text.contains("owner=tool"), "the owner is named: {text}");
 
-    // (b) The owner switches app mid-check: logged, re-baselined, not failed.
-    // (This is the flake the old single-sample assert produced.)
     let before = 0x5000;
     let settled =
         assert_foreground_held_with(before, &tw, "scripted churn", scripted(&[0x6000; 6]));
@@ -942,7 +912,6 @@ fn foreground_gate_classifies_by_tool_ownership_not_by_change() {
         "the third-party window becomes the baseline instead of failing"
     );
 
-    // (c) Churn first, tool steal second: the re-baseline must not launder it.
     let e = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         assert_foreground_held_with(
             before,
@@ -954,7 +923,6 @@ fn foreground_gate_classifies_by_tool_ownership_not_by_change() {
     .expect_err("a tool window after third-party churn must still fail");
     assert!(panic_text(e).contains("NO_STEAL_FAILED"));
 
-    // (d) Headless: no foreground session before the call skips, as in burst.
     assert_eq!(
         assert_foreground_held(0, &tw, "scripted headless"),
         0,
@@ -985,7 +953,6 @@ fn foreground_gate_matches_the_canonical_burst_gate() {
             FG_SAMPLE_GAP.as_millis()
         ),
         "pubfnfg_outcome(before:i64,after:i64,owned:bool)->FgOutcome".to_string(),
-        // Same arm order: no session, held, owned steal, external.
         "ifbefore==0||after==0{FgOutcome::NoSession}elseifafter==before{FgOutcome::Held}elseifowned{FgOutcome::HarnessSteal}else{FgOutcome::External}".to_string(),
     ] {
         assert!(

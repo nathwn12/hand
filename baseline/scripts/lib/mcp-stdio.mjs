@@ -1,13 +1,3 @@
-// Minimal MCP stdio client: one child process, newline-delimited JSON frames.
-//
-// Both pinned servers (Gladius 59c6d77, Puppet 0f790be) read one JSON-RPC frame
-// per `\n` on stdin and write one per `\n` on stdout, with all logging on
-// stderr (verified in their sources: `src/mcp.rs` and `src/serve.rs`). No
-// Content-Length framing, no batch support, so this client sends none.
-//
-// It is deliberately a capture tool, not a general client: no retries, no
-// reconnection, no tool calls. A catalogue capture must be able to prove that
-// nothing but initialize/discover/ping/tools-list happened.
 
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
@@ -121,7 +111,6 @@ export class StdioClient {
     try {
       this.child.stdin.end();
     } catch {
-      /* already closed */
     }
     const timer = new Promise((resolve) => setTimeout(() => resolve({ code: null, signal: "timeout" }), graceMs));
     const outcome = await Promise.race([this.exitPromise, timer]);
@@ -135,9 +124,6 @@ export class StdioClient {
 
 function childEnv(extra) {
   const env = { ...process.env, ...extra };
-  // A launcher version gate must not be inherited from an unrelated shell: it
-  // would refuse to serve and the capture would report a transport failure as
-  // if the catalog were missing.
   delete env.GLADIUS_EXPECTED_VERSION;
   return env;
 }

@@ -1,9 +1,3 @@
-// Fingerprints for the benchmark receipt: machine, executable, headless browser
-// and controlled desktop target. Fixture bytes and their pin live in fixture.mjs.
-//
-// Nothing here launches a browser, opens a window or takes a screenshot. It
-// reads files, asks Windows for the primary display geometry, and matches
-// window records returned by the product under test.
 
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";

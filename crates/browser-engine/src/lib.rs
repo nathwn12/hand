@@ -27,7 +27,6 @@
 //! These environment names are the pinned engine's contract; hand does not
 //! rename them, so a compatibility baseline measured against Gladius holds.
 
-// The tool table is one large `json!` literal; see Gladius `src/main.rs`.
 #![recursion_limit = "256"]
 
 mod browser;

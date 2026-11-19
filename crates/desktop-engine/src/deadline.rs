@@ -177,9 +177,6 @@ where
     let handle = match std::thread::Builder::new()
         .name(format!("puppet-{op}"))
         .spawn(move || {
-            // Same apartment as the worker had (see the module note): MTA, so
-            // every UIA object created below is free-threaded and released
-            // here, on this thread.
             crate::uia::ensure_com();
             if let Some(ms) = stall {
                 std::thread::sleep(Duration::from_millis(ms));
@@ -199,16 +196,10 @@ where
             Ok(v)
         }
         Err(RecvTimeoutError::Timeout) => {
-            // Deliberately not joined: joining is the wedge. Dropping the
-            // handle is what detaches (it never blocks); the thread owns every
-            // COM object it created and releases them itself, and the OS frees
-            // its stack and kernel handle when it returns.
             drop(handle);
             Err(timeout_text(f, op, limit))
         }
         Err(RecvTimeoutError::Disconnected) => {
-            // The helper panicked or aborted before sending: reap it so the
-            // panic is not lost, then report it as an internal failure.
             let _ = handle.join();
             Err(format!(
                 "error: internal: the {op} helper thread ended without a result"

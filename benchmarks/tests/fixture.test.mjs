@@ -1,6 +1,3 @@
-// Fixture pin and served-byte tests. These prove that the bytes hashed in the
-// receipt are the bytes the loopback server returns, and that SHA256SUMS and the
-// exact Control 001..Control 100 label set are both enforced.
 
 import test from "node:test";
 import assert from "node:assert/strict";

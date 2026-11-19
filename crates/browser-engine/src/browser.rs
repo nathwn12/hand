@@ -123,7 +123,6 @@ pub const NET_CAP: usize = 500;
 /// Default dialog policy: how the reader auto-handles a page JS dialog.
 /// `accept` answers confirm/beforeunload (and accepts alert); `prompt_text`
 /// is the reply for prompt dialogs when accepting. The page can never wedge:
-// an unhandled dialog blocks the JS thread, so one policy always applies.
 #[derive(Clone, Debug)]
 pub struct DialogPolicy {
     pub accept: bool,
@@ -754,7 +753,6 @@ impl Browser {
     /// call this BEFORE running so a record found afterwards belongs to
     /// their own action.
     pub async fn take_dialog(&self) -> Option<DialogRecord> {
-        // No browser yet means no dialog could have been seen.
         let guard = self.state.lock().await;
         let inner = match guard.as_ref() {
             Some(inner) => inner,
@@ -794,7 +792,6 @@ impl Browser {
     /// engine (`GLADIUS_CDP_URL`) is never relaunched: it is not gladius's to
     /// restart, so the answer is `engine_dead`/`transport`.
     async fn shared(&self) -> Result<Arc<Shared>, String> {
-        // Fast path: a live engine.
         {
             let guard = self.state.lock().await;
             if let Some(inner) = guard.as_ref() {
@@ -803,8 +800,6 @@ impl Browser {
                 }
             }
         }
-        // One builder at a time: a task arriving while another recovers waits
-        // for that launch instead of starting a second browser.
         let _launch = self.launch_lock.lock().await;
         {
             let guard = self.state.lock().await;
@@ -821,8 +816,6 @@ impl Browser {
                 .map(|inner| matches!(&inner.engine, Engine::Owned { .. }))
         };
         match corpse_owned {
-            // An attached engine is not gladius's to restart: detach the stale
-            // connection (never kill, never relaunch) and say whose it is.
             Some(false) => {
                 let _ = self.teardown().await;
                 Err(typed_marker(
@@ -833,9 +826,6 @@ impl Browser {
                      connection, then retry",
                 ))
             }
-            // An owned death: reap the corpse exactly as `close` does
-            // (bounded), so its tree, job cover and private profile never
-            // outlive the relaunch, then spend this death's single attempt.
             Some(true) => {
                 let _ = self.teardown().await;
                 if self.respawn_used.swap(true, Ordering::SeqCst) {
@@ -850,8 +840,6 @@ impl Browser {
                 let inner = match launch(self.excluded_contexts.clone()).await {
                     Ok(inner) => inner,
                     Err(e) => {
-                        // The attempt is spent: the flag stays set until a
-                        // launch succeeds (or an explicit `close`).
                         return Err(typed_marker(
                             ToolCode::EngineDead,
                             ToolReason::RespawnFailed,
@@ -862,14 +850,8 @@ impl Browser {
                         ));
                     }
                 };
-                // Cleared only by a successful launch: the next death gets its
-                // own single automatic attempt.
                 self.respawn_used.store(false, Ordering::SeqCst);
                 self.install(inner).await;
-                // The relaunch succeeded, and the original call is NOT run
-                // against the replacement: it returns the typed error for what
-                // it was doing. The engine is live again, so the next call
-                // needs no recovery of its own.
                 Err(typed_marker(
                     ToolCode::EngineDead,
                     ToolReason::Transport,
@@ -878,8 +860,6 @@ impl Browser {
                      re-issue it against the fresh engine",
                 ))
             }
-            // No engine at all: a cold start, or the call after a relaunch
-            // that failed - which may not attempt a second one.
             None => {
                 if self.respawn_used.load(Ordering::SeqCst) {
                     return Err(typed_marker(
@@ -980,20 +960,11 @@ impl Browser {
     /// new tab also gets the engine default.
     pub async fn viewport_reset(&self) -> Result<Value, String> {
         let shared = self.shared().await?;
-        // Pre-clear size: the settle target below.
         let before = self.viewport_readback().await.ok();
         *shared.viewport.lock().await = None;
         let r = send_session(&shared, "Emulation.clearDeviceMetricsOverride", json!({}))
             .await
             .map(|(_, v)| v);
-        // Settle: on later-created targets the size update can lag the
-        // acknowledgement (measured on Chromium: stale size but fresh DPR
-        // immediately after clear, correct size within 1s). Poll briefly
-        // for a size that differs from pre-clear; expiry just falls through
-        // to the tool's live read-back, never an error. Each read-back is
-        // wrapped in the REMAINING settle budget: the read-back allows
-        // `send_raw`'s 30 s per-call timeout, so an unwrapped await would
-        // turn this 1 s settle into 30 s+.
         if let Some((bw, bh, _)) = before {
             let deadline = Instant::now() + Duration::from_secs(1);
             loop {
@@ -1025,8 +996,6 @@ impl Browser {
         let num = |i: usize| arr.get(i).and_then(|x| x.as_f64());
         let w = num(0).ok_or("viewport: no window.innerWidth in read-back".to_string())?;
         let h = num(1).ok_or("viewport: no window.innerHeight in read-back".to_string())?;
-        // devicePixelRatio is reported, never asserted: an engine that does
-        // not emulate the scale still reports a usable size.
         let dpr = num(2).unwrap_or(1.0);
         Ok((w as i64, h as i64, dpr))
     }
@@ -1131,10 +1100,6 @@ impl Browser {
             )
             .await?;
         }
-        // A click count of N is N real clicks, the last one carrying the count:
-        // that is what a person's double click is, and it is what makes the
-        // engine raise `dblclick` on the second press (one press carrying
-        // clickCount:2 produces a single `click` and no `dblclick` - measured).
         for n in 1..=count {
             self.command(
                 "Input.dispatchMouseEvent",
@@ -1191,10 +1156,6 @@ impl Browser {
         let steps = steps.clamp(2, 64);
         let (x0, y0) = from;
         let (x1, y1) = to;
-        // Positioning move at the source BEFORE the press. Measured: the
-        // browser only routes pointer input into a cross-process (OOPIF) child
-        // renderer after a move at that position, and a drag that starts inside
-        // an out-of-process frame otherwise never reaches it.
         self.command(
             "Input.dispatchMouseEvent",
             json!({"type": "mouseMoved", "x": x0, "y": y0}),
@@ -1210,7 +1171,6 @@ impl Browser {
         .await?;
         let mut sent = 2usize;
         for i in 0..steps {
-            // Step 0 is the press point itself; the rest walk to `to`.
             let t = if steps <= 1 { 1.0 } else { i as f64 / (steps - 1) as f64 };
             let x = x0 + (x1 - x0) * t;
             let y = y0 + (y1 - y0) * t;
@@ -1248,8 +1208,6 @@ impl Browser {
     /// combos are G4b, never smuggled here). No OS input is involved: the
     /// whole sequence rides CDP.
     pub async fn mouse_click(&self, x: f64, y: f64, hover_first: bool) -> Result<(), String> {
-        // Byte-identical to the historic sequence: left button, clickCount 1,
-        // no move unless the caller asked for the hover state.
         self.mouse_click_button(x, y, "left", 1, hover_first)
             .await
     }
@@ -1281,12 +1239,6 @@ impl Browser {
             return None;
         };
         for (tid, sid) in self.extra_pairs().await {
-            // An OOPIF session identifies its frame through its OWN frame tree:
-            // measured on chrome-headless-shell 155, `DOM.getDocument` on an
-            // iframe session returns a root with no `frameId` at all, so the
-            // document probe alone can never map one. `Page.getFrameTree` on
-            // the session reports the frame's id and its parentId, which is the
-            // same id the page session refuses to know about.
             if let Ok(tree) = send_raw(
                 &shared,
                 "Page.getFrameTree",
@@ -1450,7 +1402,6 @@ impl Browser {
                 .ok_or(format!(
                     "targets: no frame with id {cur}: getFrameOwner returned no node"
                 ))?;
-            // The owner may also surface a direct nodeId on other engines.
             if let Some(nid) = owner
                 .get("nodeId")
                 .and_then(|v| v.as_i64())
@@ -1537,8 +1488,6 @@ impl Browser {
             .ok_or(format!(
                 "targets: no frame with id {frame_id}: resolveNode returned no objectId"
             ))?;
-        // `requestNode` path is only needed when the owner has no direct
-        // nodeId; resolveNode already yields a usable object id here.
         Ok(oid)
     }
 
@@ -1579,8 +1528,6 @@ impl Browser {
                 .await
                 .map_err(|e| format!("targets: no frame with id {cur}: {e}"))?;
             let oid = self.owner_object_id(&owner, &cur).await?;
-            // Scroll the owner into view in the parent realm first, then read
-            // its content-origin metrics (rect + padding + border).
             let _ = self
                 .command(
                     "Runtime.callFunctionOn",
@@ -1609,7 +1556,6 @@ impl Browser {
             let _ = self
                 .command("Runtime.releaseObject", json!({"objectId": oid}), true)
                 .await;
-            // The main frame is the one whose own parent is "".
             let parent_is_main = parents.get(&parent).map(|g| g.is_empty()).unwrap_or(true);
             if parent_is_main {
                 levels.push((None, ax, ay));
@@ -1686,8 +1632,6 @@ impl Browser {
             .ok_or(format!(
                 "upload: element not found in frame {frame_id}: {selector}"
             ))?;
-        // Snapshot bridge: document first (pierce so iframe nodes resolve),
-        // then backend ids to frontend node ids.
         self.command("DOM.enable", json!({}), true).await?;
         let _ = self
             .command("DOM.getDocument", json!({"depth": 0, "pierce": true}), true)
@@ -1739,28 +1683,13 @@ impl Browser {
         )
         .await;
         attach_to(&shared, &tid).await?;
-        // Settle: the new target's record carries the destination URL long
-        // before its navigation commits (measured live: target record showed
-        // /windows/new while the page still evaluated to about:blank). Wait
-        // (bounded) for the commit so the report is truthful and the next
-        // tool observes the real page.
         settle_new_tab(&shared, open_url != "about:blank").await;
         tabs_object(&shared).await
     }
 
     pub async fn tabs_select(&self, index: usize) -> Result<Value, String> {
         let shared = self.shared().await?;
-        // Ensure an active page exists so the index space is well-defined.
         ensure_session(&shared).await?;
-        // A click that opens a tab returns before the engine lists the new
-        // target (measured: one target still listed ~120ms after
-        // click_settle on a slow engine, two already on a fast one), so the
-        // index is validated against a list that is allowed a short settle.
-        // The settle is bounded by the RACE, not by a 10 s deadline: one
-        // opened tab can only land one past the end of the list read before
-        // it appeared, so a wider gap is a caller mistake and is refused on
-        // the spot (measured pre-fix: `select index 1` with one tab burned
-        // the whole deadline, 10.0 s, before saying so).
         const SETTLE: Duration = Duration::from_millis(500);
         let settle_deadline = Instant::now() + SETTLE;
         let infos = loop {
@@ -1781,9 +1710,6 @@ impl Browser {
             .and_then(|v| v.as_str())
             .ok_or("tabs: target has no targetId".to_string())?
             .to_string();
-        // A non-blank target record means a real page is (or should be)
-        // loading there: settle until its navigation commits. A blank
-        // record (fresh about:blank tab) settles on first paint instead.
         let record_url = t
             .get("url")
             .and_then(|v| v.as_str())
@@ -1800,10 +1726,6 @@ impl Browser {
         if !already_active {
             attach_to(&shared, &tid).await?;
         }
-        // Settle: a freshly opened tab may still show url "" / about:blank
-        // here (measured: tab-02's select saw url:"" while tab-01's list saw
-        // the committed URL). Bounded wait for commit + load so the
-        // following evaluate observes the real page.
         let expect_page = !record_url.is_empty() && record_url != "about:blank";
         settle_new_tab(&shared, expect_page).await;
         tabs_object(&shared).await
@@ -1829,9 +1751,6 @@ impl Browser {
             None,
         )
         .await?;
-        // Settle: closeTarget acknowledges before the target detaches, so an
-        // immediate getTargets can still list it (measured under parallel
-        // load). Bounded wait until it disappears from the target list.
         let deadline = Instant::now() + Duration::from_secs(5);
         loop {
             match page_targets(&shared).await {
@@ -1851,7 +1770,6 @@ impl Browser {
         if was_active {
             *shared.session.lock().await = None;
             *shared.target.lock().await = None;
-            // Track exactly one survivor so the other tools keep working.
             let rest = ordered_targets(&shared).await?;
             if let Some(first) = rest.first() {
                 if let Some(fid) = first.get("targetId").and_then(|v| v.as_str()) {
@@ -1863,13 +1781,10 @@ impl Browser {
                         None,
                     )
                     .await;
-                    // A closing target can transiently fail attach; keep the
-                    // list truthful either way (next command re-attaches).
                     let _ = attach_to(&shared, &fid).await;
                 }
             }
         }
-        // Report without forcing a re-attach: an empty farm has no active.
         let active = shared.target.lock().await.clone();
         let infos = ordered_targets(&shared).await?;
         let mut tabs = Vec::new();
@@ -1907,15 +1822,6 @@ impl Browser {
                     pid,
                 } => {
                     reader.abort();
-                    // Deterministic reap-then-sweep: non-waiting termination
-                    // followed by deadline-wrapped waits (never an unbounded
-                    // await), then a bounded tree-kill fallback, then a
-                    // bounded profile sweep. The profile outlives the child
-                    // handle and the job cover by declaration order, and is
-                    // swept here explicitly before `close()` returns, so a
-                    // clean close guarantees the dir is gone (the red-gate
-                    // assertion) instead of racing grandchildren still
-                    // holding files.
                     let _ = child.start_kill();
                     let exited = tokio::time::timeout(Duration::from_secs(2), child.wait())
                         .await
@@ -1943,12 +1849,6 @@ impl Browser {
                     }
                 }
                 Engine::Attached { cdp_url } => {
-                    // Ownership rule: the attached engine is NOT ours. Detach
-                    // the CDP session we opened (best-effort, before the
-                    // reader goes away so the reply can route), then drop the
-                    // connection. Never kill_tree, never kill a pid, never
-                    // sweep a profile we did not create. Pages/targets in the
-                    // external engine stay open by design.
                     if let Some(sid) = shared.session.lock().await.clone() {
                         let _ = send_raw(
                             &shared,
@@ -1960,13 +1860,6 @@ impl Browser {
                     }
                     *shared.session.lock().await = None;
                     *shared.target.lock().await = None;
-                    // Clean protocol close before the socket is dropped: it is
-                    // what lets the external engine honour `disposeOnDetach`
-                    // for the contexts hand created. Measured on the pinned
-                    // build: a graceful close disposes them, while an abrupt
-                    // socket drop left the context object behind after closing
-                    // its pages. Best-effort and bounded - the connection is
-                    // being discarded anyway.
                     let _ = tokio::time::timeout(Duration::from_millis(500), async {
                         let mut sink = shared.sink.lock().await;
                         let _ = sink.close().await;
@@ -2008,14 +1901,8 @@ impl Browser {
             }
         };
         let deadline = Instant::now() + cap;
-        // Subscribe before the first check so an event racing the poll
-        // still wakes this waiter.
         tokio::pin!(let notified = shared.load_notify.notified(););
         loop {
-            // Clip each poll eval to the REMAINING budget (the same wrap the
-            // `wait_for` tool already uses): the deadline is checked between
-            // evals, but an unwrapped `send_raw` allows 30s per call, so a
-            // stalled peer would turn a short cap into 30s+.
             let remaining = deadline.saturating_duration_since(Instant::now());
             match tokio::time::timeout(remaining, self.eval("document.readyState")).await {
                 Ok(Ok(Value::String(s))) if s == "complete" => return,
@@ -2128,8 +2015,6 @@ impl Browser {
         };
         let deadline = Instant::now() + budget;
         let mut quiet_start: Option<Instant> = None;
-        // Subscribe before the first check so an event racing the poll
-        // still wakes this waiter.
         tokio::pin!(let notified = shared.net_notify.notified(););
         loop {
             if let Some(msg) = self.check_session_pin(pinned).await {
@@ -2207,9 +2092,6 @@ impl Browser {
                 "title": t.get("title").and_then(|v| v.as_str()).unwrap_or(""),
                 "active": Some(tid.to_string()) == active,
             });
-            // Say when a target is an isolated context's page, so a caller can
-            // see why `targets select` / `evaluate target=` will refuse it.
-            // The field is absent for default-context targets (legacy shape).
             if let Some(name) = t
                 .get("browserContextId")
                 .and_then(|v| v.as_str())
@@ -2346,11 +2228,6 @@ impl Browser {
         session: Option<&str>,
         params: Value,
     ) -> Result<Value, String> {
-        // No recorded child session means the object was minted on the active
-        // PAGE session, and the Runtime domain only exists there: a
-        // browser-level send has no `Runtime.callFunctionOn` at all. `command`
-        // with `attach` = true routes it through `send_session`, which
-        // re-attaches (Runtime enabled on attach) and types session death.
         let Some(sid) = session else {
             return self.command("Runtime.callFunctionOn", params, true).await;
         };
@@ -2374,9 +2251,6 @@ impl Browser {
             .iter()
             .find(|t| t.get("targetId").and_then(|v| v.as_str()) == Some(target_id));
         let hit = hit.ok_or(format!("targets: no target with id {target_id}"))?;
-        // A page in a registered isolated context is not part of the legacy
-        // page space: refuse it by name rather than sharing one active session
-        // between two selection models.
         let ctx_name = hit
             .get("browserContextId")
             .and_then(|v| v.as_str())
@@ -2437,10 +2311,6 @@ impl Browser {
         )
         .await
         .map_err(|e| format!("targets: no target with id {target_id}: {e}"))?;
-        // Boundary: a page in a registered isolated browser context is not
-        // reachable through the legacy realm-routing path. Without this check
-        // `evaluate target=` is a hole straight through the advertised
-        // separation (only `tabs select` used to be guarded).
         if let Some(name) = info
             .get("targetInfo")
             .and_then(|t| t.get("browserContextId"))
@@ -2463,8 +2333,6 @@ impl Browser {
             .and_then(|v| v.as_str())
             .unwrap_or("");
         if ttype == "worker" || ttype == "shared_worker" {
-            // Bounded wait for the auto-attach event session (the worker may
-            // still be starting, or its event in flight).
             let deadline = Instant::now() + Duration::from_secs(5);
             loop {
                 if let Some(sid) = shared.extra_sessions.lock().await.get(target_id).cloned() {
@@ -2479,7 +2347,6 @@ impl Browser {
                 "targets: no live session for {ttype} target {target_id} (auto-attach event never landed)"
             ));
         }
-        // Reuse the cached direct session for this target when one exists.
         let sid = {
             let cached = shared.extra_sessions.lock().await.get(target_id).cloned();
             match cached {
@@ -2503,8 +2370,6 @@ impl Browser {
                         .lock()
                         .await
                         .insert(target_id.to_string(), s.clone());
-                    // Workers never got Runtime enabled: harmless, enables
-                    // exception details on the session.
                     let _ = send_raw(&shared, "Runtime.enable", json!({}), Some(s.clone())).await;
                     s
                 }
@@ -2605,8 +2470,6 @@ impl Browser {
             let remaining = deadline.saturating_duration_since(Instant::now());
             match tokio::time::timeout(remaining, self.eval(expression)).await {
                 Ok(Ok(v)) => {
-                    // Session continuity first: a truthy result on a
-                    // replacement session must not satisfy the original wait.
                     if let Some(msg) = self.check_session_pin(&mut pinned).await {
                         return Err(msg);
                     }
@@ -2614,13 +2477,7 @@ impl Browser {
                         return Ok(true);
                     }
                 }
-                // A throwing condition is not "not yet true". Matched on the
-                // typed marker, not on the prose: the marker is minted at the
-                // throw site and cannot be forged by a page's own text.
                 Ok(Err(e)) if e.starts_with(&ToolCode::JsError.marker()) => return Err(e),
-                // Session death is not "not yet true": fail fast so polling
-                // waits surface the typed stale_session instead of burning
-                // the budget on a corpse.
                 Ok(Err(e)) if e.starts_with("stale session: ") => return Err(e),
                 _ => {}
             }
@@ -2657,9 +2514,6 @@ impl Browser {
             .and_then(|v| v.as_array())
             .cloned()
             .unwrap_or_default();
-        // currentIndex positions INTO entries; its id is the entryId the
-        // navigation command wants. A step past either end is the caller's
-        // typed error, never a silent no-op.
         let want_idx = if action == "back" { idx - 1 } else { idx + 1 };
         let entry = if want_idx < 0 {
             None
@@ -2727,7 +2581,6 @@ impl Browser {
                 };
                 let total = q.iter().filter(|e| matches(e)).count();
                 let take = limit.min(total);
-                // Indices (in ring order) of the last `take` matching entries.
                 let mut sel: Vec<usize> = q
                     .iter()
                     .enumerate()
@@ -2850,7 +2703,6 @@ fn flatten_frames(node: &Value, out: &mut Vec<Value>) {
 
 /// Truthiness of an evaluated JS value, by the language's own rules: false,
 /// null, undefined-as-error (never reaches here), 0/NaN/""/0n are falsy;
-// empty containers are TRUTHY (JS semantics, not Python's).
 fn is_truthy(v: &Value) -> bool {
     match v {
         Value::Null => false,
@@ -2974,8 +2826,6 @@ async fn send_raw_with_timeout(
     let text = Value::Object(envelope).to_string();
     let (tx, rx) = oneshot::channel();
     shared.pending.lock().unwrap().insert(id, tx);
-    // Every exit from here on - including a dropped future - clears the entry
-    // (the old explicit removals below covered only two of the exits).
     let _guard = PendingGuard {
         pending: shared.pending.clone(),
         id,
@@ -2983,8 +2833,6 @@ async fn send_raw_with_timeout(
     {
         let mut sink = shared.sink.lock().await;
         if let Err(e) = sink.send(Message::Text(text.into())).await {
-            // The socket is gone: this engine is dead, so the NEXT call takes
-            // the recovery path instead of sending into the same corpse.
             shared.dead.store(true, Ordering::SeqCst);
             return Err(engine_dead_transport(shared, &format!("ws send: {e}")));
         }
@@ -2996,8 +2844,6 @@ async fn send_raw_with_timeout(
             }
             Ok(resp.get("result").cloned().unwrap_or(Value::Null))
         }
-        // The sender was dropped: the reader drained the pending map on exit
-        // (or the connection closed), so the engine is gone.
         Ok(Err(_)) => {
             shared.dead.store(true, Ordering::SeqCst);
             Err(engine_dead_transport(
@@ -3005,11 +2851,6 @@ async fn send_raw_with_timeout(
                 "cdp: response channel closed",
             ))
         }
-        // Timeout path: the entry is removed by `_guard`'s drop, so one
-        // unanswered call never leaves a `tx` behind (a late response is the
-        // only other exit, and a dead peer never sends one). A timeout is not
-        // proof of death - a wedged renderer answers nothing either - so the
-        // dead flag is left alone and the per-call budget owns this case.
         Err(_) => Err("cdp: response timeout".to_string()),
     }
 }
@@ -3049,9 +2890,6 @@ async fn send_session(
 ) -> Result<(String, Value), String> {
     let session = match ensure_session(shared).await {
         Ok(s) => s,
-        // A re-attach that fails with session death (closing target still
-        // listed, crashed renderer) is the same corpse: surface it typed
-        // instead of letting polling waits burn their budget on it.
         Err(e) if is_session_death(&e) => {
             return Err(format!(
                 "stale session: {method} may or may not have executed; not retried; the next call re-attaches and repeats only if you choose ({e})"
@@ -3074,10 +2912,6 @@ async fn send_session(
 }
 
 async fn ensure_session(shared: &Arc<Shared>) -> Result<String, String> {
-    // A dead reader means a dead socket: fail fast instead of sending into
-    // it (the cached session/target were cleared when the reader exited).
-    // Typed at the site (S2.1): transport death is `engine_dead`/`transport`,
-    // never the generic `error`, and the prose names the recovery.
     if shared.dead.load(Ordering::SeqCst) {
         return Err(engine_dead_transport(
             shared,
@@ -3087,12 +2921,7 @@ async fn ensure_session(shared: &Arc<Shared>) -> Result<String, String> {
     if let Some(s) = shared.session.lock().await.clone() {
         return Ok(s);
     }
-    // Oldest tab first, so a fresh session lands on the opener.
-    // (ordered_targets already filters to page targets.)
     let infos = ordered_targets(shared).await?;
-    // Try every candidate in order: a listed target can be mid-close (its
-    // closeTarget ack races its detach), so a refused attach must fall
-    // through to the next tab, never fail the whole ensure.
     let mut last_err: Option<String> = None;
     for t in &infos {
         if let Some(tid) = t.get("targetId").and_then(|v| v.as_str()) {
@@ -3138,21 +2967,9 @@ async fn attach_to(shared: &Arc<Shared>, target_id: &str) -> Result<String, Stri
         .to_string();
     *shared.session.lock().await = Some(sid.clone());
     *shared.target.lock().await = Some(target_id.to_string());
-    // New session means fresh Network accounting: request ids are
-    // session-scoped, so stale in-flight ids from the old session would
-    // otherwise block the new session's idle forever (or, when empty,
-    // fake it). Clear here; the replay below re-arms observation.
     shared.net_inflight.lock().await.clear();
     shared.net_notify.notify_waiters();
-    // Enable page events on every new session: this is what delivers
-    // Page.javascriptDialogOpening to the reader for auto-handling.
     let _ = send_raw(shared, "Page.enable", json!({}), Some(sid.clone())).await;
-    // Focus without foreground: a headless tab never owns the OS focus, so
-    // `document.hasFocus()` is false and `:focus`-styled controls (and every
-    // framework that gates handlers on focus) misbehave. Focus emulation
-    // makes the page behave as focused WITHOUT raising a window or stealing
-    // the operator's focus - the whole point of the headless-only contract.
-    // Enabled per session (session-scoped, like every other Emulation call).
     let _ = send_raw(
         shared,
         "Emulation.setFocusEmulationEnabled",
@@ -3160,17 +2977,8 @@ async fn attach_to(shared: &Arc<Shared>, target_id: &str) -> Result<String, Stri
         Some(sid.clone()),
     )
     .await;
-    // Runtime events feed the console ring (consoleAPICalled +
-    // exceptionThrown); Log events add failed-resource lines. One extra
-    // round-trip per attach; when the page is quiet the reader work is
-    // two string compares per event, i.e. no steady-state cost.
     let _ = send_raw(shared, "Runtime.enable", json!({}), Some(sid.clone())).await;
     let _ = send_raw(shared, "Log.enable", json!({}), Some(sid.clone())).await;
-    // Replay Network enablement onto THIS session when any prior session
-    // needed it. Without the replay a newly attached tab would never emit
-    // `requestWillBeSent`, so a network-idle wait on it would return a
-    // FALSE idle. Best-effort like the enables above; a replay failure
-    // leaves this session unmarked so the next `ensure_network` retries.
     let had_network = !shared.net_enabled.lock().await.is_empty();
     if had_network
         && send_raw(shared, "Network.enable", json!({}), Some(sid.clone()))
@@ -3179,12 +2987,6 @@ async fn attach_to(shared: &Arc<Shared>, target_id: &str) -> Result<String, Stri
     {
         shared.net_enabled.lock().await.insert(sid.clone());
     }
-    // Session-scoped auto-attach: child targets of this page (dedicated /
-    // shared workers) report their sessions via `Target.attachedToTarget`,
-    // which the reader records for realm-scoped `evaluate`. Best-effort like
-    // the enables above: without it worker realms are unreachable (a direct
-    // `Target.attachToTarget` to a worker returns a session whose commands
-    // hang). `waitForDebuggerOnStart: false` so nothing ever pauses.
     let _ = send_raw(
         shared,
         "Target.setAutoAttach",
@@ -3192,11 +2994,6 @@ async fn attach_to(shared: &Arc<Shared>, target_id: &str) -> Result<String, Stri
         Some(sid.clone()),
     )
     .await;
-    // Replay an active device-metrics override onto THIS session. The
-    // override is session-scoped, so a new tab / re-attach would otherwise
-    // observe (and report) the engine default while the caller still holds
-    // the numbers it set. Best-effort like the enables above: a replay
-    // failure is NOT silent - the next read-back reports the real size.
     let pending_viewport = shared.viewport.lock().await.clone();
     if let Some(params) = pending_viewport {
         let _ = send_raw(
@@ -3271,13 +3068,9 @@ async fn page_targets(shared: &Arc<Shared>) -> Result<Vec<Value>, String> {
 }
 
 async fn tabs_object(shared: &Arc<Shared>) -> Result<Value, String> {
-    // Ensure exactly one active page is tracked before reporting.
     ensure_session(shared).await?;
     let active = shared.target.lock().await.clone();
     let infos = ordered_targets(shared).await?;
-    // Live truth for the active tab: Target.getTargets info flaps for fresh
-    // tabs (measured: url "" vs the committed URL across calls), so ask the
-    // page itself. Falls back to target info when the page will not answer.
     let live = live_page_info(shared).await;
     let mut tabs = Vec::new();
     for (i, t) in infos.iter().enumerate() {
@@ -3578,7 +3371,6 @@ async fn record_request(shared: &Arc<Shared>, p: &Value) {
         .unwrap_or_else(now_ms);
     let mut q = shared.net_log.lock().await;
     if let Some(e) = q.iter_mut().rev().find(|e| e.request_id == rid) {
-        // Redirect leg: same id, new url - track the landing url.
         if !url.is_empty() && e.url != url {
             e.url = url;
         }
@@ -3683,36 +3475,22 @@ async fn reader_loop(mut stream: WsReader, shared: Arc<Shared>) {
         let text = match msg {
             Ok(Message::Text(t)) => t.to_string(),
             Ok(Message::Binary(b)) => String::from_utf8_lossy(&b).into_owned(),
-            // A receive error ends the loop on the next poll (tungstenite
-            // terminates a stream it could not frame), so it is not swallowed
-            // here: the exit below is the one death path.
             _ => continue,
         };
         let v: Value = match serde_json::from_str(&text) {
             Ok(v) => v,
             Err(_) => continue,
         };
-        // Route responses by id; events (no id) fall through below.
         if let Some(id) = v.get("id").and_then(|i| i.as_u64()) {
             if let Some(tx) = shared.pending.lock().unwrap().remove(&id) {
                 let _ = tx.send(v);
             }
             continue;
         }
-        // Event-driven wait signal: wake any `wait_for_load` waiter. The
-        // `readyState` poll there is the fallback, so a missed or
-        // session-scoped event can only cost one 10 ms cadence, never a
-        // hang. Dialog handling below is unchanged.
         if v.get("method").and_then(|m| m.as_str()) == Some("Page.loadEventFired") {
             shared.load_notify.notify_waiters();
             continue;
         }
-        // Console ring: buffer console.* calls, uncaught exceptions, and
-        // failed-resource log lines for the `console` tool. Bounded
-        // (`CONSOLE_CAP`); a quiet page costs two string compares here.
-        // Chromium emits `Log.entryAdded` live (failed resources,
-        // violations), so the Log leg reports alongside
-        // `Runtime.consoleAPICalled`.
         if v.get("method").and_then(|m| m.as_str()) == Some("Runtime.consoleAPICalled") {
             let params = v.get("params").cloned().unwrap_or(Value::Null);
             push_console(&shared, console_message(&params)).await;
@@ -3732,15 +3510,6 @@ async fn reader_loop(mut stream: WsReader, shared: Arc<Shared>) {
             push_console(&shared, log_message(&params)).await;
             continue;
         }
-        // Network-idle plumbing: track in-flight request ids for the
-        // `networkIdle` wait. Finishes wake waiters; the 50 ms poll in
-        // `wait_network_idle` is the fallback, so a missed event costs one
-        // cadence, never a hang.
-        // Network capture: every request/response leg lands in the bounded
-        // `net_log` ring for the `network` tool, alongside the in-flight
-        // accounting the `networkIdle` wait already keeps. Events arriving
-        // before any `Network.enable` (the domain is lazy) simply never
-        // exist; once enabled, all legs are recorded session-wide.
         if v.get("method").and_then(|m| m.as_str()) == Some("Network.requestWillBeSent") {
             if let Some(p) = v.get("params") {
                 if let Some(rid) = p.get("requestId").and_then(|r| r.as_str()) {
@@ -3769,13 +3538,6 @@ async fn reader_loop(mut stream: WsReader, shared: Arc<Shared>) {
             continue;
         }
         if v.get("method").and_then(|m| m.as_str()) == Some("Target.attachedToTarget") {
-            // Auto-attach (enabled on every page session in `attach_to`)
-            // reports child sessions here - notably dedicated/shared worker
-            // realms, which answer ONLY on their event-provided session: a
-            // direct `Target.attachToTarget` to a worker returns a session id
-            // whose commands hang forever (measured on chrome-headless-shell).
-            // Record targetId -> sessionId so realm-scoped `evaluate` can
-            // route to the live session instead of the dead direct one.
             if let Some(p) = v.get("params") {
                 let tid = p
                     .get("targetInfo")
@@ -3794,13 +3556,6 @@ async fn reader_loop(mut stream: WsReader, shared: Arc<Shared>) {
             continue;
         }
         if v.get("method").and_then(|m| m.as_str()) == Some("Target.detachedFromTarget") {
-            // Hygiene: a detached session must never be reused by realm eval.
-            // Plus active invalidation: when the detach names the TRACKED
-            // page target/session (closed/crashed tab, dropped socket state),
-            // clear the cached active session/target so the next command
-            // re-attaches instead of failing on the corpse until process
-            // restart. Either id form (targetId or session-only) invalidates
-            // when it names the active one.
             if let Some(p) = v.get("params") {
                 let tid = p.get("targetId").and_then(|t| t.as_str());
                 let sid = p.get("sessionId").and_then(|s| s.as_str());
@@ -3821,13 +3576,6 @@ async fn reader_loop(mut stream: WsReader, shared: Arc<Shared>) {
             }
             continue;
         }
-        // A JS dialog (`alert`/`confirm`/`prompt`/`beforeunload`) blocks the
-        // page's JS thread: every in-flight Runtime.evaluate hangs until the
-        // dialog is handled (measured: dlg-01 click HANG, 15s bench timeout).
-        // Auto-ACCEPT immediately so a dialog can NEVER wedge a run, and
-        // record it for the acting tool's typed report.
-        // Chromium fires `Page.javascriptDialogOpening` with
-        // stall-until-handled semantics, so this path acts on every dialog.
         if v.get("method").and_then(|m| m.as_str()) == Some("Page.javascriptDialogOpening") {
             let params = v.get("params").cloned().unwrap_or(Value::Null);
             let dtype = params
@@ -3845,12 +3593,6 @@ async fn reader_loop(mut stream: WsReader, shared: Arc<Shared>) {
                 .and_then(|u| u.as_str())
                 .unwrap_or("")
                 .to_string();
-            // Policy-driven handling: the recorded default accepts
-            // (pre-policy behavior, page unblocked); a dismiss policy
-            // answers `false`/`null` so confirm/prompt/beforeunload observe
-            // the refusal. Prompt text rides along when accepting. The
-            // record keeps the policy it ran under so the tool notes stay
-            // truthful (accepted only when accepted).
             let pol = shared.dialog_policy.lock().await.clone();
             *shared.dialog.lock().await = Some(DialogRecord {
                 dtype: dtype.clone(),
@@ -3878,8 +3620,6 @@ async fn reader_loop(mut stream: WsReader, shared: Arc<Shared>) {
                 envelope.insert("sessionId".to_string(), json!(s));
             }
             let text = Value::Object(envelope).to_string();
-            // Register the id so the reply is routed (and dropped) instead
-            // of lingering as an unknown response.
             let (tx, _rx) = oneshot::channel();
             shared.pending.lock().unwrap().insert(hid, tx);
             let mut sink = shared.sink.lock().await;
@@ -3888,17 +3628,7 @@ async fn reader_loop(mut stream: WsReader, shared: Arc<Shared>) {
             }
         }
     }
-    // The stream ended (the engine went away or the socket dropped): mark
-    // the engine dead and clear the cached session/target (+ realm cache)
-    // so no later call reuses the corpse. `ensure_session` fails fast on
-    // the flag; `close()` still reaps/aborts as before, and `shared()`
-    // relaunches an owned engine once (S2.1). In-flight calls are failed
-    // here instead of being left to their own timeouts.
     shared.dead.store(true, Ordering::SeqCst);
-    // Fail every in-flight call NOW instead of leaving each one to its 30 s
-    // per-command timeout: dropping the senders closes each waiting channel,
-    // and `send_raw` reports that as transport death. A late response from a
-    // dead peer can never arrive, so nothing is lost by clearing the map.
     shared.pending.lock().unwrap().clear();
     *shared.session.lock().await = None;
     *shared.target.lock().await = None;
@@ -3967,7 +3697,6 @@ async fn launch(excluded_contexts: Arc<Mutex<HashMap<String, String>>>) -> Resul
     if headed_requested() {
         return Err(headed_unsupported_error());
     }
-    // A bad caps value is a config error: fail fast on either path.
     backend_caps()?;
     if let Some(raw) = cdp_url_override() {
         return attach(&raw, excluded_contexts).await;
@@ -4054,21 +3783,9 @@ fn chromium_argv(port: u16, profile_dir: &std::path::Path) -> Vec<String> {
         format!("--user-data-dir={}", profile_dir.display()),
         "--no-first-run".to_string(),
         "--no-default-browser-check".to_string(),
-        // Background-correctness flags (owner constraint: a page that is not
-        // the foreground tab must still render and screenshot). Chromium
-        // throttles and can stop compositing occluded/backgrounded tabs;
-        // all three switches pin timers, renderer priority and window
-        // occlusion behaviour so a non-active target keeps drawing and its
-        // timers keep firing at full cadence. One occurrence each.
         "--disable-backgrounding-occluded-windows".to_string(),
         "--disable-renderer-backgrounding".to_string(),
         "--disable-background-timer-throttling".to_string(),
-        // Site isolation ON: the shell ships it off, which collapses every
-        // cross-site iframe into the page renderer and leaves no OOPIF target
-        // to address (measured: `Target.getTargets` lists only the page).
-        // Chrome's own default is isolation on, and a frame a caller names must
-        // be a real OOPIF it can reach rather than a main-frame guess. One
-        // occurrence; never paired with an isolation-disabling switch.
         "--site-per-process".to_string(),
         format!("--remote-allow-origins=http://127.0.0.1:{port}"),
         "about:blank".to_string(),
@@ -4095,12 +3812,6 @@ fn confine_owned_ws_uri(port: u16, uri: &TungsteniteHttpUri) -> Result<(), Strin
             "owned ws endpoint rejected: non-ws scheme in {uri:?}"
         ));
     }
-    // Host exactly as the connector's parser (`http::Uri`, the same parse
-    // `connect_async` dials off) reports it. `http` keeps the brackets on a
-    // bracketed IPv6 literal (`Authority::host` returns `[::1]`), so strip
-    // one surrounding pair before comparing; compare case-insensitively.
-    // `Authority::host` already drops any userinfo, so a `user@host` shape
-    // cannot smuggle a host past this check.
     let host = uri.host().unwrap_or("");
     let bare = host
         .strip_prefix('[')
@@ -4259,19 +3970,10 @@ async fn launch_owned_chromium_once(
     excluded_contexts: Arc<Mutex<HashMap<String, String>>>,
 ) -> Result<Inner, String> {
     let deadline = startup_timeout();
-    // Fallback authority first (S2.2): a record whose owner is dead gets its
-    // engine killed and its profile swept. The dir-only sweep below then
-    // covers profiles that have no record at all.
     sweep_stale_records().await;
     sweep_stale_profiles();
-    // Fresh private profile BEFORE launch (functional, not hygiene): since
-    // Chrome 136 the remote-debugging switches are ignored on the default
-    // data directory, so without this no port binds and readiness never goes
-    // ready. The dir is created here so the argv path is private to this
-    // instance; `Drop` sweeps it after the tree is reaped.
     let profile = ProfileDir::create()?;
     let chromium = find_chromium()?;
-    // Free loopback port: bind :0, read the port, drop it.
     let port = {
         let listener = std::net::TcpListener::bind("127.0.0.1:0")
             .map_err(|e| format!("chromium free port: {e}"))?;
@@ -4289,8 +3991,6 @@ async fn launch_owned_chromium_once(
     eprintln!("[gladius] profile: {}", profile.path().display());
     let mut std_cmd = std::process::Command::new(&chromium);
     std_cmd.args(chromium_argv(port, profile.path()));
-    // Readiness is the HTTP poll below, so browser stdio is discarded (never
-    // a piped-but-undrained buffer the browser could block on).
     std_cmd
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -4303,7 +4003,6 @@ async fn launch_owned_chromium_once(
     let spawned = Command::from(std_cmd)
         .spawn()
         .map_err(|e| format!("spawn chromium: {e}"))?;
-    // Guard is armed from here on: any `?`/early-return kills the tree.
     let mut guard = ChildGuard {
         pid: spawned.id().unwrap_or(u32::MAX),
         child: Some(spawned),
@@ -4311,10 +4010,6 @@ async fn launch_owned_chromium_once(
     if guard.pid == u32::MAX {
         return Err("chromium child has no pid".to_string());
     }
-    // Hard-kill cover (G-4): the OS reaps the tree
-    // when gladius dies by ANY means. `GLADIUS_TEST_NO_JOB` reproduces the
-    // launch path where assignment failed (no cover at all), which is the
-    // only path the pid file exists for.
     #[cfg(windows)]
     let job = if test_no_job() {
         eprintln!("[gladius] job: assignment skipped by GLADIUS_TEST_NO_JOB (test-only)");
@@ -4323,30 +4018,17 @@ async fn launch_owned_chromium_once(
         job::arm(guard.child.as_ref().expect("guard holds child"))
     };
     let pid = guard.pid;
-    // Written BEFORE readiness is declared, so a hard kill during startup
-    // still leaves the fallback authority behind (S2.2).
     let record = PidRecord::write(pid, profile.path())?;
     let base = format!("http://127.0.0.1:{port}");
     let start = Instant::now();
     let ws_request = loop {
-        // Child-exit detection: if the browser died, the port may now belong
-        // to someone else - never keep polling it, fail on the exit status.
-        // Fail-closed: a `try_wait` error is never treated as "still alive".
         check_chromium_child(&mut guard)?;
-        // Single-sample budget: this one sample feeds BOTH the expiry check
-        // and the per-iteration bound below, so the subtraction cannot race
-        // and underflow-panic.
         let remaining = startup_remaining(start, deadline).ok_or_else(|| {
             format!(
                 "timeout waiting for chromium /json/version on {base}: \
                  deadline passed with no ready endpoint"
             )
         })?;
-        // Bound ONE poll iteration by the remaining budget: `resolve_ws_url`
-        // carries its own 10 s client timeout, so without this wrap a 1 s
-        // startup budget could take ~10 s. `resolve_ws_url` itself stays
-        // unrestricted for the attach path - the bound lives here, on the
-        // owned path only.
         match tokio::time::timeout(remaining, resolve_ws_url(&base)).await {
             Err(_) => {
                 return Err(format!(
@@ -4355,22 +4037,13 @@ async fn launch_owned_chromium_once(
                 ));
             }
             Ok(Ok(u)) => {
-                // A success that arrives after the deadline is still a
-                // timeout: the budget is enforced, not just tested on error.
                 if start.elapsed() >= deadline {
                     return Err(format!(
                         "timeout waiting for chromium /json/version on {base}: \
                          deadline passed before accepting a ready endpoint"
                     ));
                 }
-                // Re-check the child: it may have died while `resolve_ws_url`
-                // awaited - a late resolve from a dead browser's port must
-                // never be accepted as a live owned browser.
                 check_chromium_child(&mut guard)?;
-                // Owned path only: parse with the CONNECTOR's parser and
-                // confine the advertised endpoint to our loopback port before
-                // connecting anywhere. The loop yields the SAME request the
-                // connector will dial (no re-parse).
                 break owned_ws_request(port, &u)?;
             }
             Ok(Err(e)) => {
@@ -4379,15 +4052,11 @@ async fn launch_owned_chromium_once(
                         "timeout waiting for chromium /json/version on {base}: last error: {e}"
                     ));
                 }
-                // Browser still starting: re-poll at 100 ms cadence inside
-                // the same deadline.
                 tokio::time::sleep(Duration::from_millis(100)).await;
             }
         }
     };
 
-    // The connect also runs inside the startup budget: a stalled handshake
-    // must error on elapse, never overshoot the deadline unbounded.
     let ws_url = ws_request.uri().to_string();
     let remaining = startup_remaining(start, deadline).ok_or_else(|| {
         format!("timeout waiting for chromium ws connect on {ws_url}: startup budget exhausted")
@@ -4404,20 +4073,7 @@ async fn launch_owned_chromium_once(
         )
     })?
     .map_err(|e| format!("ws connect {ws_url}: {e}"))?;
-    // Post-connect child re-check: confinement only checks the advertised
-    // host and port, so a squatter on OUR OWN port advertising a same-port
-    // loopback URL passes it - the child's liveness is the only remaining
-    // discriminator. If the child died (e.g. its own bind failure) while
-    // the handshake awaited, this socket may belong to an impostor: fail
-    // here so the guard kills the tree and the socket is dropped.
-    // Review-enforced, not test-enforced: no test drives
-    // `launch_owned_chromium`, so removing this call (or the
-    // `owned_ws_request` confine above) stays green.
     check_chromium_child(&mut guard)?;
-    // Tokio's `timeout` polls the inner future first, so a handshake that
-    // completes at/after expiry still returns `Ok`: re-enforce the deadline
-    // after a successful connect, before building `Inner` or announcing
-    // readiness.
     if start.elapsed() >= deadline {
         return Err(format!(
             "timeout waiting for chromium ws connect on {ws_url}: \
@@ -4426,8 +4082,6 @@ async fn launch_owned_chromium_once(
     }
     let (sink, stream) = ws.split();
     let shared = new_shared(sink, excluded_contexts);
-    // This connection owns its engine: a transport death is recoverable by
-    // relaunching it (S2.1), while an attached engine never is.
     shared.owned.store(true, Ordering::SeqCst);
     let reader = tokio::spawn(reader_loop(stream, shared.clone()));
     eprintln!("[gladius] browser ready pid={pid} (chromium)");
@@ -4481,10 +4135,6 @@ impl ProfileDir {
 
 impl Drop for ProfileDir {
     fn drop(&mut self) {
-        // Fallback sweep for non-`close()` drops (abnormal exits): `close()`
-        // already swept deterministically above. Bounded retries with a
-        // report instead of a silent discard, so a failed removal is never
-        // swallowed.
         for attempt in 0..5 {
             if std::fs::symlink_metadata(&self.path).is_err() {
                 return;
@@ -4638,16 +4288,12 @@ fn recorded_profile(dir: &str) -> RecordedProfile {
     };
     let root = std::env::temp_dir();
     if std::fs::symlink_metadata(path).is_err() {
-        // Gone: the lexical test is enough because the only consequence is
-        // dropping the record (never a delete).
         return if path.parent() == Some(root.as_path()) && ours(path) {
             RecordedProfile::Absent
         } else {
             RecordedProfile::Doubt
         };
     }
-    // Canonicalise both sides so `..`, short names and junctions cannot walk
-    // out of the root after the check.
     let canon = match std::fs::canonicalize(path) {
         Ok(c) => c,
         Err(_) => return RecordedProfile::Doubt,
@@ -4692,7 +4338,6 @@ async fn sweep_stale_records() {
         if owner == std::process::id() || owner_alive(owner) {
             continue;
         }
-        // An unreadable or malformed record is doubt: keep everything.
         let text = match std::fs::read_to_string(e.path()) {
             Ok(t) => t,
             Err(_) => continue,
@@ -4710,21 +4355,14 @@ async fn sweep_stale_records() {
             .get("profileDir")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
-        // The record may only name a profile gladius itself creates: anything
-        // else is not ours to delete, so nothing is touched at all.
         let profile = match recorded.as_deref().map(recorded_profile) {
             Some(RecordedProfile::Present(p)) => p,
-            // Our dir, already gone: there is nothing left to delete, so the
-            // record has no authority and goes.
             Some(RecordedProfile::Absent) => {
                 let _ = std::fs::remove_file(e.path());
                 continue;
             }
             _ => continue,
         };
-        // Deletion needs a live engine; without one there is no orphan to kill
-        // and no proof that the dir is free, so both stay. The record has no
-        // authority left, though, and the dir-only sweep below owns the dir.
         let ep = match engine_pid {
             Some(ep) => ep,
             None => continue,
@@ -4733,9 +4371,6 @@ async fn sweep_stale_records() {
             let _ = std::fs::remove_file(e.path());
             continue;
         }
-        // Only OUR engine, proven by the command line carrying the exact
-        // profile dir we created for it. Anything else - a reused pid, an
-        // unreadable command line - keeps both.
         let ours = recorded
             .as_deref()
             .map(|dir| {
@@ -4752,9 +4387,6 @@ async fn sweep_stale_records() {
         );
         kill_tree_bounded(ep).await;
         if let Err(err) = sweep_profile_dir(&profile).await {
-            // The dir survived a bounded sweep: keep the record so the next
-            // launch can try again instead of losing the only authority that
-            // names the engine.
             eprintln!("[gladius] sweep: {err}");
             continue;
         }
@@ -4903,9 +4535,6 @@ fn owner_alive(_pid: u32) -> bool {
 
 #[cfg(windows)]
 fn kill_tree(pid: u32) {
-    // Best-effort synchronous fallback for `Drop` contexts (which cannot
-    // await). Bounded: polls `try_wait` up to 5 s instead of the old
-    // unbounded `status()` wait, then reports and gives up.
     let mut cmd = std::process::Command::new("taskkill");
     cmd.args(["/PID", &pid.to_string(), "/T", "/F"])
         .stdin(Stdio::null())
@@ -5257,11 +4886,6 @@ mod tests {
                                 "method": method,
                                 "params": v.get("params").cloned().unwrap_or(Value::Null)}));
                         }
-                        // Just enough of the session flow for a tool call to
-                        // complete: one page target, one session, empty acks.
-                        // `Target.createTarget` is REJECTED the way an engine
-                        // that does not know `background` rejects it - the
-                        // scratch-tab tests need a real CDP error body.
                         if method == "Target.createTarget" {
                             let reply = json!({
                                 "id": v.get("id").cloned().unwrap_or(Value::Null),
@@ -5394,7 +5018,6 @@ mod tests {
             vec!["mousePressed".to_string(), "mouseReleased".to_string()],
             "default click: press + release only, zero mouseMoved"
         );
-        // Sub-pixel coordinates survive verbatim (never rounded).
         {
             let sent = rig.sent.lock().unwrap();
             assert_eq!(
@@ -5735,8 +5358,6 @@ mod tests {
                 json!({"sessionId": format!("S{n}")})
             }
             "Runtime.evaluate" => {
-                // Scripted per-call results first (falsy/truthy legs of the
-                // pin tests), then the steady falsy default.
                 escript
                     .lock()
                     .unwrap()
@@ -5807,7 +5428,6 @@ mod tests {
                     .is_none(),
                 "the corpse is invalidated ({msg})"
             );
-            // The next call re-attaches and recovers.
             let r2 = b.command("Page.enable", json!({"probe": true}), true).await;
             assert!(r2.is_ok(), "next call recovers on a fresh session: {r2:?}");
             b.close().await.expect("detach close");
@@ -5910,10 +5530,7 @@ mod tests {
             .await
             .expect("attach over ws");
         let b = wrap_attached(inner);
-        // Establish the session the wait pins (first poll latches S1).
         assert!(b.eval("false").await.is_ok(), "session established");
-        // Detach it mid-wait: the reader clears the cache, the next poll
-        // re-attaches (S2) and the pin must trip instead of migrating.
         let etx = fake.event_tx.clone();
         tokio::spawn(async move {
             tokio::time::sleep(Duration::from_millis(200)).await;
@@ -5954,10 +5571,7 @@ mod tests {
             .await
             .expect("attach over ws");
         let b = wrap_attached(inner);
-        // Establish the session the wait pins (S1).
         assert!(b.eval("1").await.is_ok(), "session established");
-        // Hold one request in flight forever: without session death this
-        // never goes idle.
         b.shared()
             .await
             .expect("shared")
@@ -5965,7 +5579,6 @@ mod tests {
             .lock()
             .await
             .insert("R1-held".to_string());
-        // Detach it mid-wait: the reader clears the cache.
         let etx = fake.event_tx.clone();
         tokio::spawn(async move {
             tokio::time::sleep(Duration::from_millis(200)).await;
@@ -6044,8 +5657,6 @@ mod tests {
             "budget honored, took {dt:?}"
         );
         assert!(dt < Duration::from_secs(3), "budget honored, took {dt:?}");
-        // The clip DROPS the enable future: its pending slot must not outlive
-        // it (a peer that never answers would otherwise grow the map per call).
         assert!(
             b.shared()
                 .await
@@ -6141,7 +5752,6 @@ mod tests {
             .await
             .expect("attach over ws");
         let b = wrap_attached(inner);
-        // First network-idle enable lands on S1.
         b.ensure_network().await.expect("enable on S1");
         let shared = b.shared().await.expect("shared");
         let s1 = shared.session.lock().await.clone().expect("S1 tracked");
@@ -6150,13 +5760,11 @@ mod tests {
             std::slice::from_ref(&s1),
             "first enable on the first session"
         );
-        // Stale accounting from the old session must not survive the switch.
         shared
             .net_inflight
             .lock()
             .await
             .insert("stale-old-session-id".to_string());
-        // New tab / re-attach: fresh session, replay + clear.
         let s2 = attach_to(&shared, "T2").await.expect("attach T2");
         assert_ne!(s1, s2, "second attach gets a fresh session");
         assert!(
@@ -6168,7 +5776,6 @@ mod tests {
             shared.net_inflight.lock().await.is_empty(),
             "stale in-flight ids must be cleared on session change"
         );
-        // Idempotent per session: a second ensure on the same session adds nothing.
         b.ensure_network().await.expect("re-ensure on S2");
         assert_eq!(
             enable_sessions.lock().unwrap().len(),
@@ -6215,8 +5822,6 @@ mod tests {
             let v = rig.browser.console_drain(200).await;
             returned += drain_count(&v);
             if done.load(Ordering::SeqCst) {
-                // Pusher is finished: one last drain, then the ring is empty
-                // and the books must balance exactly.
                 let v = rig.browser.console_drain(200).await;
                 returned += drain_count(&v);
                 let rest = rig.browser.console_get(200).await;
@@ -6447,7 +6052,6 @@ mod tests {
             "ws attach must build the attached engine"
         );
         let b = wrap_attached(inner);
-        // Shared flow: a session-scoped command attaches (T1/S1) and runs.
         let v = b.eval("1+1").await.expect("eval over attach");
         assert_eq!(v, json!("fake"), "fake engine answers: {v:?}");
         b.close().await.expect("detach close");
@@ -6490,9 +6094,6 @@ mod tests {
     async fn attached_close_leaves_external_process_alive() {
         let fake = fake_cdp().await;
         let (ext_pid, mut ext_child) = external_sleeper().await;
-        // Canary: a dir only a sweep would remove. Nothing in the
-        // attach+close path deletes anything, so survival proves the
-        // ownership rule.
         let canary = std::env::temp_dir().join(format!("gladius-2147483646-canary-{ext_pid}"));
         std::fs::create_dir_all(&canary).expect("plant canary");
         let inner = attach(&fake.ws_url, no_excluded_contexts())
@@ -6509,7 +6110,6 @@ mod tests {
             fake.detach_seen.load(Ordering::SeqCst),
             "attached close must detach the session we opened"
         );
-        // External process still alive: no wait exit.
         match ext_child.try_wait().expect("try_wait external") {
             None => {}
             Some(status) => panic!("external process died on detach: {status}"),
@@ -6519,7 +6119,6 @@ mod tests {
             "attached close must never delete anything it did not create"
         );
         std::fs::remove_dir_all(&canary).ok();
-        // Test cleanup owns the sleeper: kill it here, never via gladius.
         #[cfg(windows)]
         {
             let _ = ext_child.kill().await;
@@ -6631,13 +6230,9 @@ mod tests {
             "--headless",
             "--no-first-run",
             "--no-default-browser-check",
-            // Background correctness: a non-active tab must still render,
-            // still screenshot and still run its timers.
             "--disable-backgrounding-occluded-windows",
             "--disable-renderer-backgrounding",
             "--disable-background-timer-throttling",
-            // Site isolation: OOPIF frame addressing needs a real iframe
-            // target, which the shell only creates with this switch.
             "--site-per-process",
         ] {
             let n = argv.iter().filter(|a| a.as_str() == flag).count();
@@ -6661,7 +6256,6 @@ mod tests {
             1,
             "explicit loopback origin once: {argv:?}"
         );
-        // No other flag-like token: exactly the known set.
         let mut flags: Vec<String> = argv
             .iter()
             .filter(|a| a.starts_with("--"))
@@ -6682,8 +6276,6 @@ mod tests {
         ];
         want.sort_unstable();
         assert_eq!(flags, want, "no extra or duplicated flags: {argv:?}");
-        // Full-assertion companion: the shell's headless selector is bare,
-        // never a suffixed spelling.
         for a in &argv {
             if a.starts_with("--headless") {
                 assert_eq!(a, "--headless", "bare headless selector only: {argv:?}");
@@ -6699,7 +6291,6 @@ mod tests {
     fn chromium_resolution_order_and_missing_error() {
         let (_lock, _env) =
             EnvGuard::hold(&["GLADIUS_CHROMIUM", "GLADIUS_CHROMIUM_CACHE", "LOCALAPPDATA"]);
-        // Explicit override pointing nowhere: names the script.
         std::env::set_var(
             "GLADIUS_CHROMIUM",
             r"C:\no-such-gladius-dir-xyz\chrome-headless-shell.exe",
@@ -6713,12 +6304,9 @@ mod tests {
             e.contains("GLADIUS_CHROMIUM"),
             "names the override, got: {e}"
         );
-        // Explicit override pointing at a real file wins (this test file).
         let here = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml");
         std::env::set_var("GLADIUS_CHROMIUM", &here);
         assert_eq!(find_chromium().expect("explicit file must win"), here);
-        // Blank override + empty cache root + missing cache entry: the error
-        // names the script and never resolves anything ambient.
         std::env::set_var("GLADIUS_CHROMIUM", "   ");
         let empty_root = std::env::temp_dir().join("gladius-no-such-cache-root-xyz");
         std::env::set_var("GLADIUS_CHROMIUM_CACHE", &empty_root);
@@ -6731,8 +6319,6 @@ mod tests {
             e2.contains(PINNED_CHROMIUM_VERSION),
             "cache miss names the pin, got: {e2}"
         );
-        // Cache-root override is honoured: plant the exact pinned layout
-        // under a scratch root and it resolves.
         let scratch = std::env::temp_dir().join(format!(
             "gladius-chromium-cache-probe-{}",
             std::process::id()
@@ -6782,9 +6368,6 @@ mod tests {
             PINNED_ZIP_SHORT8, short8,
             "runtime pin drift: src/browser.rs PINNED_ZIP_SHORT8 != manifest sha256[..8]"
         );
-        // The runtime's expected versioned path must carry the manifest pin:
-        // a clean machine provisions `<version>-<short8>` and the executable
-        // searches exactly that directory.
         let expected_frag = format!("{ver}-{short8}");
         let probe = std::path::PathBuf::from("/probe-cache")
             .join(format!("{PINNED_CHROMIUM_VERSION}-{PINNED_ZIP_SHORT8}"))
@@ -6793,7 +6376,6 @@ mod tests {
             probe.to_string_lossy().contains(&expected_frag),
             "runtime expected path {probe:?} must carry the manifest pin {expected_frag}"
         );
-        // The PowerShell pin constants must agree too (same-pass update).
         let ps1 = std::fs::read_to_string(root.join("scripts/fetch-chromium.ps1"))
             .expect("read fetch-chromium.ps1");
         assert!(
@@ -6837,7 +6419,6 @@ mod tests {
             !msg.contains("iVBORw0KGgo"),
             "refusal must never carry image bytes"
         );
-        // No engine was launched proving it: state stays empty.
         assert!(
             b.snap_url().await.is_empty(),
             "refusal must not touch the browser"
@@ -6917,8 +6498,6 @@ mod tests {
             startup_remaining(Instant::now(), Duration::ZERO).is_none(),
             "a zero budget is immediately expired"
         );
-        // Boundary: started exactly one deadline ago means elapsed >=
-        // deadline (elapsed only grows from here), so this is expired.
         assert!(
             startup_remaining(Instant::now() - deadline, deadline).is_none(),
             "completion AT expiry is late"
@@ -6945,8 +6524,6 @@ mod tests {
         let r = owned_ws_request(port, &got);
         assert!(r.is_err(), "squatter endpoint must be confined, got: {got}");
         http.abort();
-        // Crafted shapes: the smuggled port IS the owned port under test
-        // (any fixed port works - the check compares against it).
         let owned: u16 = 5555;
         for crafted in [
             format!("ws://192.0.2.1:9000?@127.0.0.1:{owned}/"),

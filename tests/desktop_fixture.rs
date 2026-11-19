@@ -233,10 +233,6 @@ impl FixtureApp {
             "fixture executable must exist: {}",
             exe.display()
         );
-        // A console-subsystem fixture would leave a console window on the
-        // private desktop, competing with the fixture window for discovery.
-        // `windows_subsystem = "windows"` is what prevents that, and a race is
-        // the wrong way to learn it went missing.
         assert_eq!(
             pe_subsystem(&exe),
             Some(2),
@@ -280,8 +276,6 @@ impl Drop for FixtureApp {
 fn pe_subsystem(exe: &Path) -> Option<u16> {
     let bytes = std::fs::read(exe).ok()?;
     let lfanew = u32::from_le_bytes(bytes.get(0x3c..0x40)?.try_into().ok()?) as usize;
-    // PE signature (4) + COFF header (20) = optional header; the Subsystem
-    // field sits at optional-header offset 68 in PE32 and PE32+ alike.
     let subsystem = lfanew.checked_add(4 + 20 + 68)?;
     Some(u16::from_le_bytes(
         bytes.get(subsystem..subsystem + 2)?.try_into().ok()?,
@@ -369,7 +363,6 @@ fn the_fixture_app_holds_no_pointer_foreground_or_activation_api() {
              journal is this scenario's effect oracle"
         );
     }
-    // Call sites only: the FFI declaration in the same file is not a call.
     let show_calls: Vec<&str> = src
         .lines()
         .map(str::trim)
@@ -394,11 +387,6 @@ fn desktop_act_verify_on_a_private_desktop_leaves_the_owner_alone() {
     let (click_x, click_y) = layout::button_screen_centre();
     let typed_units = layout::TYPED_TEXT.encode_utf16().count();
 
-    // Watch the owner's desktop for the whole call, from this process: any
-    // fixture-class window appearing there, or any foreground sample owned by
-    // this test or the server, is a steal. The fixture's own pid cannot be
-    // foreground on THIS desktop at all (its windows are on the private one),
-    // so the class scan is what answers for it.
     let watch = OwnerDeskWatch::start(vec![own_pid, server_pid]);
 
     let response = s.call(
@@ -444,7 +432,6 @@ fn desktop_act_verify_on_a_private_desktop_leaves_the_owner_alone() {
         "one posted WM_CHAR per UTF-16 unit reached the text control: {typed}"
     );
 
-    // proven below by the application's own record, never by this field.
     let clicked = &results[1];
     assert_eq!(clicked["type"].as_str(), Some("click"), "{clicked}");
     assert_eq!(clicked["ok"].as_bool(), Some(true), "{clicked}");
@@ -499,7 +486,6 @@ fn desktop_act_verify_on_a_private_desktop_leaves_the_owner_alone() {
         "the window was alive when the evidence was read: {hd}"
     );
 
-    // text and the toggled status are both there after the acts.
     let readback = hd["text_readback"].as_str().unwrap_or("");
     let read_lines: Vec<&str> = readback.lines().collect();
     assert!(
@@ -641,8 +627,6 @@ fn desktop_act_verify_on_a_private_desktop_leaves_the_owner_alone() {
     );
     let fg_after = foreground_now();
     if fg_after != fg_before {
-        // The owner (or the shell) may switch windows; attribute nothing to
-        // the tool unless the window is one of ours.
         let ours =
             pid_of(fg_after).is_some_and(|p| p == own_pid || p == server_pid || p == launched_pid);
         assert!(
@@ -650,10 +634,6 @@ fn desktop_act_verify_on_a_private_desktop_leaves_the_owner_alone() {
             "hand must not activate any window it owns or targets: before={fg_before} after={fg_after}"
         );
     }
-    // Pointer: TELEMETRY, not an assertion. The engine holds no pointer API at
-    // all (pinned by tests/no_steal.rs `forbidden_apis_live_nowhere`), and the
-    // owner may move the mouse at any moment, so a positional assert here
-    // would be a flake dressed as evidence.
     let cursor_after = cursor_now();
     eprintln!(
         "HAND_FIXTURE_POINTER before={cursor_before:?} after={cursor_after:?} \

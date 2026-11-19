@@ -1,37 +1,4 @@
 #!/usr/bin/env node
-// Derive the hand catalogue from the two pinned legacy catalogues.
-//
-//   node baseline/scripts/build-hand-catalog.mjs
-//   node baseline/scripts/build-hand-catalog.mjs --serve Q:\path\to\hand.exe
-//
-// Reads the captured `tools/list` results and their receipts, checks them
-// against `pins.json` and the spec's required surface, applies only the
-// documented `browser_` / `desktop_` prefix, and writes `hand-catalog.json`.
-//
-// `--serve <exe>` additionally asks that binary what it actually publishes:
-// one stdio MCP session (initialize, notifications/initialized, tools/list, then
-// stdin close) and nothing else, so no browser launches and no window is
-// touched. The answer is recorded in a `live` block beside the derived floor,
-// with `counts.live` beside the floor counts. Without `--serve` no `live` block
-// is written, because the derived file must stay reproducible from the pinned
-// captures alone; that run does not claim anything about a running server.
-//
-// Exit codes: 0 = catalogue written with no blocker; 1 = catalogue written but
-// a blocker or a structural issue was recorded; 2 = capture missing or
-// unreadable, which includes a live server that never answered `tools/list`.
-//
-// A blocker is a discrepancy with the pinned capture: a count, version, hash or
-// required-tool mismatch, or a duplicate name. It is never silently dropped:
-// the file records what was really captured, and the exit code says the capture
-// is not the pinned surface.
-//
-// A tool captured beyond the required floor is a *note*, not a blocker. The
-// floor says what must be present; extra upstream capability does not make the
-// capture wrong, and the hand comparison reports such tools as `extra` without
-// failing. Notes are recorded in the artefact and printed, and do not affect
-// the exit code. The same rule governs the live block: a live tool beyond the
-// floor is a note, while a live block that contradicts its own count, its
-// ordering or the floor it is supposed to serve is a structural issue (exit 1).
 
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -47,7 +14,6 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "..");
 const PROTOCOL = "2025-11-25";
 
-/** Capture keys the `live` block may carry. No timestamp: none is allowed. */
 const LIVE_CAPTURE_KEYS = ["executable", "executableSha256", "reportedVersion"];
 
 export function buildFromDisk({ root = ROOT } = {}) {
@@ -82,8 +48,6 @@ export function buildFromDisk({ root = ROOT } = {}) {
     const unexpected = captured.filter((name) => !required.includes(name));
     if (missing.length) blockers.push(`${key}: required tools not in the captured catalogue: ${missing.join(", ")}`);
     if (unexpected.length) {
-      // Reported, not failed: the spec lists a floor, so a pinned suite that
-      // carries more is extra capability, not a broken capture.
       notes.push(`${key}: captured tools beyond the required floor: ${unexpected.join(", ")}`);
     }
 
@@ -127,16 +91,8 @@ export function buildFromDisk({ root = ROOT } = {}) {
   return { hand, blockers, notes, pins, sources };
 }
 
-/**
- * Ask a running hand server what it publishes. Read-only by construction: one
- * `initialize`, one `notifications/initialized`, one `tools/list`, then stdin
- * close. No tool is called and no further request is sent.
- */
 export async function captureLiveTools({ executable, timeoutMs = 30_000 }) {
   const path = resolve(executable);
-  // Fail immediately and precisely: a spawn error would otherwise sit in the
-  // request queue until the initialize timeout, reporting a missing path as a
-  // slow server.
   if (!existsSync(path)) throw new Error(`no executable at ${path}`);
   const version = spawnSync(path, ["--version"], { timeout: 15_000, encoding: "utf8", windowsHide: true, env: cleanEnv() });
   const client = new StdioClient({ command: path, timeoutMs });
@@ -161,8 +117,6 @@ export async function captureLiveTools({ executable, timeoutMs = 30_000 }) {
     capture: {
       executable: path,
       executableSha256: `sha256:${sha256File(path)}`,
-      // Same meaning as a pinned source's `reportedVersion`: the binary's own
-      // `--version` line, falling back to what it announced at initialize.
       reportedVersion:
         (version.stdout ?? "").trim() || [serverInfo?.name, serverInfo?.version].filter(Boolean).join(" ") || null,
     },
@@ -172,11 +126,6 @@ export async function captureLiveTools({ executable, timeoutMs = 30_000 }) {
   };
 }
 
-/**
- * The `live` block: what the server published, and how much of it sits above
- * the derived floor. `extra` is the only derived part; everything else is the
- * server's own answer.
- */
 export function liveBlock({ capture, protocolVersion, toolCount, names, floor }) {
   const floorSet = new Set(floor);
   return {
@@ -188,22 +137,11 @@ export function liveBlock({ capture, protocolVersion, toolCount, names, floor })
   };
 }
 
-/** Attach the live block and `counts.live` to a derived catalogue. */
 export function withLive(catalog, captured) {
   const live = liveBlock({ ...captured, floor: catalog.tools.map((tool) => tool.name) });
   return { ...catalog, counts: { ...catalog.counts, live: live.toolCount }, live };
 }
 
-/**
- * Structural checks on the live block, independent of any server.
- *
- * A live tool beyond the floor is expected here and is never reported: that is
- * a note. What is reported is a block that contradicts itself or the floor —
- * a count that does not match its names, names the server did not send in
- * sorted order, a repeat, a floor tool the live server does not serve, an
- * `extra` list that is not exactly the difference, or a `capture` carrying a
- * field nobody asked for (a timestamp, for instance).
- */
 export function validateLive(catalog) {
   const issues = [];
   const live = catalog?.live;

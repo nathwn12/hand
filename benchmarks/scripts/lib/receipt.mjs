@@ -1,8 +1,3 @@
-// Receipt assembly, writing and the human summary.
-//
-// A receipt is evidence: every measured attempt is present, the percentile base
-// is stated, and unsupported/blocked runs keep that status instead of becoming
-// empty passing tables.
 
 import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";

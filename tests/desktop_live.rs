@@ -147,7 +147,6 @@ fn desktop_enumerates_and_inspects_a_background_window_without_stealing() {
         els.len()
     );
 
-    // never an empty success and never a foreground fallback.
     let missing = s.call(
         "desktop_elements",
         json!({"target": {"titleContains": "__hand_no_such_window_7f3a__"}}),

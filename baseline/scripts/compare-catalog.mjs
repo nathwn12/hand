@@ -1,31 +1,4 @@
 #!/usr/bin/env node
-// Executable compatibility comparison against the pinned baseline.
-//
-//   node baseline/scripts/compare-catalog.mjs --serve Q:\path\to\hand.exe
-//   node baseline/scripts/compare-catalog.mjs --candidate tools-list.json
-//   node baseline/scripts/compare-catalog.mjs --baseline gladius --serve ...\gladius.exe
-//
-// Default baseline is `hand` (`hand-catalog.json`): the candidate must expose
-// all 32 spec-required `browser_*` / `desktop_*` tools, and each one's
-// inputSchema, outputSchema, annotations, title and description must be
-// structurally identical to the pinned legacy tool it is named after - except
-// for the allowances listed in `baseline/declared-additions.json`. Schema
-// properties there must be present and are removed before the comparison; a
-// tool listed under `metadata.description` has a deliberately rewritten
-// description, and an identical one fails as a stale declaration. Additional
-// hand tools are reported, not rejected: the pinned legacy catalog is a floor,
-// not a complete suite.
-//
-// `--baseline gladius|puppet` compares against the raw legacy catalogue with
-// the exact legacy names and every field as contract. That is the re-capture
-// check: it proves a pinned binary still emits what is committed here.
-//
-// Exit codes: 0 pass, 1 mismatch, 2 usage or transport error.
-// Metadata is strict by default in both profiles: any title difference fails,
-// and any description difference fails unless the tool is declared as rewritten
-// in `baseline/declared-additions.json`. `--strict-metadata` is therefore a
-// no-op kept for CLI compatibility; it changes no verdict.
-// `--json` prints the machine report; `--out <file>` also writes it.
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -59,8 +32,6 @@ export async function runComparison(options) {
       outPrefix: "<memory>",
       write: false,
     });
-    // captureCatalog returns the tools/list *result* (what the server sent);
-    // the comparison needs the tools array.
     candidate = toolsFromPayload(captured.tools);
     captureMeta = captured.meta;
   } else if (options.candidate) {
@@ -73,8 +44,6 @@ export async function runComparison(options) {
     baseline,
     candidate: { tools: candidate },
     profile,
-    // `--strict-metadata` is parsed for CLI compatibility and passed nowhere:
-    // metadata has no relaxed mode, so the option cannot change a verdict.
   });
   report.baseline = { name: baselineName, path: baselinePath, tools: baseline.tools.length };
   report.candidate = {

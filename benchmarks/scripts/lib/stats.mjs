@@ -1,13 +1,3 @@
-// Percentiles and verdicts for the MCP stdio benchmark.
-//
-// Rules that must not drift (docs/SPEC.md 309-336):
-// - Every measured attempt is in `attempts`, including failures.
-// - p95 is nearest-rank over every attempt that produced a duration. A failed
-//   attempt's duration stays in the distribution; it is never omitted.
-// - Any failed attempt fails the scenario, whatever the percentile says.
-// - An attempt that could not be dispatched has no duration (null); it stays in
-//   the attempt list, fails the verdict, and the receipt reports the smaller
-//   percentile base rather than inventing a fast sample.
 
 export function roundMs(value) {
   return Math.round(value * 1000) / 1000;

@@ -1,25 +1,4 @@
 #!/usr/bin/env node
-// Capture one pinned MCP server's catalogue as machine-readable evidence.
-//
-//   node baseline/scripts/capture-mcp-catalog.mjs \
-//     --cmd Q:\PROJECTS\PERSONAL\gladius\target\release\gladius.exe \
-//     --label "Gladius 0.8.0 pinned 59c6d77" \
-//     --out baseline/catalog/gladius-59c6d77
-//
-// What it does, and nothing else: run `<cmd> --version`, then speak
-// initialize → notifications/initialized → ping → tools/list (legacy) →
-// tools/list (2026-07-28 `_meta`) → server/discover, then close stdin and wait
-// for the process to exit. No tool is called, so no browser launches and no
-// desktop is touched.
-//
-// Output files (all beside `--out`):
-//   <out>.initialize.json    initialize result (protocolVersion, serverInfo, capabilities, instructions)
-//   <out>.discover.json      server/discover result
-//   <out>.ping.json          ping result
-//   <out>.tools.json         tools/list result, legacy shape (the catalogue)
-//   <out>.tools.modern.json  tools/list result, 2026-07-28 `_meta` shape
-//   <out>.transcript.jsonl   every frame sent and received, verbatim, in order
-//   <out>.meta.json          receipt: binary hash, version output, stderr, per-file hashes, timings
 
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -105,8 +84,6 @@ export async function captureCatalog({
   emitJson("tools.json", tools.result);
   emitJson("tools.modern.json", toolsModern.result);
 
-  // The transcript keeps one JSON object per line, one line per frame: it is
-  // evidence of the exact bytes on the wire, so it is not pretty-printed.
   const transcriptText = client.transcript.map((frame) => `${JSON.stringify(frame)}\n`).join("");
   if (write) writeFileSync(`${outPrefix}.transcript.jsonl`, transcriptText);
   files["transcript.jsonl"] = {

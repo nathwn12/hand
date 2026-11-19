@@ -1,13 +1,4 @@
 #!/usr/bin/env node
-/**
- * hand-mcp release: build, pack, prove, publish, verify.
- *
- *   node npm/release.mjs --check     build, pack, extract, --version, handshake
- *   node npm/release.mjs --publish   the same, then npm publish and registry check
- *
- * The check is the gate. Publish only runs after every check passed in the same
- * process, so a green publish cannot skip a red proof. No secret is printed.
- */
 import { execFileSync, spawn } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -22,7 +13,6 @@ const skipBuild = process.argv.includes('--skip-build');
 function run(cmd, args, opts = {}) {
   return execFileSync(cmd, args, { cwd: repo, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...opts }).trim();
 }
-// npm is a .cmd shim on Windows and cannot be spawned directly; go through cmd.
 function npmInvocation(args) {
   return process.platform === 'win32'
     ? [process.env.ComSpec || 'cmd.exe', ['/d', '/c', 'npm', ...args]]
@@ -44,9 +34,6 @@ function step(name, fn) {
   try { return fn(); } catch (e) { fail(name, (e.stderr || e.message || String(e)).trim()); }
 }
 
-// 1. Preflight: the release comes from main, and main is what the registry will see.
-//    --ci skips the branch and cleanliness checks, because a workflow runs on main
-//    by definition and checks out a merge ref; the identity check still runs.
 const ci = process.argv.includes('--ci');
 const head = step('preflight', () => run('git', ['rev-parse', 'HEAD']));
 if (!ci) {
@@ -63,13 +50,11 @@ const cargo = readFileSync(join(repo, 'Cargo.toml'), 'utf8');
 const cargoVersion = (cargo.match(/^version\s*=\s*"([^"]+)"/m) || [])[1];
 if (!cargoVersion || cargoVersion !== pkg.version) fail('preflight', `package ${pkg.version} and Cargo ${cargoVersion} disagree`);
 
-// 2. Build the exact tree main points at.
 if (!skipBuild) {
   console.log(`build: cargo build --release (${pkg.version} at ${head.slice(0, 8)})`);
   step('build', () => execFileSync('cargo', ['build', '--release'], { cwd: repo, stdio: ['ignore', 'inherit', 'inherit'] }));
 }
 
-// 3. Pack and extract, then prove the artifact from its own bytes.
 const work = mkdtempSync(join(tmpdir(), 'hand-release-'));
 const tarballName = step('pack', () => {
   const out = npmOut(['pack', '--pack-destination', work], { cwd: here });
@@ -85,7 +70,6 @@ if (!existsSync(launcher)) fail('extract', 'launcher missing after extract');
 const version = step('version', () => run(process.execPath, [launcher, '--version'], { cwd: work }));
 if (!version.includes(head.slice(0, 8))) fail('version', `artifact identity does not match HEAD: ${version}`);
 
-// 4. A real MCP handshake from the extracted package, then a clean exit.
 const handshake = await new Promise((resolvePromise, rejectPromise) => {
   const child = spawn(process.execPath, [launcher], { cwd: work, stdio: ['pipe', 'pipe', 'pipe'] });
   let buf = '';
@@ -115,7 +99,6 @@ if (handshake.tools !== 35) fail('handshake', `expected 35 tools, got ${handshak
 
 console.log(`check: ${tarballName} ${pkg.version} ${head.slice(0, 8)} tools=${handshake.tools} protocol=${handshake.protocol} exit=${handshake.code}`);
 
-// 5. Publish only after the checks above, then make the registry prove it.
 if (publish) {
   step('whoami', () => npmOut(['whoami'], { cwd: here }));
   console.log('publish: npm publish --access public (a passkey URL may appear)');

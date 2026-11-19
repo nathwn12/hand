@@ -143,10 +143,6 @@ impl Fixture {
             while !flag.load(Ordering::SeqCst) {
                 match listener.accept() {
                     Ok((stream, _)) => {
-                        // One thread per connection: Chromium opens speculative
-                        // sockets that send nothing, and a serial accept loop
-                        // would block the real request behind them (measured as
-                        // a flaky unsettled page on this box).
                         let sink = sink.clone();
                         std::thread::spawn(move || {
                             let _ = serve(stream, &sink);
@@ -202,17 +198,13 @@ fn serve(mut stream: TcpStream, seen: &Arc<Mutex<Vec<String>>>) -> std::io::Resu
         stream.write_all(response.as_bytes())?;
         return stream.flush();
     }
-    // A route that answers slowly: the target sits as the initial about:blank
-    // document (complete, URL about:blank) until the response arrives.
     if path.starts_with("/slow") {
         std::thread::sleep(Duration::from_millis(400));
     }
     let body = match path {
         "/teardown" => TEARDOWN,
-        // Longer prefixes first: `/auto` must not match the `/a` route.
         p if p.starts_with("/auto") => PAGE_AUTO,
         p if p.starts_with("/slow") => PAGE_SLOW,
-        // Query strings (`/?sealed`) stay on the index route.
         p if p.starts_with("/a") => PAGE_A,
         p if p.starts_with("/b") => PAGE_B,
         _ => INDEX,
@@ -479,8 +471,6 @@ fn two_contexts_have_separate_cookies_and_storage() {
             "each context is a distinct CDP context"
         );
 
-        // Both pages really are the same origin: isolation is not just origin
-        // separation.
         assert_eq!(page_url(&rig, "alpha").await, format!("{}/", fixture.base));
         assert_eq!(page_url(&rig, "beta").await, format!("{}/", fixture.base));
 
@@ -593,8 +583,6 @@ fn two_contexts_have_separate_cookies_and_storage() {
             "eval with page= runs in that page: {named}"
         );
 
-        // A page the site itself opened (popup) is adopted on the next
-        // refresh, with the context's own page list as the truth.
         let popup = rig
             .call(json!({"action": "eval", "name": "beta",
                    "expression": format!(
@@ -613,7 +601,6 @@ fn two_contexts_have_separate_cookies_and_storage() {
             "a site-opened page is adopted by the context's next refresh"
         );
 
-        // --- the legacy space never sees the context pages --------------
         let tabs = rig.browser.tabs_list().await.expect("tabs list");
         let tabs = tabs
             .get("tabs")
@@ -663,7 +650,6 @@ fn two_contexts_have_separate_cookies_and_storage() {
         assert_eq!(sc(&closed)["gone"].as_bool(), Some(true));
         assert_eq!(sc(&closed)["pages"].as_array().map(|a| a.len()), Some(0));
 
-        // Beta's page list is its own.
         let beta_show = rig.call(json!({"action": "show", "name": "beta"})).await;
         assert!(
             !is_error(&beta_show),
@@ -703,7 +689,6 @@ fn two_contexts_have_separate_cookies_and_storage() {
         );
         assert_eq!(rig.reg.names().await, vec!["beta".to_string()]);
 
-        // The disposed id is really gone from the engine, and beta survives.
         let probe = rig
             .browser
             .cdp_raw(
@@ -791,7 +776,6 @@ fn context_arguments_and_unknown_names_are_typed_refusals() {
             "per-action argument gate: {wrong_key}"
         );
 
-        // `list` on an empty registry must not launch an engine.
         let empty = rig.call(json!({"action": "list"})).await;
         assert!(!is_error(&empty), "list failed: {}", text_of(&empty));
         assert_eq!(sc(&empty)["contexts"].as_array().map(|a| a.len()), Some(0));
@@ -814,8 +798,6 @@ fn context_arguments_and_unknown_names_are_typed_refusals() {
             "create gamma failed: {}",
             text_of(&created)
         );
-        // about:blank is OBSERVED now, not defaulted: the state comes from the
-        // page.
         assert_eq!(sc(&created)["readyState"].as_str(), Some("complete"));
         assert_eq!(sc(&created)["settled"].as_bool(), Some(true));
 
@@ -882,9 +864,6 @@ fn destroy_skips_page_teardown_handlers_while_close_runs_them() {
             "create abrupt failed: {}",
             text_of(&abrupt)
         );
-        // The fixture is a loopback page, but a loaded machine can push the
-        // settle past its cap; the subject here is teardown handlers, so wait
-        // for the document to be complete instead of asserting a stopwatch.
         if sc(&abrupt)["settled"].as_bool() != Some(true) {
             let deadline = Instant::now() + Duration::from_secs(10);
             loop {
@@ -974,7 +953,6 @@ fn legacy_realm_routing_refuses_a_context_page() {
     let fixture = Fixture::start();
     block_on(async {
         let rig = Rig::start();
-        // Prepare the legacy page first, so it is unambiguously the default.
         rig.browser
             .command(
                 "Page.navigate",
@@ -983,8 +961,6 @@ fn legacy_realm_routing_refuses_a_context_page() {
             )
             .await
             .expect("legacy navigate");
-        // The fixture page must be the legacy document before the boundary
-        // checks: a precondition with a generous budget, not a stopwatch.
         if let Err(last) = wait_legacy_page(&rig, "Context Fixture", Duration::from_secs(30)).await
         {
             panic!("the legacy fixture page must commit before the boundary checks: {last}");
@@ -999,7 +975,6 @@ fn legacy_realm_routing_refuses_a_context_page() {
             .expect("targetId")
             .to_string();
 
-        // 1. realm-scoped evaluate: refused, typed, and names the context.
         let evaluated = browser_engine::call(
             "evaluate",
             &json!({"target": target, "expression": "location.href"}),
@@ -1020,7 +995,6 @@ fn legacy_realm_routing_refuses_a_context_page() {
             text_of(&evaluated)
         );
 
-        // 2. tabs select: same refusal.
         let hijack = rig
             .browser
             .select_target(&target)
@@ -1028,7 +1002,6 @@ fn legacy_realm_routing_refuses_a_context_page() {
             .expect_err("tabs select on a context page must fail");
         assert!(hijack.contains("isolated browser context 'sealed'"));
 
-        // 3. targets list marks it (and only it) with the owning context.
         let listed_targets =
             browser_engine::call("targets", &json!({"action": "list"}), &rig.browser).await;
         assert!(!is_error(&listed_targets));
@@ -1055,7 +1028,6 @@ fn legacy_realm_routing_refuses_a_context_page() {
             );
         }
 
-        // 4. legacy act/observe on the default page still works.
         let legacy = browser_engine::call(
             "evaluate",
             &json!({"expression": "document.title"}),
@@ -1098,7 +1070,6 @@ fn dead_engine_never_relaunches_and_never_claims_disposal() {
         rig.browser.close().await.expect("close engine");
         assert!(!rig.browser.is_live().await);
 
-        // `destroy` on the dead engine: typed, no relaunch, no false disposal.
         let destroyed = rig.call(json!({"action": "destroy", "name": "gone"})).await;
         assert!(
             is_error(&destroyed),
@@ -1121,14 +1092,10 @@ fn dead_engine_never_relaunches_and_never_claims_disposal() {
         );
         assert!(!rig.browser.is_live().await);
 
-        // State is honest after that: the context is not tracked as alive.
         let listed = rig.call(json!({"action": "list"})).await;
         assert!(!is_error(&listed), "list failed: {}", text_of(&listed));
         assert_eq!(sc(&listed)["contexts"].as_array().map(|a| a.len()), Some(0));
 
-        // destroy_all / shutdown are receipts: gone with the engine (not
-        // reachable, since a context is engine-scoped), never "disposed", and
-        // still no relaunch.
         let all = rig.call(json!({"action": "destroy_all"})).await;
         assert!(!is_error(&all), "destroy_all failed: {}", text_of(&all));
         assert_eq!(
@@ -1172,8 +1139,6 @@ fn cancelled_create_is_committed_by_its_own_task() {
             "the caller's future must be the thing that is cancelled"
         );
 
-        // The acquisition task keeps going and commits, so the context is
-        // tracked (not an orphan the engine has and hand does not).
         let entry = wait_for_phase(&rig, "slow", "ready", Duration::from_secs(10))
             .await
             .expect("the cancelled create must still commit");
@@ -1233,7 +1198,6 @@ fn failed_open_closes_the_page_it_made() {
             "the error states the rollback: {}",
             text_of(&opened)
         );
-        // The wrapped cause keeps its type and its marker never reaches prose.
         assert_eq!(
             typed_code(&opened),
             ("target_changed".into(), "raced".into()),
@@ -1315,7 +1279,6 @@ fn failed_disposal_keeps_tracking_and_legacy_exclusion() {
             "the context's page stays out of legacy tabs: {tabs}"
         );
 
-        // Once the failure clears, the same destroy succeeds and is verified.
         let destroyed = rig
             .call(json!({"action": "destroy", "name": "sticky"}))
             .await;
@@ -1352,7 +1315,6 @@ fn cookie_identity_and_attributes_are_verified() {
             .await;
         assert!(!is_error(&created), "create failed: {}", text_of(&created));
 
-        // Two identities for one name.
         let a = rig
             .call(json!({"action": "cookies", "name": "jar", "cookies": [
                 {"name": "k", "value": "one", "url": url, "path": "/a"}]}))
@@ -1378,7 +1340,6 @@ fn cookie_identity_and_attributes_are_verified() {
             "the two identities coexist: {jar:?}"
         );
 
-        // Attributes the caller asked for are asserted, and reported.
         let c = rig
             .call(json!({"action": "cookies", "name": "jar", "cookies": [
                 {"name": "k", "value": "three", "url": url, "path": "/b",
@@ -1390,7 +1351,6 @@ fn cookie_identity_and_attributes_are_verified() {
         assert_eq!(rec["attributes"]["httpOnly"].as_bool(), Some(true));
         assert_eq!(rec["attributes"]["sameSite"].as_str(), Some("Lax"));
 
-        // Re-setting the identical cookie is honest about it being preexisting.
         let d = rig
             .call(json!({"action": "cookies", "name": "jar", "cookies": [
                 {"name": "k", "value": "three", "url": url, "path": "/b",
@@ -1403,8 +1363,6 @@ fn cookie_identity_and_attributes_are_verified() {
             "an identical pre-existing cookie is not hand's change: {d}"
         );
 
-        // The engine did not take the set: verification refuses instead of
-        // trusting the acknowledgement.
         let skipped = {
             let _hook = EnvHooks::new(&[("HAND_CONTEXT_TEST_SKIP_COOKIE_SET", "1")]);
             rig.call(json!({"action": "cookies", "name": "jar", "cookies": [
@@ -1454,8 +1412,6 @@ fn disposal_of_an_already_gone_context_is_reported_as_such() {
             .unwrap()
             .to_string();
 
-        // Out-of-band disposal, exactly like another client (or an earlier
-        // hand call whose reply was lost) would have done it.
         rig.browser
             .cdp_raw(
                 "Target.disposeBrowserContext",
@@ -1659,8 +1615,6 @@ fn stale_acquisition_cannot_touch_a_recreated_name() {
             }
         });
         tokio::time::sleep(Duration::from_millis(200)).await;
-        // The first acquisition is sleeping after its page; destroy it (it has
-        // an id by then) and recreate the same name.
         let destroyed = rig.call(json!({"action": "destroy", "name": "x"})).await;
         assert!(
             !is_error(&destroyed),
@@ -1675,8 +1629,6 @@ fn stale_acquisition_cannot_touch_a_recreated_name() {
             .expect("recreated id")
             .to_string();
 
-        // Force the STALE acquisition's attach to fail, so it takes its rollback
-        // path. It must only roll back its own token.
         let fail = EnvHooks::new(&[("HAND_CONTEXT_TEST_FAIL_ATTACH", "1")]);
         let stale_result = first.await.expect("join the stale acquisition");
         assert!(
@@ -1738,7 +1690,6 @@ fn cookies_reconciles_vanished_contexts_and_keeps_cdp_causes() {
     block_on(async {
         let rig = Rig::start();
 
-        // 1. The engine says the context is gone -> typed not_found, dropped.
         let created = rig
             .call(json!({"action": "create", "name": "vanished"}))
             .await;
@@ -1783,8 +1734,6 @@ fn cookies_reconciles_vanished_contexts_and_keeps_cdp_causes() {
             "its legacy exclusion is released"
         );
 
-        // 2. A live connection answers with a CDP failure -> keep the cause,
-        //    never report engine death.
         let created = rig.call(json!({"action": "create", "name": "jar"})).await;
         assert!(!is_error(&created), "create failed: {}", text_of(&created));
         let failing = {
@@ -1838,7 +1787,6 @@ fn cancelled_open_leaves_the_page_tracked() {
             "the caller's future must be the thing that is cancelled"
         );
         drop(hooks);
-        // The detached task keeps going and commits.
         let deadline = Instant::now() + Duration::from_secs(10);
         loop {
             if rig.engine_pages(&context_id).await == 2 {
@@ -1973,8 +1921,6 @@ fn an_id_less_acquisition_can_be_destroyed_and_its_name_reused() {
             .as_str()
             .unwrap()
             .to_string();
-        // The stale task wakes, creates its context, finds its token gone and
-        // disposes it - leaving only the recreated context.
         let _ = first.await.expect("join stale acquisition");
         assert_eq!(
             rig.engine_pages(&recreated_id).await,
@@ -2096,14 +2042,11 @@ fn a_settled_page_reports_the_document_title_and_its_source() {
             text_of(&created)
         );
 
-        // Independent cross-check: the reported title is what the document says.
         let eval = rig
             .call(json!({"action": "eval", "name": "titled", "expression": "document.title"}))
             .await;
         assert_eq!(sc(&eval)["value"].as_str(), Some("Titled A"));
 
-        // `show` refreshes from Target.getTargets. Same document: the live title
-        // and its label must survive, never become targetInfo or "".
         let shown = rig.call(json!({"action": "show", "name": "titled"})).await;
         assert!(!is_error(&shown), "show failed: {}", text_of(&shown));
         let page = &sc(&shown)["pages"][0];
@@ -2118,7 +2061,6 @@ fn a_settled_page_reports_the_document_title_and_its_source() {
             "and keeps saying where it came from: {shown}"
         );
 
-        // `open` follows the same rule for a page it makes itself.
         let opened = rig
             .call(json!({"action": "open", "name": "titled", "url": format!("{}/b", fixture.base)}))
             .await;
@@ -2232,8 +2174,6 @@ fn a_dropped_shutdown_leaves_the_remaining_contexts_tracked() {
             );
         }
 
-        // No disposal was proven before the drop, so both contexts stay tracked
-        // and stay excluded from the legacy space.
         let listing = rig.call(json!({"action": "list"})).await;
         assert!(!is_error(&listing), "list failed: {}", text_of(&listing));
         assert_eq!(
@@ -2248,7 +2188,6 @@ fn a_dropped_shutdown_leaves_the_remaining_contexts_tracked() {
             );
         }
 
-        // And every one of them is still destroyable.
         for name in ["alpha", "beta"] {
             let destroyed = rig.call(json!({"action": "destroy", "name": name})).await;
             assert!(
@@ -2286,7 +2225,6 @@ fn an_acquisition_after_teardown_never_launches() {
         });
         tokio::time::sleep(Duration::from_millis(120)).await;
 
-        // Teardown begins while the acquisition has not opened a connection.
         let receipt = rig.reg.shutdown().await;
         assert!(
             receipt["contexts"].as_u64().unwrap_or(0) >= 1,
@@ -2309,7 +2247,6 @@ fn an_acquisition_after_teardown_never_launches() {
             "the refusal names the reason: {}",
             text_of(&refused)
         );
-        // Nothing was launched, and the refused acquisition removed its entry.
         assert_eq!(
             rig.browser.generation(),
             0,
@@ -2339,7 +2276,6 @@ fn a_stale_vanished_report_cannot_retire_a_recreated_name() {
             .as_str()
             .expect("browserContextId")
             .to_string();
-        // The engine loses it outside hand.
         rig.browser
             .cdp_raw(
                 "Target.disposeBrowserContext",
@@ -2360,7 +2296,6 @@ fn a_stale_vanished_report_cannot_retire_a_recreated_name() {
         });
         tokio::time::sleep(Duration::from_millis(150)).await;
 
-        // Destroy the name and re-create it while the stale report sleeps.
         let destroyed = rig.call(json!({"action": "destroy", "name": "v"})).await;
         assert!(
             !is_error(&destroyed),
@@ -2390,8 +2325,6 @@ fn a_stale_vanished_report_cannot_retire_a_recreated_name() {
             ("invalid_target".into(), "not_found".into())
         );
 
-        // The successor and its exclusion survive; only the old id's exclusion
-        // was released.
         let listing = rig.call(json!({"action": "list"})).await;
         let entry = listed(&listing, "v").expect("the re-created context is still tracked");
         assert_eq!(
@@ -2436,7 +2369,6 @@ fn a_same_document_navigation_keeps_the_title_and_a_real_one_replaces_it() {
         assert!(!is_error(&created), "create failed: {}", text_of(&created));
         assert_eq!(sc(&created)["title"].as_str(), Some("Titled A"));
 
-        // Fragment + pushState: the URL moves, the document does not.
         let pushed = rig
             .call(json!({"action": "eval", "name": "nav",
                    "expression": "history.pushState({}, '', '/a?stage=2#frag'); document.title"}))
@@ -2465,8 +2397,6 @@ fn a_same_document_navigation_keeps_the_title_and_a_real_one_replaces_it() {
             "and keeps saying where it came from: {shown}"
         );
 
-        // A real navigation IS a new document: the cached title is replaced and
-        // relabelled from target info.
         let opened = rig
             .call(json!({"action": "open", "name": "nav", "url": format!("{}/auto", fixture.base)}))
             .await;
@@ -2743,7 +2673,6 @@ fn attached_engine_keeps_other_clients_contexts_alive() {
         owner.browser.close().await.expect("owner detach");
     });
 
-    // The external engine was never ours to kill: it is still serving.
     assert!(
         http_get(&engine.base, "/json/version").contains("webSocketDebuggerUrl"),
         "an attached engine must be left running after hand disconnects"
@@ -2779,8 +2708,6 @@ impl Proxy {
             while !flag.load(Ordering::SeqCst) {
                 match listener.accept() {
                     Ok((client, _)) => {
-                        // The listener is non-blocking; accept must not leak
-                        // that onto the proxied socket (Windows inherits it).
                         let _ = client.set_nonblocking(false);
                         if cut_flag.load(Ordering::SeqCst) {
                             let _ = client.shutdown(std::net::Shutdown::Both);
@@ -2905,7 +2832,6 @@ fn attached_connection_loss_is_unverified_not_gone_and_reconciles() {
             Some("external-cdp (attached; contexts are hand's, the engine is not)")
         );
 
-        // --- cut hand's connection; the external browser keeps running -------
         proxy.cut();
         let deadline = Instant::now() + Duration::from_secs(10);
         while rig.browser.is_live().await {
@@ -2915,7 +2841,6 @@ fn attached_connection_loss_is_unverified_not_gone_and_reconciles() {
             );
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
-        // The external engine itself is still serving: this was hand's link.
         assert!(
             http_get(&engine.base, "/json/version").contains("webSocketDebuggerUrl"),
             "the cut must only affect hand's proxied connection"
@@ -2943,7 +2868,6 @@ fn attached_connection_loss_is_unverified_not_gone_and_reconciles() {
             "the legacy exclusion is retained while the external browser may hold the page"
         );
 
-        // destroy: typed UNKNOWN, no claim, entry + exclusion kept.
         let destroyed = rig.call(json!({"action": "destroy", "name": "keep"})).await;
         assert!(
             is_error(&destroyed),
@@ -2965,7 +2889,6 @@ fn attached_connection_loss_is_unverified_not_gone_and_reconciles() {
             .excluded_browser_contexts()
             .contains_key(&context_id));
 
-        // destroy_all and shutdown never claim a disposal.
         let all = rig.call(json!({"action": "destroy_all"})).await;
         assert!(
             is_error(&all),
@@ -3029,8 +2952,6 @@ fn attached_connection_loss_is_unverified_not_gone_and_reconciles() {
                 );
             }
             None => {
-                // The engine said the context no longer exists: dropped, never
-                // "disposed by hand".
                 assert!(
                     sc(&listing)["dropped"]
                         .as_array()
@@ -3049,7 +2970,6 @@ fn attached_connection_loss_is_unverified_not_gone_and_reconciles() {
         rig.browser.close().await.expect("close hand's connection");
     });
 
-    // The external engine was never ours to kill.
     assert!(
         http_get(&engine.base, "/json/version").contains("webSocketDebuggerUrl"),
         "an attached engine must be left running"

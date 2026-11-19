@@ -169,14 +169,10 @@ unsafe extern "system" fn wndproc(hwnd: Handle, msg: u32, w: usize, l: isize) ->
             let id = (w & 0xffff) as i32;
             let code = ((w >> 16) & 0xffff) as u32;
             if id == EDIT_ID && code == EN_CHANGE {
-                // `l` is the EDIT control that changed: read it, never a
-                // cached handle, so the record names what the control holds.
                 let text = window_text(l as Handle);
                 journal(&format!("{EV_EDIT}={text}"));
             }
             if id == BUTTON_ID && code == BN_CLICKED {
-                // The BUTTON control reported its own activation: this is the
-                // control acting, not the frame guessing.
                 let on = !TOGGLED.swap(true, Ordering::SeqCst);
                 let status = STATUS_HWND.load(Ordering::SeqCst) as Handle;
                 if !status.is_null() {
@@ -202,8 +198,6 @@ unsafe extern "system" fn wndproc(hwnd: Handle, msg: u32, w: usize, l: isize) ->
         WM_LBUTTONUP => {
             let (x, y) = lparam_point(l);
             if ARMED.swap(false, Ordering::SeqCst) && contains(BUTTON, x, y) {
-                // Posted at the control's own pixels, so hand the press to the
-                // control: its BN_CLICKED (above) is what changes the state.
                 let button = BUTTON_HWND.load(Ordering::SeqCst) as Handle;
                 if !button.is_null() {
                     SendMessageW(button, BM_CLICK, 0, 0);
@@ -287,8 +281,6 @@ fn main() {
             journal("error=create_window");
             std::process::exit(4);
         }
-        // Writable text control: the only control the engine's text-target
-        // walk can accept, because the status control below is read-only.
         let edit = child(
             hwnd,
             "EDIT",
@@ -312,8 +304,6 @@ fn main() {
         }
         STATUS_HWND.store(status as usize, Ordering::SeqCst);
         BUTTON_HWND.store(button as usize, Ordering::SeqCst);
-        // Never activates: the private desktop has no user to disturb, and
-        // the fixture must not steal even there.
         ShowWindow(hwnd, SW_SHOWNOACTIVATE);
         journal(&format!(
             "{EV_READY} pid={} hwnd={}",

@@ -1,7 +1,3 @@
-// Release-gate rules, exercised with synthetic receipts so every refusal is
-// direct and independent of product binaries. These tests are the red/green
-// contract for missing evidence, debug builds, mismatched protocol/params and
-// unproven browser/target identities.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -126,7 +122,6 @@ test("a complete browser comparison with release binaries passes its group", () 
 });
 
 test("the executable path is not evidence; the embedded profile is a claim and verified release evidence decides", () => {
-  // A release-looking directory with no embedded identity claims nothing.
   const pathOnly = browserGroup((hand) => {
     hand.product.executable.path = "Q:\\bench\\hand\\target\\release\\hand.exe";
   });
@@ -136,7 +131,6 @@ test("the executable path is not evidence; the embedded profile is a claim and v
     null,
   );
 
-  // The compiled-in profile travels with the bytes, wherever they are copied.
   const embedded = browserGroup((hand) => {
     hand.product.executable.path = "Q:\\bench\\arbitrary\\hand-copy.exe";
     hand.product.version.stdout = "hand 0.1.0 (abc1234; release)";

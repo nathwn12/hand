@@ -214,17 +214,12 @@ pub fn instructions() -> String {
 
     s.push_str(&format!("\nCoordinates: {COORD_RULE}.\n"));
 
-    // The verb matrix, grouped by class. Refused verbs name the code that
-    // refuses them, so a caller never has to guess which door is bricked.
     s.push_str("\nVerbs by delivery class:\n");
     for class in ["posted", "pattern", "read", "refused"] {
         let verbs: Vec<String> = REFUSALS
             .iter()
             .filter(|(_, c, _)| *c == class)
             .map(|(verb, c, code)| {
-                // The element form is the qualified one: a pattern row is
-                // always element-driven, and a refused row of a verb that
-                // also has a delivered row is that verb's element form.
                 let element_form = *c == "pattern"
                     || (*c == "refused"
                         && REFUSALS

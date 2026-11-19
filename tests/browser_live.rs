@@ -115,7 +115,6 @@ fn serve(mut stream: TcpStream) -> std::io::Result<()> {
 
 #[test]
 fn browser_inspect_act_verify_and_stale_ref_refusal() {
-    // Fail with the engine's own provision message, not an opaque launch error.
     let chromium = browser_engine::chromium_path()
         .expect("the pinned chrome-headless-shell must be provisioned for this live test");
     assert!(
@@ -170,7 +169,6 @@ fn browser_inspect_act_verify_and_stale_ref_refusal() {
         "the delivered click must have produced the DOM effect"
     );
 
-    // A second act path: type into a labelled field, read the value back.
     let typed = s.call(
         "browser_type",
         json!({"element": "#name", "text": "hello hand"}),
@@ -223,7 +221,6 @@ fn browser_inspect_act_verify_and_stale_ref_refusal() {
         text_of(&stale)
     );
 
-    // The engine is still healthy after the refusal.
     let alive = s.call("browser_evaluate", json!({"expression": "document.title"}));
     assert_eq!(structured(&alive)["value"].as_str(), Some("Hand Next"));
 }

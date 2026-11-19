@@ -39,8 +39,6 @@ static NORMAL_RECTS: std::sync::LazyLock<
 
 fn window_key(hwnd: HWND) -> WindowKey {
     let pid = crate::pid_of(hwnd);
-    // 0 when unreadable: still better than hwnd+pid, and never matches a
-    // process whose creation time we can read.
     (hwnd as i64, pid, crate::process_created(pid).unwrap_or(0))
 }
 
@@ -91,14 +89,9 @@ pub fn do_window(a: &WinArgs) -> String {
             (-1, -1)
         }
     };
-    // Target lock first: one window, resolved once, revalidated before the
-    // action. A vanished/ambiguous target is typed, never a foreground
-    // fallback.
     let mut locked: Option<crate::target::TargetLock> = None;
     let (hwnd_r, err, cands) = match a.target.as_ref() {
         None | Some(Value::Null) => {
-            // Legacy title/hwnd are the SAME lock as target: hwnd -> {hwnd},
-            // title -> {titleContains}. Never a bare IsWindow handle.
             match crate::cap::lock_legacy(a.hwnd, a.title.as_deref()) {
                 Ok(l) => {
                     let h = l.hwnd as HWND;
@@ -141,8 +134,6 @@ pub fn do_window(a: &WinArgs) -> String {
     let hi = h as i64;
     let out = (|| -> Result<String, String> {
         let act = a.action.to_lowercase();
-        // Background-only policy: the flag refuses the whole call ÔÇö no flag
-        // buys the foreground, the cursor or the clipboard.
         if a.allow_foreground {
             let e = crate::gate::no_foreground_policy(&format!("window action:{}", act));
             let mut o = Map::new();
@@ -155,8 +146,6 @@ pub fn do_window(a: &WinArgs) -> String {
         }
         unsafe {
             if act == "focus" {
-                // Focusing IS taking the foreground: refused under the
-                // background-only policy, always.
                 let e = crate::gate::no_foreground_policy("window action:focus");
                 let mut o = Map::new();
                 o.insert("ok".to_string(), Value::from(false));
@@ -277,9 +266,6 @@ pub fn do_window(a: &WinArgs) -> String {
                 }
             }
             if act == "minimize" {
-                // SW_SHOWMINNOACTIVE minimizes WITHOUT activating the next
-                // window in the z-order (SW_MINIMIZE would move focus away
-                // from the owner's current window).
                 ShowWindow(h, SW_SHOWMINNOACTIVE);
                 let mut o = Map::new();
                 o.insert("ok".to_string(), Value::from(true));
@@ -288,9 +274,6 @@ pub fn do_window(a: &WinArgs) -> String {
                 return Ok(crate::py_dumps(&Value::Object(o)));
             }
             if act == "maximize" {
-                // A maximized window covers its monitor: refused under the
-                // background-only policy, always (maximizing is a foreground
-                // act, and Win32 documents no no-activate form).
                 let e = crate::gate::no_foreground_policy("window action:maximize");
                 let mut o = Map::new();
                 o.insert("ok".to_string(), Value::from(false));
@@ -301,17 +284,11 @@ pub fn do_window(a: &WinArgs) -> String {
                 return Ok(crate::py_dumps(&Value::Object(o)));
             }
             if act == "restore" {
-                // Restore to the normal placement WITHOUT activating:
-                // SetWindowPlacement with SW_SHOWNOACTIVATE un-maximizes /
-                // un-minimizes to the remembered pre-maximize rect (else
-                // rcNormalPosition), where SW_RESTORE would activate.
                 let mut wp: WINDOWPLACEMENT = std::mem::zeroed();
                 wp.length = std::mem::size_of::<WINDOWPLACEMENT>() as u32;
                 if GetWindowPlacement(h, &mut wp) == 0 {
                     return Err(crate::win32_text(GetLastError()));
                 }
-                // Peek, do not consume: recovery state must survive a
-                // failed restore so the caller can retry.
                 let remembered = saved_normal(h);
                 let normal: [i64; 4] = match remembered {
                     Some(r) => {
@@ -332,18 +309,12 @@ pub fn do_window(a: &WinArgs) -> String {
                 };
                 wp.showCmd = SW_SHOWNOACTIVATE as u32;
                 if SetWindowPlacement(h, &wp) == 0 {
-                    // Recovery state is kept: a retry can still restore it.
                     return Err(format!(
                         "restore_failed: SetWindowPlacement failed for hwnd {hi}: {}; target \
                          geometry {normal:?} (saved rect kept for a retry)",
                         crate::win32_text(GetLastError())
                     ));
                 }
-                // Windows clamps an offscreen rcNormalPosition into the
-                // workspace when it shows the window, so the exact remembered
-                // geometry is applied with SetWindowPos (no clamping, no
-                // activation) after the placement un-maximizes. Its return
-                // value is checked: success is never claimed blind.
                 let pos_ok = SetWindowPos(
                     h,
                     std::ptr::null_mut(),
@@ -354,16 +325,12 @@ pub fn do_window(a: &WinArgs) -> String {
                     SWP_NOZORDER | SWP_NOACTIVATE,
                 );
                 if pos_ok == 0 {
-                    // Do NOT clear the saved rect: the window is un-maximized
-                    // but at the clamped position, and a retry can still land
-                    // the exact geometry.
                     return Err(format!(
                         "restore_failed: SetWindowPos failed for hwnd {hi}: {}; target geometry \
                          {normal:?} (saved rect kept for a retry)",
                         crate::win32_text(GetLastError())
                     ));
                 }
-                // Both steps landed: only now is the recovery state obsolete.
                 clear_normal(h);
                 let mut o = Map::new();
                 o.insert("ok".to_string(), Value::from(true));
@@ -426,9 +393,6 @@ pub fn do_window(a: &WinArgs) -> String {
         }
     };
     if let Value::Object(m) = &mut payload {
-        // Invariant telemetry (constraint 5): measured, reported, never the
-        // guarantee ÔÇö the guarantee is that only the explicit focus verb can
-        // reach a foreground call at all (gate.rs).
         let cur_after = unsafe {
             let mut pt = POINT { x: 0, y: 0 };
             if GetCursorPos(&mut pt) != 0 {
@@ -700,8 +664,6 @@ mod tests {
             "first maximize must be typed: {sc}"
         );
 
-        // Second maximize while already refused: still refused, geometry
-        // untouched, no recovery state saved (nothing ran).
         let second = do_window(&args("maximize"));
         let sc: Value = serde_json::from_str(&second).expect("outer");
         let sc = sc.get("structuredContent").cloned().expect("payload");
@@ -732,8 +694,6 @@ mod tests {
             );
         }
 
-        // The flag poisons even the innocent verbs: restore with
-        // allow_foreground:true is refused without touching the window.
         let out = do_window(&args("restore"));
         let sc: Value = serde_json::from_str(&out).expect("outer");
         let sc = sc.get("structuredContent").cloned().expect("payload");
@@ -854,7 +814,6 @@ mod tests {
         let hi = h as i64;
         let fg_before = crate::fixture::foreground_now();
         let cur_before = cursor_xy();
-        // Message-only windows are never displayed.
         assert_eq!(
             unsafe { IsWindowVisible(h) },
             0,
@@ -873,8 +832,6 @@ mod tests {
             width: None,
             height: None,
             target: Some(serde_json::json!({ "hwnd": hi })),
-            // The flag buys nothing: the whole call is refused with the
-            // policy code before any window manager call.
             allow_foreground: true,
         };
         let call = |action: &str| -> Value {
@@ -959,7 +916,6 @@ mod tests {
 
     #[test]
     fn out_of_i32_range_rejected_not_wrapped() {
-        // 2^40 wraps to 0 under `as i32`; the helper must reject instead.
         assert_eq!(1099511627776i64 as i32, 0);
         assert!(checked_i32(1099511627776, "x").is_err());
         assert!(checked_i32(-1099511627776, "y").is_err());

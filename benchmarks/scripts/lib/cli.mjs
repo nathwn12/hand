@@ -1,4 +1,3 @@
-// Argument parsing for bench.mjs. No dependency, no hidden flags.
 
 const VALUE_FLAGS = new Set([
   "product",

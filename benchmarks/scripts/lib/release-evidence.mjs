@@ -1,14 +1,3 @@
-// Local release-build evidence.
-//
-// There is no signing and no secret. A build receipt is trustworthy only when
-// this repository's recorder actually ran cargo with `--release`, the output
-// hash matches both the recorded artifact and the measured binary, and the
-// source tree still has the same HEAD and tracked-diff state. A receipt's own
-// `releaseIdentity` field is a claim and is never used as proof.
-//
-// Baseline Gladius/Puppet are different: their pinned catalogues already carry
-// the captured executable SHA-256. A measured binary matching that pin and the
-// pinned version is accepted as pinned-release evidence.
 
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -156,10 +145,6 @@ export async function verifyBuildReceipt({ build, receipt, currentBinarySha }) {
       reason: `measured binary ${measured ?? "(missing)"} does not match build output ${build.output?.sha256 ?? "(missing)"}`,
     };
   }
-  // The measured binary's own identity is compiled in, so it travels with the
-  // bytes instead of being inferred from a path. Require it to agree with the
-  // source commit the build receipt recorded: a stale artifact copied over a
-  // release path cannot borrow that path's identity.
   const embedded = parseBuildIdentity(receipt.product?.version);
   if (id === "hand") {
     if (!embedded) {

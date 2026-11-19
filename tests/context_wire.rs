@@ -317,7 +317,6 @@ fn two_contexts_isolate_cookies_and_the_legacy_page_stays_separate() {
     let base = fixture.base.clone();
     let mut s = Session::spawn();
 
-    // --- the legacy page is prepared FIRST, before any context exists -----
     let nav = s.call("browser_navigate", json!({"url": format!("{base}/legacy")}));
     assert!(!is_error(&nav), "legacy navigate failed: {}", text_of(&nav));
     assert_eq!(
@@ -473,7 +472,6 @@ fn two_contexts_isolate_cookies_and_the_legacy_page_stays_separate() {
         "the page in beta reads beta's jar: {beta_cookie}"
     );
 
-    // --- the legacy page is a third, separate jar ------------------------
     let legacy_cookie = s.call("browser_evaluate", json!({"expression": "document.cookie"}));
     assert!(
         !is_error(&legacy_cookie),
@@ -508,7 +506,6 @@ fn two_contexts_isolate_cookies_and_the_legacy_page_stays_separate() {
         "a legacy cookie must not leak into an isolated context: {alpha_after_legacy}"
     );
 
-    // --- the legacy tab space never lists a context page -----------------
     let tabs = s.call("browser_tabs", json!({"action": "list"}));
     assert!(!is_error(&tabs), "tabs failed: {}", text_of(&tabs));
     let tab_list = structured(&tabs)["tabs"]
@@ -534,7 +531,6 @@ fn two_contexts_isolate_cookies_and_the_legacy_page_stays_separate() {
         );
     }
 
-    // Legacy selection cannot attach to a context page: refused by name.
     let select_context_page = s.call(
         "browser_targets",
         json!({"action": "select", "target": alpha_page}),
@@ -543,11 +539,6 @@ fn two_contexts_isolate_cookies_and_the_legacy_page_stays_separate() {
         is_error(&select_context_page),
         "legacy targets select must refuse a context page: {select_context_page}"
     );
-    // The refusal must be a tool error (never a success, never a protocol
-    // error) that names the context, and it must not attach: the legacy page
-    // still answers below. The typed code is asserted where the context tool
-    // mints it directly; the legacy `targets` route does not add a guarantee
-    // this test relies on beyond the refusal itself.
     let guard = structured(&select_context_page);
     assert!(
         guard["code"].as_str().is_some_and(|c| !c.is_empty()),
@@ -676,7 +667,6 @@ fn two_contexts_isolate_cookies_and_the_legacy_page_stays_separate() {
         gone.2
     );
 
-    // The legacy page and its tab are still exactly as they were.
     let tabs_after = s.call("browser_tabs", json!({"action": "list"}));
     let tab_list_after = structured(&tabs_after)["tabs"]
         .as_array()
@@ -795,7 +785,6 @@ fn shutdown_closes_only_the_contexts_hand_owns() {
     let fixture = Fixture::start();
     let base = fixture.base.clone();
 
-    // The owner: another client that got there first.
     let mut owner = Session::spawn_with_env(&[("GLADIUS_CDP_URL", engine.base.as_str())]);
     let owner_ctx = ok(
         &mut owner,
@@ -816,7 +805,6 @@ fn shutdown_closes_only_the_contexts_hand_owns() {
     );
     assert!(jar_has(&owner_cookie, "who", "owner"), "{owner_cookie}");
 
-    // The guest: hand, with its own context in the same engine.
     let mut guest = Session::spawn_with_env(&[("GLADIUS_CDP_URL", engine.base.as_str())]);
     let guest_ctx = ok(
         &mut guest,
@@ -847,8 +835,6 @@ fn shutdown_closes_only_the_contexts_hand_owns() {
         "the guest's cookie is in its own partition: {guest_cookie}"
     );
 
-    // hand shuts down with a live context; the guest is the only thing that
-    // may disappear.
     guest.close_stdin();
     let guest_status = guest.wait_exit(Duration::from_secs(60));
     assert!(

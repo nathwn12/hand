@@ -51,8 +51,6 @@ impl Fixture {
                 while !flag.load(Ordering::SeqCst) {
                     match listener.accept() {
                         Ok((stream, _)) => {
-                            // One thread per connection: the browser opens
-                            // speculative sockets that send nothing.
                             let other = other.clone();
                             std::thread::spawn(move || {
                                 let _ = serve(stream, &other);
@@ -211,8 +209,6 @@ fn wheel_scrolls_the_document_and_reports_it() {
     assert_eq!(reported, live, "the reply must report the measured offset");
     assert_eq!(structured(&down)["moved"], json!(true));
 
-    // A wheel over a page that cannot scroll reports no movement instead of a
-    // false success.
     s.call("browser_navigate", json!({"url": format!("{}/oopif-child.html", fx.a)}));
     let still = s.call("browser_wheel", json!({"deltaY": 400}));
     assert!(!is_error(&still), "{}", text_of(&still));
@@ -296,16 +292,13 @@ fn element_screenshot_is_the_box_and_is_deterministic() {
     assert_eq!(one["checksum"], two["checksum"], "deterministic bytes must match");
     assert_eq!(one["bytes"], two["bytes"]);
 
-    // Format passthrough names the encoding it actually produced.
     let jpeg = s.call("browser_screenshot", json!({"format": "jpeg", "quality": 70}));
     assert!(!is_error(&jpeg), "{}", text_of(&jpeg));
     assert_eq!(structured(&jpeg)["mimeType"], json!("image/jpeg"));
 
-    // A quality on a lossless encoding is refused by name.
     let png_quality = s.call("browser_screenshot", json!({"format": "png", "quality": 70}));
     assert!(is_error(&png_quality), "png + quality must be refused");
 
-    // A ref that was never minted is typed, never a shot of something else.
     let wrong = s.call("browser_screenshot", json!({"element": "@e9999", "deterministic": true}));
     assert!(is_error(&wrong), "an unknown ref must fail");
     assert_eq!(structured(&wrong)["code"], json!("stale_ref"));
@@ -321,7 +314,6 @@ fn oopif_frame_snapshot_and_click_with_typed_unmapped_frame() {
     s.call("browser_navigate", json!({"url": format!("{}/oopif-parent.html", fx.a)}));
     let fid = oopif_frame(&mut s);
 
-    // The main frame's snapshot still excludes the child's content.
     let main = text_of(&s.call("browser_snapshot", json!({})));
     assert!(
         !main.contains("Child action"),
@@ -351,15 +343,12 @@ fn oopif_frame_snapshot_and_click_with_typed_unmapped_frame() {
         "the click must land inside the out-of-process frame"
     );
 
-    // A ref minted by the frame snapshot is actionable in that frame; a
-    // main-frame ref with frame= stays a typed refusal.
     let child_ref = node["ref"].as_str().expect("ref").to_string();
     let by_ref = s.call("browser_click", json!({"element": format!("@{child_ref}"), "frame": fid}));
     assert!(!is_error(&by_ref), "{}", text_of(&by_ref));
     let cross = s.call("browser_click", json!({"element": "@e1", "frame": fid}));
     assert!(is_error(&cross), "a main-frame ref must not be clicked in a frame");
 
-    // Unmapped: typed error from every frame-scoped tool, never main-frame.
     for (tool, args) in [
         ("browser_snapshot", json!({"frame": "NOSUCHFRAMEID"})),
         ("browser_click", json!({"element": "#child-btn", "frame": "NOSUCHFRAMEID"})),

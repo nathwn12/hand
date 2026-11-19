@@ -1,11 +1,3 @@
-// The controlled browser fixture: load once, verify against the repo pin, then
-// serve those exact in-memory bytes. Nothing re-reads the directory after the
-// fingerprint is taken, so the server can never serve bytes the receipt did not
-// hash.
-//
-// The pin is `fixtures/SHA256SUMS`. A missing or malformed pin, a hash mismatch,
-// a missing entry, or a label set other than exactly Control 001..Control 100
-// makes the fixture unusable and the scenario blocked.
 
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";

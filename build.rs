@@ -29,10 +29,6 @@ fn main() {
 
     let sha = git(&["rev-parse", "HEAD"]).unwrap_or_else(|| "unknown".to_string());
     let dirty = git(&["status", "--porcelain", "--untracked-files=no"]).is_some_and(|s| !s.is_empty());
-    // The cargo profile is as much a part of the identity as the commit: an
-    // installed copy must be able to say it is a release build without anyone
-    // reading the path it happens to sit at. `PROFILE` is set by cargo for
-    // build scripts ("debug" or "release").
     let profile = std::env::var("PROFILE").unwrap_or_else(|_| "unknown".to_string());
 
     println!("cargo:rustc-env=HAND_GIT_SHA={sha}");

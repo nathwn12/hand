@@ -1,9 +1,3 @@
-// Driver tests against the deterministic fake stdio fixture.
-//
-// These prove the driver's plumbing and honesty rules (mapping, sample counts,
-// failure visibility, unsupported handling, fingerprints, timeouts). They are
-// NOT a measurement of hand, Gladius or Puppet behavior: every receipt here is
-// marked testOnly and the fake server touches no browser and no desktop.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -643,8 +637,6 @@ test("a binary with no embedded identity passes but marks releaseBlocked and unv
     assert.equal(receipt.verdict.status, "pass");
     assert.equal(receipt.verdict.releaseBlocked, true);
     assert.equal(receipt.verdict.releaseIdentityUnverified, true);
-    // node.exe lives in a directory named "debug", but its --version carries no
-    // commit or cargo profile. The directory name is not evidence.
     assert.equal(receipt.product.releaseIdentity.claimed, null);
     assert.equal(receipt.product.releaseIdentity.basis, "embedded-build-metadata");
     assert.equal(receipt.product.releaseIdentity.verified, false);

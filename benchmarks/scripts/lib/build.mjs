@@ -1,15 +1,6 @@
-// Build identity comes from the bytes, never from where the bytes are stored.
-//
-// A path only says where someone put the file: `C:\Users\<name>\bin\hand.exe`
-// claims nothing about a cargo profile. `hand --version` prints the commit and
-// the cargo profile compiled in by `build.rs`, so a copy at an arbitrary path
-// reports the same identity. The string is still a claim, not an attestation:
-// `compare.mjs` proves it against a recorded `cargo build --release` receipt
-// and the artifact hash.
 
 const IDENTITY = /\(([0-9a-f]{7,40})(-dirty)?(?:;[ \t]*(release|debug))?\)/i;
 
-/** The embedded build identity in a `--version` line, or null. */
 export function parseBuildIdentity(version) {
   const stdout = typeof version === "string" ? version : (version?.stdout ?? "");
   const match = IDENTITY.exec(stdout);
@@ -21,7 +12,6 @@ export function parseBuildIdentity(version) {
   };
 }
 
-/** Build profile claimed by the binary itself; null when it embeds none. */
 export function buildConfiguration(version) {
   return parseBuildIdentity(version)?.profile ?? null;
 }

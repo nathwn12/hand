@@ -1,6 +1,3 @@
-// Comparison tests for the benchmark receipts. Inputs are driver-test
-// receipts; the point is that unsupported and failed rows stay visible and
-// test-only receipts cannot satisfy --require-pass.
 
 import test from "node:test";
 import assert from "node:assert/strict";

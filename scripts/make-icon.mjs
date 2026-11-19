@@ -1,12 +1,4 @@
 #!/usr/bin/env node
-/**
- * Renders assets/icon.svg's geometry into a PNG and a multi-size ICO with no
- * dependencies: 4x supersampled rasterisation, then a PNG-compressed ICO
- * (Vista-or-later format). Windows and the repo both use these files.
- *
- * Run: node scripts/make-icon.mjs
- * Writes: assets/icon.png (512), assets/hand.ico (256/128/64/48/32/16)
- */
 import { writeFileSync } from "node:fs";
 import { deflateSync } from "node:zlib";
 import { join, dirname } from "node:path";
@@ -17,8 +9,6 @@ const BG = [0x0b, 0x0f, 0x14];
 const FG = [0x34, 0xd3, 0x99];
 const SIZES = [256, 128, 64, 48, 32, 16];
 
-// Geometry in the 512-unit space of icon.svg. The tile is drawn full size; the
-// mark is scaled about the centre so it sits with air around it.
 const S = 0.94;
 const t = (v) => (v - 256) * S + 256;
 const roundedRect = (x, y, w, h, r) => (px, py) => {
@@ -38,13 +28,8 @@ const circle = (cx, cy, r) => {
 
 const tile = roundedRect(16, 16, 480, 480, 112);
 
-// The same mark at three levels of detail: a 3-shape glyph cannot survive 16 px,
-// so small sizes keep the dot and thicken (or drop) the brackets. Every variant
-// is drawn from the same proportions, never redesigned.
 function markShapes(size) {
   const dot = (r) => ({ test: circle(256, 256, r), color: FG });
-  // Below 48 px the gaps between brackets and dot close up, so the small sizes
-  // keep only the dot. Everything from 48 up uses the real mark.
   if (size < 48) return [dot(112)];
   return [
     { test: scaledRect(140, 140, 84, 40), color: FG },

@@ -40,9 +40,6 @@ impl Session {
     /// be able to pass its own URL. Inherited values never win.
     pub fn spawn_with_env(env: &[(&str, &str)]) -> Self {
         let mut cmd = Command::new(env!("CARGO_BIN_EXE_hand"));
-        // Pin the knobs a suite depends on. Values are hand's documented
-        // defaults (90 s budget, render caps, hooks off); an explicit `env`
-        // entry below can still opt into a deliberate variant.
         cmd.env("HAND_TOOL_BUDGET_MS", "90000");
         cmd.env("GLADIUS_TOOL_BUDGET_MS", "90000");
         cmd.env("GLADIUS_BACKEND_CAPS", "render");

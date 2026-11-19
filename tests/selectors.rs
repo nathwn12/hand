@@ -98,10 +98,6 @@ impl Fixture {
             while !flag.load(Ordering::SeqCst) {
                 match listener.accept() {
                     Ok((stream, _)) => {
-                        // One connection per thread: a browser opens several at
-                        // once (document, iframe, favicon), and serving them
-                        // serially can drop one, which surfaces as a page error
-                        // rather than as the assertion under test.
                         std::thread::spawn(move || {
                             let _ = serve(stream);
                         });
@@ -161,8 +157,6 @@ fn serve(mut stream: TcpStream) -> std::io::Result<()> {
 static ONE_BROWSER: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 fn serial() -> std::sync::MutexGuard<'static, ()> {
-    // A panic in one test must not poison the rest: each panic is its own
-    // failure, and they run one after another.
     ONE_BROWSER.lock().unwrap_or_else(|e| e.into_inner())
 }
 
@@ -266,7 +260,6 @@ fn role_selector_resolves_the_unique_role_and_reports_the_snapshot_ref() {
         Some(format!("@{}", heading["ref"].as_str().unwrap()).as_str()),
         "the resolved element is the @eN the snapshot already lists: {reply}"
     );
-    // The action still reports its old fields.
     assert_eq!(reply["ok"].as_bool(), Some(true), "{reply}");
 }
 
@@ -319,10 +312,6 @@ fn text_selector_matches_visible_text_and_is_case_insensitive() {
     let fixture = Fixture::start();
     let mut s = opened(&fixture);
 
-    // A paragraph's accessible name is empty: only its visible text identifies
-    // it, which is what text= reads. Its wrapping div contains exactly the
-    // same words, so this also proves the innermost owner wins instead of the
-    // wrapper (which would report role "generic", or be ambiguous).
     let para = ok(
         &mut s,
         "browser_click",
@@ -341,8 +330,6 @@ fn text_selector_matches_visible_text_and_is_case_insensitive() {
     );
     assert_eq!(link["resolved"]["role"].as_str(), Some("link"), "{link}");
 
-    // Two buttons say "Delete": case-insensitive matching finds both, and
-    // uniqueness refuses to pick one.
     let dup = s.call("browser_click", json!({"element": "text=\"delete\""}));
     assert!(
         is_error(&dup),
@@ -388,7 +375,6 @@ fn label_selector_targets_the_associated_control_not_an_aria_label() {
         "label= must type into the labelled control"
     );
 
-    // The aria-label of the other field is not a label association.
     let miss = s.call("browser_click", json!({"element": "label=\"Search box\""}));
     assert!(
         is_error(&miss),
@@ -408,7 +394,6 @@ fn ambiguous_selector_refuses_and_lists_every_candidate() {
     require_engine();
     let fixture = Fixture::start();
     let mut s = opened(&fixture);
-    // The candidates are compared against the render the caller sees.
     let snap = ok(&mut s, "browser_snapshot", json!({}));
     let buttons: Vec<Value> = snap["nodes"]
         .as_array()
@@ -443,7 +428,6 @@ fn ambiguous_selector_refuses_and_lists_every_candidate() {
             at.starts_with('@') && at[1..].starts_with('e'),
             "candidate refs are @eN: {cand}"
         );
-        // Every listed ref is a node of the snapshot the caller holds.
         let listed = buttons.iter().any(|b| b["ref"].as_str() == Some(&at[1..]));
         assert!(listed, "candidate {at} must be in the snapshot: {snap}");
         assert!(
@@ -452,7 +436,6 @@ fn ambiguous_selector_refuses_and_lists_every_candidate() {
             text_of(&resp)
         );
     }
-    // No element is listed twice: a duplicate would read as a second match.
     let mut refs: Vec<&str> = cands.iter().filter_map(|c| c["ref"].as_str()).collect();
     refs.sort_unstable();
     let unique = refs.len();
@@ -509,9 +492,6 @@ fn frame_scoped_selector_never_escapes_the_named_frame() {
     let mut s = opened(&fixture);
     let fid = frame_id(&mut s, "/frame");
 
-    // Before any frame-scoped render the frame's nodes hold no ref: the
-    // selector still acts on the AX node and says so (ref null), rather than
-    // inventing a main-frame @eN that would click at the wrong coordinates.
     let unrefd = ok(
         &mut s,
         "browser_type",
@@ -532,8 +512,6 @@ fn frame_scoped_selector_never_escapes_the_named_frame() {
         "the frame-scoped type must land inside the frame"
     );
 
-    // Refs come from a frame-scoped render, which is the inspectable identity
-    // the reply should report.
     let frame_snap = ok(&mut s, "browser_snapshot", json!({"frame": fid}));
     let frame_button = frame_snap["nodes"]
         .as_array()
@@ -566,8 +544,6 @@ fn frame_scoped_selector_never_escapes_the_named_frame() {
         "the main page's same-named button must not be clicked"
     );
 
-    // An element that only exists in the parent document is not found inside
-    // the frame: the page is never searched when a frame is named.
     let escaped = s.call(
         "browser_click",
         json!({"element": "name=\"Search box\"", "frame": fid}),
@@ -595,7 +571,6 @@ fn legacy_css_and_ref_targeting_are_unchanged() {
     let fixture = Fixture::start();
     let mut s = opened(&fixture);
 
-    // CSS keeps first-match, including two elements that share a class.
     let css = ok(&mut s, "browser_click", json!({"element": ".danger"}));
     assert!(
         css.get("resolved").is_none(),
@@ -606,7 +581,6 @@ fn legacy_css_and_ref_targeting_are_unchanged() {
         Some("delete-hit")
     );
 
-    // An @eN click is exact and unchanged.
     let go = snapshot_node(&mut s, json!({"role": "button", "name": "Go"}));
     let at = format!("@{}", go["ref"].as_str().unwrap());
     let ref_click = ok(&mut s, "browser_click", json!({"element": at}));
@@ -619,7 +593,6 @@ fn legacy_css_and_ref_targeting_are_unchanged() {
         Some("go-hit")
     );
 
-    // Navigation makes the ref stale, and it still fails typed.
     ok(
         &mut s,
         "browser_navigate",
@@ -641,7 +614,6 @@ fn hover_resolves_ax_forms_and_keeps_css_behaviour() {
     let fixture = Fixture::start();
     let mut s = opened(&fixture);
 
-    // The preflight answers a JSON STRING; a hover must still dispatch.
     let by_role = ok(&mut s, "browser_hover", json!({"element": "role=heading"}));
     assert_eq!(
         by_role["resolved"]["role"].as_str(),
@@ -665,7 +637,6 @@ fn hover_resolves_ax_forms_and_keeps_css_behaviour() {
     );
     assert_eq!(by_name["resolved"]["name"].as_str(), Some("Save draft"));
 
-    // CSS keeps its own path: first match, no resolved field.
     let css = ok(&mut s, "browser_hover", json!({"element": "#go"}));
     assert!(
         css.get("resolved").is_none(),
@@ -673,7 +644,6 @@ fn hover_resolves_ax_forms_and_keeps_css_behaviour() {
     );
     assert_eq!(css["ok"].as_bool(), Some(true), "{css}");
 
-    // A missing selector still fails typed, not silently.
     let miss = s.call("browser_hover", json!({"element": "#no-such-element"}));
     assert!(is_error(&miss), "a missing hover target must fail: {miss}");
     assert_eq!(
@@ -690,8 +660,6 @@ fn text_selector_reads_visible_text_only() {
     let fixture = Fixture::start();
     let mut s = opened(&fixture);
 
-    // Fragments of one text node concatenate with no separator:
-    // <p>Hel<span>lo</span></p> reads "Hello", not "Hel lo".
     let split = ok(
         &mut s,
         "browser_click",
@@ -703,8 +671,6 @@ fn text_selector_reads_visible_text_only() {
         "split text must read as one word: {split}"
     );
 
-    // Content the engine prunes (display:none, aria-hidden) is not visible
-    // text and must not match.
     for hidden in ["text=\"Hidden words\"", "text=\"Aria hidden words\""] {
         let miss = s.call("browser_click", json!({"element": hidden}));
         assert!(is_error(&miss), "{hidden} is not visible text: {miss}");
@@ -715,8 +681,6 @@ fn text_selector_reads_visible_text_only() {
         );
     }
 
-    // An aria-label is a NAME, not visible text: text= must not fall back to
-    // it (a checkbox with no text has no visible text).
     let name_not_text = s.call("browser_click", json!({"element": "text=\"Accept terms\""}));
     assert!(
         is_error(&name_not_text),
@@ -726,7 +690,6 @@ fn text_selector_reads_visible_text_only() {
         structured(&name_not_text)["reason"].as_str(),
         Some("not_found")
     );
-    // ... while name= reaches the same element.
     let by_name = ok(
         &mut s,
         "browser_click",
@@ -747,7 +710,6 @@ fn name_accepts_the_names_the_snapshot_prints() {
     let mut s = opened(&fixture);
     let printed: String = LONG.chars().take(80).collect();
 
-    // The render is the contract: it prints the capped name ...
     let snap = ok(&mut s, "browser_snapshot", json!({}));
     let nodes = snap["nodes"].as_array().cloned().unwrap_or_default();
     let long = nodes
@@ -761,8 +723,6 @@ fn name_accepts_the_names_the_snapshot_prints() {
         "the printed name is capped: {long}"
     );
 
-    // ... so a name copied out of it resolves, and the reply reports the same
-    // name the caller read.
     let by_printed = ok(
         &mut s,
         "browser_click",
@@ -779,15 +739,11 @@ fn name_accepts_the_names_the_snapshot_prints() {
         "{by_printed}"
     );
 
-    // An unlabeled control has no accessible name: the snapshot synthesises
-    // one from its id, and that printed name must resolve too.
     let unlabelled = nodes
         .iter()
         .find(|n| n["role"].as_str() == Some("textbox") && n["name"].as_str() == Some("unlabelled"))
         .unwrap_or_else(|| panic!("the snapshot names the unlabeled input from its id: {snap}"));
     assert_eq!(unlabelled["tag"].as_str(), Some("input"), "{unlabelled}");
-    // The role+name form accepts the same printed names as the bare form:
-    // a selector that narrows by role is not a stricter name matcher.
     let narrowed = ok(
         &mut s,
         "browser_hover",
@@ -823,8 +779,6 @@ fn label_reads_markup_and_spaced_labels_without_name_guesswork() {
     let fixture = Fixture::start();
     let mut s = opened(&fixture);
 
-    // Inline markup inside the label: the accessible name is the text, and
-    // the control resolves by its label - not by the source string.
     let markup = ok(
         &mut s,
         "browser_type",
@@ -840,7 +794,6 @@ fn label_reads_markup_and_spaced_labels_without_name_guesswork() {
         Some("4022")
     );
 
-    // Non-breaking spaces in the label normalise like any other whitespace.
     let spaced = ok(
         &mut s,
         "browser_type",
@@ -856,7 +809,6 @@ fn label_reads_markup_and_spaced_labels_without_name_guesswork() {
         Some("normalised")
     );
 
-    // Still not a label association: an aria-label.
     let aria = s.call(
         "browser_click",
         json!({"element": "label=\"Accept terms\""}),
@@ -872,8 +824,6 @@ fn malformed_forms_fail_fast_with_the_intended_syntax() {
     let fixture = Fixture::start();
     let mut s = opened(&fixture);
 
-    // A near miss is a malformed selector, never a CSS parse that waits and
-    // then answers a JS syntax error.
     for sel in [
         "role = button",
         "text = \"Learn more\"",
@@ -893,7 +843,6 @@ fn malformed_forms_fail_fast_with_the_intended_syntax() {
         );
     }
 
-    // The keyword itself is case-insensitive and is NOT a near miss.
     let capital = ok(&mut s, "browser_click", json!({"element": "Name=\"Go\""}));
     assert_eq!(
         capital["resolved"]["role"].as_str(),
@@ -905,8 +854,6 @@ fn malformed_forms_fail_fast_with_the_intended_syntax() {
         Some("go-hit")
     );
 
-    // An inner double quote is written escaped; an unescaped one is refused
-    // with a message that says how to write it.
     let unescaped = s.call("browser_click", json!({"element": "name=\"Say \"hi\"\""}));
     assert!(
         is_error(&unescaped),
@@ -941,7 +888,6 @@ fn page_scope_excludes_iframe_content_and_says_so() {
     let fixture = Fixture::start();
     let mut s = opened(&fixture);
 
-    // "Frame name" exists only inside the iframe.
     let miss = s.call("browser_click", json!({"element": "label=\"Frame name\""}));
     assert!(
         is_error(&miss),
@@ -958,7 +904,6 @@ fn page_scope_excludes_iframe_content_and_says_so() {
         "the refusal says iframe content is not searched: {prose}"
     );
 
-    // The frame parameter is the way in.
     let fid = frame_id(&mut s, "/frame");
     let inside = ok(
         &mut s,
@@ -1013,9 +958,6 @@ fn unreadable_frame_is_typed_unreachable_not_a_selector_miss() {
     let mut s = opened(&fixture);
     let fid = frame_id(&mut s, "/frame");
 
-    // Drop the iframe: its frame id is now detached, so its AX tree cannot be
-    // read. The page's own "Save draft" must NOT be searched instead, and the
-    // refusal must not read like "your selector matched nothing".
     ok(
         &mut s,
         "browser_evaluate",

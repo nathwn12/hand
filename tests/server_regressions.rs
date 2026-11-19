@@ -116,8 +116,6 @@ impl RawSession {
         use std::io::{BufRead, BufReader};
         use std::process::{Command, Stdio};
         let mut cmd = Command::new(env!("CARGO_BIN_EXE_hand"));
-        // Same hermetic baseline as the shared harness: inherited developer
-        // state never decides what this process does. Explicit `env` wins.
         cmd.env("HAND_TOOL_BUDGET_MS", "90000");
         cmd.env("GLADIUS_TOOL_BUDGET_MS", "90000");
         cmd.env("GLADIUS_BACKEND_CAPS", "render");
@@ -283,8 +281,6 @@ fn budget_timeout_does_not_drop_a_capture_restore() {
     let warm = s.call("browser_evaluate", json!({"expression": "1 + 1"}));
     assert_eq!(structured(&warm)["value"], json!(2), "warm call: {warm}");
 
-    // The pre-capture page state the restore must reproduce: no freeze
-    // stylesheet, the live viewport, and the host's media preference.
     const PROBE: &str = "[!!document.getElementById('__gladius_deterministic'), \
                          window.innerWidth, window.innerHeight, \
                          matchMedia('(prefers-reduced-motion: reduce)').matches]";
@@ -313,12 +309,6 @@ fn budget_timeout_does_not_drop_a_capture_restore() {
                    "arguments": {"deterministic": true, "_budgetMs": 2000}}}),
     );
 
-    // The freeze walk is millisecond-fast and the image race then holds the
-    // capture for 3 s, so this proves the page is mid-capture when the budget
-    // expires. The id is the engine's freeze stylesheet (capture::STYLE_ID); if
-    // the engine renames it, update this observable rather than weakening the
-    // test. The deadline stays well inside the 2 s budget so this probe cannot
-    // race the timeout answer.
     let frozen = poll_page(
         &mut s,
         "!!document.getElementById('__gladius_deterministic')",
@@ -362,16 +352,12 @@ fn budget_timeout_does_not_drop_a_capture_restore() {
         "the reply must name the slot it still holds: {prose}"
     );
 
-    // The detached capture settles (3 s image race) and restores. Poll the page
-    // instead of sleeping for a guessed duration; the engine's own restore
-    // confirmation is 2 s, so 8 s is the realistic outer bound.
     let after = poll_page(&mut s, PROBE, &before, Duration::from_secs(8));
     assert_eq!(
         after, before,
         "the timed-out capture must restore the page it froze: before={before} after={after}"
     );
 
-    // The slot is free again and the engine still serves.
     let healthy = s.call("browser_evaluate", json!({"expression": "2 + 3"}));
     assert_eq!(structured(&healthy)["value"], json!(5));
 }
@@ -391,8 +377,6 @@ fn modern_cancel_is_typed_and_never_claims_the_work_stopped() {
         "params": {"name": "browser_wait_for", "arguments": {"ms": 4000},
                    "_meta": {"io.modelcontextprotocol/protocolVersion": "2026-07-28"}}}),
     );
-    // The reader dispatches this call before it reads the next frame, so the
-    // cancel cannot race the entry's publication; no sleep is needed.
     s.send(
         &json!({"jsonrpc": "2.0", "method": "notifications/cancelled",
         "params": {"requestId": 2001}}),
@@ -434,15 +418,12 @@ fn modern_cancel_is_typed_and_never_claims_the_work_stopped() {
         "the reply must say the cancelled call keeps its slot: {prose}"
     );
 
-    // No second response for the id, even after the detached wait ends.
     let late = s.recv_timeout(Duration::from_millis(4200));
     assert!(
         late.is_none(),
         "a cancelled browser call must not emit a second response: {late:?}"
     );
 
-    // A repeated cancel for the same id writes nothing, and the session and the
-    // engine stay usable.
     s.send(
         &json!({"jsonrpc": "2.0", "method": "notifications/cancelled",
         "params": {"requestId": 2001}}),
@@ -475,7 +456,6 @@ fn a_timed_out_call_can_still_deliver_its_side_effect() {
     assert_eq!(structured(&timed)["outcome"], json!("unknown"));
     assert_eq!(structured(&timed)["retry"], json!("unsafe"));
 
-    // The effect has not landed when the answer is written...
     let early = s.call(
         "browser_evaluate",
         json!({"expression": "typeof window.__late_effect"}),
@@ -485,9 +465,6 @@ fn a_timed_out_call_can_still_deliver_its_side_effect() {
         json!("undefined"),
         "the side effect must not have landed before the timeout answer: {early}"
     );
-    // ...and it lands afterwards, which is exactly why the answer cannot say
-    // the work stopped or that a retry is safe. Poll instead of sleeping for a
-    // guessed duration.
     let _late = poll_page(
         &mut s,
         "window.__late_effect",
@@ -543,8 +520,6 @@ fn a_full_browser_pool_answers_a_typed_busy_tool_result() {
         s.send(&json!({"jsonrpc": "2.0", "id": id, "method": "tools/call",
             "params": {"name": "browser_wait_for", "arguments": {"ms": 5000}}}));
     }
-    // A ping is answered only after the reader has dispatched all four calls
-    // (frame order), so it is a barrier proving every permit is held. No sleep.
     let pong = s.request("ping", json!({}));
     assert_eq!(pong["result"], json!({}));
 
@@ -572,8 +547,6 @@ fn a_full_browser_pool_answers_a_typed_busy_tool_result() {
         "the reply must explain the slot accounting: {prose}"
     );
 
-    // The four cancelled slots keep their work running; each cancel still
-    // answers its own id exactly once.
     for id in [3001, 3002, 3003, 3004] {
         s.send(
             &json!({"jsonrpc": "2.0", "method": "notifications/cancelled",
@@ -601,10 +574,6 @@ fn a_desktop_id_in_flight_is_refused_instead_of_riding_a_cancelled_token() {
     let _serial = serial();
     let mut s = Session::spawn();
 
-    // The first job sits in a 200 ms burst wait, so it is still in flight when
-    // the second frame with the same id is dispatched. The reader handles the
-    // first frame completely (including the map insert) before it reads the
-    // second, so no sleep is needed.
     s.send(
         &json!({"jsonrpc": "2.0", "id": 4001, "method": "tools/call",
         "params": {"name": "desktop_do",
@@ -635,13 +604,8 @@ fn a_desktop_id_in_flight_is_refused_instead_of_riding_a_cancelled_token() {
     );
     assert_eq!(structured(&first)["ok"], json!(true));
 
-    // A new id is unaffected.
     let fresh = s.call_id(4002, "desktop_cursor", json!({}));
     assert!(fresh.get("result").is_some(), "new id answers: {fresh}");
-    // The cancelled-worker case (an entry that survives a cancel until its
-    // worker ends) is pinned deterministically in the unit tests below; it
-    // cannot be timed reliably through the real engine because a cancellable
-    // burst wait ends within milliseconds of the token flip.
 }
 
 /// D4: EOF accepts no new work, lets an in-flight call finish before closing
@@ -657,7 +621,6 @@ fn eof_with_a_running_call_exits_cleanly_and_bounded() {
         &json!({"jsonrpc": "2.0", "id": 5001, "method": "tools/call",
         "params": {"name": "browser_wait_for", "arguments": {"ms": 3000}}}),
     );
-    // Frame order: the ping is answered only after the wait_for was dispatched.
     let pong = s.request("ping", json!({}));
     assert_eq!(pong["result"], json!({}));
     s.close_stdin();
@@ -666,9 +629,6 @@ fn eof_with_a_running_call_exits_cleanly_and_bounded() {
     let status = s.wait_exit(DOCUMENTED_SHUTDOWN_BOUND + Duration::from_secs(5));
     let elapsed = started.elapsed();
     assert!(status.success(), "EOF shutdown must exit 0, got: {status}");
-    // The documented sum is the only honest total bound: it includes the browser
-    // close bound (30 s), so this test is about "no deadlock, within contract",
-    // not a tight measure of the drain.
     assert!(
         elapsed < DOCUMENTED_SHUTDOWN_BOUND,
         "shutdown exceeded the documented bound of {DOCUMENTED_SHUTDOWN_BOUND:?}: {elapsed:?}"
@@ -688,19 +648,14 @@ fn eof_drain_is_globally_bounded_and_reports_abandoned_work() {
     let warm = s.recv_for(2, Duration::from_secs(60));
     assert_eq!(structured(&warm)["value"], json!(2));
 
-    // Four calls that cannot finish (each awaits a 20 s page promise), so all
-    // four browser slots are occupied when EOF arrives.
     for id in [11, 12, 13, 14] {
         s.send(&json!({"jsonrpc": "2.0", "id": id, "method": "tools/call",
             "params": {"name": "browser_evaluate",
                        "arguments": {"expression": "new Promise((r) => setTimeout(r, 20000))"}}}));
     }
-    // Barrier: the ping is answered only after the reader dispatched all four,
-    // which proves all four permits are held. No sleep is needed.
     s.send(&json!({"jsonrpc": "2.0", "id": 10, "method": "ping", "params": {}}));
     let pong = s.recv_for(10, Duration::from_secs(5));
     assert_eq!(pong["result"], json!({}));
-    // The fifth call is refused as busy, proving the four slots are occupied.
     s.send(&json!({"jsonrpc": "2.0", "id": 15, "method": "tools/call",
         "params": {"name": "browser_evaluate", "arguments": {"expression": "1"}}}));
     let busy = s.recv_for(15, Duration::from_secs(5));
@@ -708,9 +663,6 @@ fn eof_drain_is_globally_bounded_and_reports_abandoned_work() {
 
     s.close_stdin();
     let eof_at = Instant::now();
-    // Measure the DRAIN from the timestamp of its own log line, not from the
-    // whole shutdown: a slow browser.close() (documented bound 30 s) must not
-    // fail a test about the drain.
     let (logged_at, mut log_lines) = s.wait_stderr_timed("drain deadline", Duration::from_secs(15));
     let drain_took = logged_at.saturating_duration_since(eof_at);
     assert!(
@@ -764,8 +716,6 @@ fn eof_is_bounded_when_a_blocking_desktop_job_cannot_stop() {
     s.initialize();
     s.send(&json!({"jsonrpc": "2.0", "id": 2, "method": "tools/call",
         "params": {"name": "desktop_cursor", "arguments": {}}}));
-    // Wait for the hook's own line: it proves the blocking job is actually
-    // running (and that it returned before any window was touched).
     let mut log = s
         .wait_stderr_contains("blocking desktop job started", Duration::from_secs(10))
         .join("\n");
@@ -789,8 +739,6 @@ fn eof_is_bounded_when_a_blocking_desktop_job_cannot_stop() {
     let status = s.wait_exit(Duration::from_secs(20));
     let elapsed = eof_at.elapsed();
     assert!(status.success(), "EOF shutdown must exit 0, got: {status}");
-    // 5 s drain + one 1 s abort settle + at most 2 s runtime teardown; no
-    // browser was launched here, so the 30 s close bound does not apply.
     let expected =
         OWNED_DRAIN + Duration::from_secs(1) + RUNTIME_EXIT_BOUND + Duration::from_secs(2);
     assert!(
@@ -881,9 +829,6 @@ fn a_cancelled_desktop_call_stays_silent_over_the_wire() {
 fn a_snapshot_reply_larger_than_one_transport_frame_keeps_the_engine() {
     let _serial = serial();
     let mut s = Session::spawn();
-    // 12 000 items is ~20 MB of AX JSON: over the 16 MiB frame default the
-    // defect hit, well under the raised ceiling, and cheap enough for the
-    // suite (a real refusal needs a render, so the whole tree is built).
     const ITEMS: usize = 12_000;
     let rows: String = (0..ITEMS).map(|i| format!("<li>row {i}</li>")).collect();
     let url = format!("data:text/html,<ul>{rows}</ul>");
@@ -908,8 +853,6 @@ fn a_snapshot_reply_larger_than_one_transport_frame_keeps_the_engine() {
         "the refusal is the same capped error the smaller page gets: {prose}"
     );
 
-    // The page survived: the engine still holds the document this call
-    // rendered. A relaunched engine would answer 0 from a blank page.
     let count = s.call(
         "browser_evaluate",
         json!({"expression": "document.querySelectorAll('li').length"}),
@@ -920,7 +863,6 @@ fn a_snapshot_reply_larger_than_one_transport_frame_keeps_the_engine() {
         "the rendered page must still be the one answering: {}",
         text_of(&count)
     );
-    // And the connection is not a corpse: a browser-level call answers.
     let tabs = s.call("browser_tabs", json!({"action": "list"}));
     assert!(!is_error(&tabs), "tabs after the refusal: {}", text_of(&tabs));
     assert_eq!(
@@ -947,8 +889,6 @@ fn an_out_of_range_tab_select_is_refused_without_waiting_on_the_deadline() {
     let nav = s.call("browser_navigate", json!({"url": "about:blank"}));
     assert!(!is_error(&nav), "navigate: {}", text_of(&nav));
 
-    // One tab exists. Index 1 is the "one past the end" case the settle
-    // window covers; it must still fail well inside a second.
     let started = Instant::now();
     let one_past = s.call("browser_tabs", json!({"action": "select", "index": 1}));
     let elapsed = started.elapsed();
@@ -965,7 +905,6 @@ fn an_out_of_range_tab_select_is_refused_without_waiting_on_the_deadline() {
         "the refusal must not wait on a 10 s deadline (took {elapsed:?})"
     );
 
-    // A gap wider than one opened tab can close is not a listing lag at all.
     let started = Instant::now();
     let far = s.call("browser_tabs", json!({"action": "select", "index": 9999}));
     let elapsed = started.elapsed();
@@ -980,7 +919,6 @@ fn an_out_of_range_tab_select_is_refused_without_waiting_on_the_deadline() {
         "an index the list cannot reach is refused without a settle (took {elapsed:?})"
     );
 
-    // The engine is untouched by either refusal.
     let tabs = s.call("browser_tabs", json!({"action": "list"}));
     assert!(!is_error(&tabs), "tabs after the refusals: {}", text_of(&tabs));
 }

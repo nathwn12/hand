@@ -45,25 +45,11 @@ const IID_INVOKE_PATTERN: GUID = GUID::from_u128(0xfb377fbe_8ea6_46d5_9c73_64996
 const IID_SELECTIONITEM_PATTERN: GUID = GUID::from_u128(0xa8efa66a_0fda_421a_9194_38021f3578ea);
 const IID_TOGGLE_PATTERN: GUID = GUID::from_u128(0x94cf8058_9b8d_4ab9_8bfd_4cd0a33c8c70);
 const IID_VALUE_PATTERN: GUID = GUID::from_u128(0xa94cd8b1_0844_4cd6_9d2d_640537ab39e9);
-// IUIAutomationExpandCollapsePattern (windows 0.61 generated _Vtbl:
-// base IUnknown(0,1,2) + Expand(3), Collapse(4), CurrentExpandCollapseState(5)).
 const IID_EXPANDCOLLAPSE_PATTERN: GUID = GUID::from_u128(0x619be086_1f4e_4ee4_bafa_210128738730);
-// IUIAutomationRangeValuePattern (_Vtbl: base + SetValue(f64)(3),
-// CurrentValue(4), CurrentIsReadOnly(5), CurrentMaximum(6),
-// CurrentMinimum(7), ...).
 const IID_RANGEVALUE_PATTERN: GUID = GUID::from_u128(0x59213f4f_7346_49e5_b120_80555987a148);
-// IUIAutomationTextPattern (_Vtbl: base + RangeFromPoint(3),
-// RangeFromChild(4), GetSelection(5), GetVisibleRanges(6), DocumentRange(7),
-// ...). NOTE: DocumentRange is slot 7, not 3 ÔÇö the _Vtbl field order is
-// the vtable order (verified against windows 0.61 generated source).
 const IID_TEXT_PATTERN: GUID = GUID::from_u128(0x32eba289_3583_42c9_9c59_3b6d9a1e9b6a);
-// IUIAutomationScrollPattern (_Vtbl: base + Scroll(h,v)(3),
-// SetScrollPercent(4), Current* getters(5+)). ScrollAmount values:
-// LargeDecrement=0, SmallDecrement=1, NoAmount=2, LargeIncrement=3,
-// SmallIncrement=4 (verified against windows 0.61 generated _Vtbl).
 const IID_SCROLL_PATTERN: GUID = GUID::from_u128(0x88f4d42a_e881_459d_a77c_73bbbb7e02dc);
 
-// Vtable slots (see header note for provenance).
 const IDX_QI: usize = 0;
 const IDX_ADDREF: usize = 1;
 const IDX_RELEASE: usize = 2;
@@ -197,8 +183,6 @@ fn automation() -> Result<Iface, String> {
             &mut out,
         );
         if hr == 0 {
-            // CoCreateInstance success with a null out-param cannot happen;
-            // adopt maps it to the same failure shape.
             Iface::adopt(out)
                 .ok_or_else(|| format!("UIA CoCreateInstance failed: {}", crate::hr_text(hr)))
         } else {
@@ -253,8 +237,6 @@ fn el_bstr(el: &Iface, index: usize) -> String {
         if f(el.0, &mut out) != 0 || out.is_null() {
             return String::new();
         }
-        // BSTR layout: 4-byte byte-length prefix, then UTF-16 units
-        // (SysStringLen equivalent; freed with SysFreeString like BSTR).
         let len = *((out as *const u8).sub(4) as *const u32) as usize / 2;
         let slice = std::slice::from_raw_parts(out, len);
         let s = String::from_utf16_lossy(slice);
@@ -583,9 +565,6 @@ fn el_aid(el: &Iface) -> String {
 }
 
 fn el_invokable(el: &Iface) -> bool {
-    // Each successful GetCurrentPattern hands back an owned IUnknown that is
-    // released here (the windows build dropped its Result<IUnknown> the same
-    // way); only the success bit is observed.
     el_get_pattern(el, UIA_InvokePatternId).is_ok()
         || el_get_pattern(el, UIA_SelectionItemPatternId).is_ok()
         || el_get_pattern(el, UIA_TogglePatternId).is_ok()
@@ -638,9 +617,6 @@ impl Pager {
     /// and store the entry; `Skip` means keep walking (children still count,
     /// pre-order); `Stop` means more remain ÔÇö unwind everything.
     pub(crate) fn observe(&mut self, accepted: bool) -> PageAction {
-        // After Stop the walk unwinds on `finished`; any further observation
-        // is skipped by contract so a caller that keeps iterating cannot
-        // re-trigger collection.
         if !accepted || self.finished {
             return PageAction::Skip;
         }
@@ -651,9 +627,6 @@ impl Pager {
         if self.collected < self.cap {
             self.collected += 1;
             if self.collected >= self.cap {
-                // Cap hit: legacy `truncated` semantics (true even when the
-                // page is exactly full); keep walking to learn whether more
-                // remain, which is what `next_offset` reports.
                 self.truncated = true;
             }
             return PageAction::Collect;
@@ -694,8 +667,6 @@ impl Walk {
             let aid = el_aid(k);
             let ct = el_control_type(k);
             let ctn = ct.and_then(control_type_name).unwrap_or("");
-            // puppet.py: role = ControlTypeName minus "Control", else
-            // str(ControlType), else name-or-"Unknown" chain.
             let role = if ctn.ends_with("Control") && ctn.len() > "Control".len() {
                 ctn[..ctn.len() - "Control".len()].to_string()
             } else if let Some(id) = ct {
@@ -716,9 +687,6 @@ impl Walk {
                 PageAction::Skip => {}
                 PageAction::Collect => {
                     let rect = el_rect(k);
-                    // A control with no on-screen rectangle (scrolled away,
-                    // virtualized, collapsed) reports [0,0,0,0]; marking it
-                    // keeps callers from reading that as real geometry.
                     let offscreen = rect[2] <= 0 || rect[3] <= 0;
                     let mut e = Map::new();
                     e.insert("win".to_string(), Value::from(self.win));
@@ -749,8 +717,6 @@ impl Walk {
             if depth < self.max_depth {
                 self.walk(k, &p, depth + 1);
             } else {
-                // At the cut-off the child is listed but its children would
-                // vanish: probe so truncated never lies (puppet.py:1186-1195).
                 let sub = raw_children(&self.walker, k);
                 if !sub.is_empty() {
                     self.pager.truncated = true;
@@ -774,9 +740,6 @@ type UiaPage = (Vec<Map<String, Value>>, bool, bool, Option<usize>);
 /// `next_offset` is Some(offset + returned) only when more accepted entries
 /// remain past the returned 200-entry page.
 pub fn uia_element_list(hwnd: HWND, max_depth: i64, offset: usize) -> Result<UiaPage, String> {
-    // Bounded: a provider that never answers must return `uia_timeout` instead
-    // of wedging this worker. HWND is a raw pointer, so the handle crosses to
-    // the helper thread as the plain integer the activation paths already use.
     let h = hwnd as i64;
     crate::deadline::bound(
         crate::deadline::Family::Uia,
@@ -859,9 +822,6 @@ fn resolve_path_el(walker: &Iface, mut el: Iface, path: &str) -> Result<Iface, S
                     crate::py_repr_str(path)
                 ));
             }
-            // Transfer the chosen child's ref (clone = AddRef); the parent
-            // and the unchosen siblings release here, mirroring the windows
-            // build's clone-and-reassign.
             let next = kids[idx as usize].clone();
             drop(el);
             el = next;
@@ -880,7 +840,6 @@ pub fn uia_activate(hwnd: i64, path: &str) -> (bool, String, Option<String>) {
         uia_activate_inner(hwnd, &p)
     }) {
         Ok(r) => r,
-        // Timeout shape matches a resolve failure: no `via` was reached.
         Err(e) => (false, String::new(), Some(e)),
     }
 }
@@ -920,9 +879,6 @@ fn uia_activate_inner(hwnd: i64, path: &str) -> (bool, String, Option<String>) {
         Ok(e) => e,
         Err(msg) => return (false, String::new(), Some(msg)),
     };
-    // One arm per pattern (puppet.py:1391-1439): a failed GetCurrentPattern
-    // silently tries the next pattern; QueryInterface and fire failures
-    // return. The intermediate IUnknown releases on scope exit in all arms.
     if let Ok(unk) = el_get_pattern(&el, UIA_InvokePatternId) {
         match unsafe { unk.query(&IID_INVOKE_PATTERN) } {
             Ok(pat) => {
@@ -1036,7 +992,6 @@ pub fn uia_expand_collapse(hwnd: i64, path: &str, expand: bool) -> (bool, String
         move || uia_expand_collapse_inner(hwnd, &p, expand),
     ) {
         Ok(r) => r,
-        // Timeout shape matches a resolve failure: no `via` was reached.
         Err(e) => (false, String::new(), Some(e)),
     }
 }
@@ -1478,7 +1433,6 @@ mod tests {
         assert!(p.truncated);
         assert!(p.finished);
         assert_eq!(p.next_offset(), Some(200));
-        // Anything after Stop stays skipped; the walk unwinds on `finished`.
         assert_eq!(p.observe(true), PageAction::Skip);
         assert_eq!(p.next_offset(), Some(200));
     }
@@ -1532,9 +1486,6 @@ mod tests {
 
     #[test]
     fn pager_offset_page_exactly_full_has_no_next() {
-        // Offset analogue of the exactly-200 case: 5 skipped + 200
-        // collected with nothing after keeps legacy truncated=true but
-        // offers no next page.
         let mut p = Pager::new(5, 200);
         let acts = run(&mut p, &[true; 205]);
         assert_eq!(&acts[..5], &[PageAction::Skip; 5]);
@@ -1558,12 +1509,10 @@ mod tests {
 
     #[test]
     fn parse_range_value_table() {
-        // Valid in-range values pass through exactly.
         assert_eq!(parse_range_value("42", 0.0, 100.0), Ok(42.0));
         assert_eq!(parse_range_value(" 3.5 ", 0.0, 100.0), Ok(3.5));
         assert_eq!(parse_range_value("0", 0.0, 100.0), Ok(0.0));
         assert_eq!(parse_range_value("100", 0.0, 100.0), Ok(100.0));
-        // Non-numeric text is a typed error, never a silent 0.
         assert!(
             parse_range_value("abc", 0.0, 100.0).is_err(),
             "non-numeric must fail"
@@ -1572,7 +1521,6 @@ mod tests {
             parse_range_value("", 0.0, 100.0).is_err(),
             "empty must fail"
         );
-        // Non-finite floats are rejected even though they parse.
         assert!(
             parse_range_value("NaN", 0.0, 100.0).is_err(),
             "NaN must fail"
@@ -1581,7 +1529,6 @@ mod tests {
             parse_range_value("inf", 0.0, 100.0).is_err(),
             "inf must fail"
         );
-        // Out-of-range values name the bound.
         let e = parse_range_value("200", 0.0, 100.0).unwrap_err();
         assert!(
             e.contains("out of range") && e.contains("0..100"),
@@ -1592,8 +1539,6 @@ mod tests {
 
     #[test]
     fn expand_state_names_match_windows_numbering() {
-        // windows 0.61 ExpandCollapseState: Collapsed=0, Expanded=1,
-        // PartiallyExpanded=2, LeafNode=3.
         assert_eq!(expand_state_name(0), "Collapsed");
         assert_eq!(expand_state_name(1), "Expanded");
         assert_eq!(expand_state_name(2), "PartiallyExpanded");
@@ -1603,14 +1548,11 @@ mod tests {
 
     #[test]
     fn scroll_pattern_args_map_sign_to_small_step() {
-        // Positive/negative amounts become small inc/dec on the requested
-        // axis, NoAmount on the other; zero scrolls nothing.
         assert_eq!(scroll_pattern_args("v", 1), Ok((2, 4)));
         assert_eq!(scroll_pattern_args("v", -3), Ok((2, 1)));
         assert_eq!(scroll_pattern_args("h", 2), Ok((4, 2)));
         assert_eq!(scroll_pattern_args("h", -1), Ok((1, 2)));
         assert_eq!(scroll_pattern_args("v", 0), Ok((2, 2)));
-        // Axis vocabulary matches the wheel path.
         assert!(scroll_pattern_args("x", 1).is_err());
     }
 }
