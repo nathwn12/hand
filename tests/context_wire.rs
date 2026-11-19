@@ -55,7 +55,6 @@ use serde_json::{json, Value};
 
 const CONTEXT_TOOL: &str = "browser_context";
 
-// ------------------------------------------------------------------- fixture
 
 /// Every fixture page has its own title, so "which page answered?" is never
 /// inferred from a shared value.
@@ -138,7 +137,6 @@ fn serve(mut stream: TcpStream) -> std::io::Result<()> {
 
 const HTML: &str = "text/html; charset=utf-8";
 
-// ------------------------------------------------------------- wire helpers
 
 /// The pinned browser must be provisioned; the engine's own message otherwise.
 fn require_pinned_chromium() -> std::path::PathBuf {
@@ -225,7 +223,6 @@ fn jar_has(sc: &Value, name: &str, value: &str) -> bool {
     jar_pairs(sc).iter().any(|(n, v)| n == name && v == value)
 }
 
-// ---------------------------------------------------------------- discovery
 
 #[test]
 fn catalog_publishes_browser_context_with_its_closed_action_set() {
@@ -312,7 +309,6 @@ fn catalog_publishes_browser_context_with_its_closed_action_set() {
     );
 }
 
-// ------------------------------------------------------- owned wire scenario
 
 #[test]
 fn two_contexts_isolate_cookies_and_the_legacy_page_stays_separate() {
@@ -330,7 +326,6 @@ fn two_contexts_isolate_cookies_and_the_legacy_page_stays_separate() {
         "the legacy page must be the fixture's legacy route"
     );
 
-    // --- create two named contexts ---------------------------------------
     let alpha = ok(
         &mut s,
         json!({"action": "create", "name": "alpha", "url": format!("{base}/a")}),
@@ -381,7 +376,6 @@ fn two_contexts_isolate_cookies_and_the_legacy_page_stays_separate() {
     );
     assert_ne!(alpha_page, beta_page, "two contexts are two pages");
 
-    // --- refusals are tool results with typed codes ----------------------
     let duplicate = failed(&mut s, json!({"action": "create", "name": "alpha"}));
     assert_eq!(
         (duplicate.0.as_str(), duplicate.1.as_str()),
@@ -419,7 +413,6 @@ fn two_contexts_isolate_cookies_and_the_legacy_page_stays_separate() {
         ("invalid_args", "bad_value")
     );
 
-    // --- distinct jars ----------------------------------------------------
     let alpha_empty = ok(&mut s, json!({"action": "cookies", "name": "alpha"}));
     assert!(
         jar_pairs(&alpha_empty).is_empty(),
@@ -573,7 +566,6 @@ fn two_contexts_isolate_cookies_and_the_legacy_page_stays_separate() {
         "a refused legacy select must not have attached to the context page: {legacy_after_refusal}"
     );
 
-    // --- select changes the context tool's default only ------------------
     let selected = ok(&mut s, json!({"action": "select", "name": "alpha"}));
     assert_eq!(selected["selected"].as_str(), Some("alpha"));
     assert_eq!(
@@ -615,7 +607,6 @@ fn two_contexts_isolate_cookies_and_the_legacy_page_stays_separate() {
         "a context selection must not move the legacy page"
     );
 
-    // --- destroy one, keep the other -------------------------------------
     let destroyed = ok(&mut s, json!({"action": "destroy", "name": "alpha"}));
     assert_eq!(destroyed["gone"].as_bool(), Some(true));
     assert_eq!(destroyed["name"].as_str(), Some("alpha"));
@@ -706,7 +697,6 @@ fn two_contexts_isolate_cookies_and_the_legacy_page_stays_separate() {
         "the legacy page and its own cookie survive context teardown: {legacy_after}"
     );
 
-    // --- EOF shutdown with a live isolated context -----------------------
     s.close_stdin();
     let status = s.wait_exit(Duration::from_secs(60));
     assert!(
@@ -715,7 +705,6 @@ fn two_contexts_isolate_cookies_and_the_legacy_page_stays_separate() {
     );
 }
 
-// --------------------------------------------------------- attached clients
 
 /// An engine this test launched but hand does not own: it stands in for
 /// "someone else's browser" that a client attaches to.

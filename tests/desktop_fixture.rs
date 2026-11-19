@@ -46,7 +46,6 @@ use std::time::Duration;
 use common::{is_error, structured, text_of, Session};
 use serde_json::{json, Value};
 
-// --------------------------------------------------------------- win32 bits
 
 #[link(name = "user32")]
 extern "system" {
@@ -117,7 +116,6 @@ fn owner_desktop_windows_of_class(class: &str) -> Vec<i64> {
     scan.hits
 }
 
-// ------------------------------------------------------- owner-desk watcher
 
 /// Samples the OWNER's desktop while the act runs, from this process, so
 /// "nothing of ours ever appeared on the user's desktop" is measured
@@ -179,7 +177,6 @@ impl OwnerDeskWatch {
     }
 }
 
-// -------------------------------------------------------------- the fixture
 
 /// The controlled fixture program, compiled from
 /// `tests/desktop_fixture/fixture_app.rs` with `rustc` (no cargo, no crates)
@@ -328,7 +325,6 @@ fn rustc_path() -> PathBuf {
     );
 }
 
-// -------------------------------------------------------------------- test
 
 /// Locate a line by prefix (`key=...` / `key ...`) and return the index.
 fn find_line(lines: &[String], prefix: &str) -> Option<usize> {
@@ -424,7 +420,6 @@ fn desktop_act_verify_on_a_private_desktop_leaves_the_owner_alone() {
     );
     let sc = structured(&response);
 
-    // --- envelope: every action succeeded, and nothing was injected.
     assert_eq!(
         sc["ok"],
         Value::from(true),
@@ -439,7 +434,6 @@ fn desktop_act_verify_on_a_private_desktop_leaves_the_owner_alone() {
     let results = sc["results"].as_array().expect("results array");
     assert_eq!(results.len(), 2, "both actions report: {sc}");
 
-    // --- act 1: keyboard delivered to the EDIT control, by message count.
     let typed = &results[0];
     assert_eq!(typed["type"].as_str(), Some("type"), "{typed}");
     assert_eq!(typed["ok"].as_bool(), Some(true), "{typed}");
@@ -450,7 +444,6 @@ fn desktop_act_verify_on_a_private_desktop_leaves_the_owner_alone() {
         "one posted WM_CHAR per UTF-16 unit reached the text control: {typed}"
     );
 
-    // --- act 2: the pointer act is DELIVERY only, and says so. The effect is
     // proven below by the application's own record, never by this field.
     let clicked = &results[1];
     assert_eq!(clicked["type"].as_str(), Some("click"), "{clicked}");
@@ -467,7 +460,6 @@ fn desktop_act_verify_on_a_private_desktop_leaves_the_owner_alone() {
     );
     assert_eq!(clicked["posted"].as_u64(), Some(2), "down + up: {clicked}");
 
-    // --- the private desktop itself.
     let hd = &sc["hidden_desktop"];
     assert_eq!(hd["desktop_created"].as_bool(), Some(true), "{hd}");
     assert_eq!(hd["set_thread_desktop"].as_bool(), Some(true), "{hd}");
@@ -507,7 +499,6 @@ fn desktop_act_verify_on_a_private_desktop_leaves_the_owner_alone() {
         "the window was alive when the evidence was read: {hd}"
     );
 
-    // --- VERIFY, from the engine's readback of the same controls: the typed
     // text and the toggled status are both there after the acts.
     let readback = hd["text_readback"].as_str().unwrap_or("");
     let read_lines: Vec<&str> = readback.lines().collect();
@@ -543,7 +534,6 @@ fn desktop_act_verify_on_a_private_desktop_leaves_the_owner_alone() {
         hd["capture"]
     );
 
-    // --- VERIFY, from the application's own journal (the independent oracle).
     let lines = app.journal_lines();
     assert!(!lines.is_empty(), "the fixture recorded nothing: {lines:?}");
     let ready = find_line(&lines, layout::EV_READY).expect("the app recorded its start");
@@ -594,7 +584,6 @@ fn desktop_act_verify_on_a_private_desktop_leaves_the_owner_alone() {
         "no posted click landed outside the intended control: {lines:?}"
     );
 
-    // --- teardown: the private desktop and its process are gone, provably.
     let teardown = &hd["teardown"];
     assert_eq!(teardown["proven"].as_bool(), Some(true), "{teardown}");
     assert_eq!(
@@ -623,7 +612,6 @@ fn desktop_act_verify_on_a_private_desktop_leaves_the_owner_alone() {
         "the app recorded the engine's close as its last event: {lines:?}"
     );
 
-    // --- a vanished target receives no action: the same handle is now dead.
     let stale = s.call(
         "desktop_do",
         json!({"target": {"hwnd": window_hwnd}, "actions": [{"type": "click", "x": 1, "y": 1}]}),
@@ -638,7 +626,6 @@ fn desktop_act_verify_on_a_private_desktop_leaves_the_owner_alone() {
         "the refusal is machine-readable: {stale_text}"
     );
 
-    // --- no steal, measured while the act ran.
     let (samples, desk_hits, fg_hits) = watch.finish();
     assert!(
         samples >= 5,

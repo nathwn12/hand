@@ -48,7 +48,6 @@ async function exists(path) {
   }
 }
 
-// ---------------------------------------------------------------- machine
 
 let displayProbePromise;
 
@@ -155,7 +154,6 @@ export async function machineFingerprint({ displayProbeEnabled = true } = {}) {
   };
 }
 
-// ---------------------------------------------------------------- executable
 
 export async function fingerprintExecutable({ command, versionArgs = ["--version"], runVersion = true }) {
   if (!(await exists(command))) {
@@ -183,7 +181,6 @@ export async function fingerprintExecutable({ command, versionArgs = ["--version
   return { ok: true, executable: file, version };
 }
 
-// ---------------------------------------------------------------- browser
 
 function versionKey(name) {
   const match = /(\d+)\.(\d+)\.(\d+)\.(\d+)/.exec(name);
@@ -283,7 +280,6 @@ export async function browserFingerprint({ explicitPath, cacheRoots = cachesForB
   };
 }
 
-// ---------------------------------------------------------------- desktop target
 
 const TARGET_KEYS = new Set(["titleContains", "exe", "className", "hwnd", "pid"]);
 

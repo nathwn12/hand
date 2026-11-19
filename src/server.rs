@@ -320,7 +320,6 @@ fn meta_version(v: &Value) -> Option<Value> {
         .cloned()
 }
 
-// ---------------------------------------------------------------- state
 
 struct BrowserCall {
     tool: String,
@@ -613,7 +612,6 @@ impl State {
     }
 }
 
-// ---------------------------------------------------------------- framing
 
 enum FrameRead {
     Frame(String),
@@ -664,7 +662,6 @@ async fn writer_loop(mut rx: mpsc::UnboundedReceiver<Value>) {
     }
 }
 
-// ---------------------------------------------------------------- serve
 
 /// Panic payloads can echo user content (a tool argument, page text quoted by
 /// an `unwrap`). The default hook prints the payload verbatim, so serving

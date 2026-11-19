@@ -189,7 +189,6 @@ fn plain(e: &str) -> String {
     e.to_string()
 }
 
-// --------------------------------------------------------------- test hooks
 //
 // Environment-controlled seams used only by `tests/browser_contexts.rs` to
 // exercise cancellation and rollback deterministically (the same precedent as
@@ -230,7 +229,6 @@ async fn hook_slow(phase: &str) {
     }
 }
 
-// ------------------------------------------------------------------- state
 
 /// Lifecycle of a tracked context. `Creating` is visible on purpose: a caller
 /// must be able to see work in flight (and a shutdown must be able to report
@@ -500,7 +498,6 @@ impl ContextRegistry {
                "unverified": unverified, "failed": failed})
     }
 
-    // ------------------------------------------------------------ dispatch
 
     async fn dispatch_args(self: &Arc<Self>, args: &Value) -> Result<Value, ToolErr> {
         let action = match args.get("action").and_then(|v| v.as_str()) {
@@ -624,7 +621,6 @@ impl ContextRegistry {
         }
     }
 
-    // ------------------------------------------------------------ actions
 
     /// Create a context and its first page. The entry is tracked before the
     /// first CDP call - with its own acquisition token - and the acquisition
@@ -1833,7 +1829,6 @@ impl ContextRegistry {
         }))
     }
 
-    // ------------------------------------------------------------- internal
 
     /// The engine itself said this context does not exist. Retire THE acquisition
     /// that saw it (by token, never by name: a destroy + re-create of the same
@@ -1940,7 +1935,6 @@ impl std::fmt::Debug for ContextRegistry {
     }
 }
 
-// ------------------------------------------------------------- tool surface
 
 const SELECT_AFFECTS: &str =
     "browser_context actions that omit `name` only; legacy browser_* tools keep acting on the \
@@ -2099,7 +2093,6 @@ pub fn capability_info() -> Value {
     })
 }
 
-// ---------------------------------------------------------------- helpers
 
 #[derive(Clone, Debug)]
 struct PageInfo {
@@ -2798,7 +2791,6 @@ fn pick_page<'a>(entry: &'a Entry, want: Option<&str>) -> Result<&'a str, ToolEr
     }
 }
 
-// ------------------------------------------------------------- CDP plumbing
 //
 // Only `create_browser_context` may launch an engine (a context is created on
 // demand). Everything else uses the live-only path, so a shutdown or a query

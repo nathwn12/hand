@@ -243,7 +243,6 @@ function paramsHash(value) {
   return canonicalHash(value);
 }
 
-// ---------------------------------------------------------------- payloads
 
 export function extractPayload(result) {
   if (!result || typeof result !== "object") {
@@ -274,7 +273,6 @@ export function extractPayload(result) {
   }
 }
 
-// ---------------------------------------------------------------- validators
 
 function validatePing(result) {
   if (!result || typeof result !== "object") {

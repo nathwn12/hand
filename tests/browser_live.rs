@@ -127,7 +127,6 @@ fn browser_inspect_act_verify_and_stale_ref_refusal() {
     let fixture = Fixture::start();
     let mut s = Session::spawn();
 
-    // --- inspect ---------------------------------------------------------
     let nav = s.call(
         "browser_navigate",
         json!({"url": format!("{}/", fixture.base)}),
@@ -156,12 +155,10 @@ fn browser_inspect_act_verify_and_stale_ref_refusal() {
     );
     let button_at = format!("@{button_ref}");
 
-    // --- act -------------------------------------------------------------
     let click = s.call("browser_click", json!({"element": button_at}));
     assert!(!is_error(&click), "click failed: {}", text_of(&click));
     assert_eq!(structured(&click)["ok"].as_bool(), Some(true));
 
-    // --- verify ----------------------------------------------------------
     let out = s.call(
         "browser_evaluate",
         json!({"expression": "document.querySelector('#out').textContent"}),
@@ -185,7 +182,6 @@ fn browser_inspect_act_verify_and_stale_ref_refusal() {
     );
     assert_eq!(structured(&value)["value"].as_str(), Some("hello hand"));
 
-    // --- pixels as separate evidence -------------------------------------
     let shot = s.call("browser_screenshot", json!({"deterministic": true}));
     assert!(!is_error(&shot), "screenshot failed: {}", text_of(&shot));
     let shot_sc = structured(&shot);
@@ -199,7 +195,6 @@ fn browser_inspect_act_verify_and_stale_ref_refusal() {
         "deterministic capture reports a checksum: {shot_sc}"
     );
 
-    // --- navigation invalidates refs; a stale ref fails clearly ----------
     let next = s.call(
         "browser_navigate",
         json!({"url": format!("{}/next", fixture.base)}),

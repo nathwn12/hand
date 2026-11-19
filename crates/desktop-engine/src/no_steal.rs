@@ -234,7 +234,6 @@ fn opt_u32(value: Option<u32>) -> Value {
     }
 }
 
-// ---------------------------------------------------------------- PE imports
 
 fn u16le(bytes: &[u8], at: usize) -> Result<u16, String> {
     let chunk = bytes

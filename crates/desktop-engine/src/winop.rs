@@ -885,7 +885,6 @@ mod tests {
                 .expect("structuredContent payload")
         };
 
-        // ---- maximize is refused even with the flag: no zoom, no save.
         let sc = call("maximize");
         assert_eq!(sc["ok"], Value::from(false), "maximize: {sc}");
         assert_eq!(
@@ -910,7 +909,6 @@ mod tests {
         );
         assert_eq!(window_rect(h), want, "geometry must not move");
 
-        // ---- non-intrusive invariants, measured across the refusal.
         if fg_before != 0 {
             assert_eq!(
                 crate::fixture::foreground_now(),

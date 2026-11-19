@@ -147,7 +147,6 @@ fn desktop_enumerates_and_inspects_a_background_window_without_stealing() {
         els.len()
     );
 
-    // --- negative evidence: a target that does not exist is a typed failure,
     // never an empty success and never a foreground fallback.
     let missing = s.call(
         "desktop_elements",
@@ -163,7 +162,6 @@ fn desktop_enumerates_and_inspects_a_background_window_without_stealing() {
         "the refusal is machine-readable: {missing_text}"
     );
 
-    // --- no-steal evidence -------------------------------------------------
     let fg_after = foreground_now();
     if fg_after != fg_before {
         let attributed = Some(fg_after) == Some(hwnd)

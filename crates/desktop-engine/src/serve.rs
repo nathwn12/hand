@@ -2089,7 +2089,6 @@ mod tests {
     }
 }
 
-// ---------------------------------------------------------------- hand API
 
 /// hand integration: the tool catalog body, unchanged from Puppet's own
 /// `tools/list` result.

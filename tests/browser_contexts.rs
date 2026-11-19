@@ -446,7 +446,6 @@ fn two_contexts_have_separate_cookies_and_storage() {
         let rig = Rig::start();
         assert_owned_engine();
 
-        // --- creation ----------------------------------------------------
         let a = rig
             .call(json!({"action": "create", "name": "alpha", "url": format!("{}/", fixture.base)}))
             .await;
@@ -485,7 +484,6 @@ fn two_contexts_have_separate_cookies_and_storage() {
         assert_eq!(page_url(&rig, "alpha").await, format!("{}/", fixture.base));
         assert_eq!(page_url(&rig, "beta").await, format!("{}/", fixture.base));
 
-        // --- write state in alpha ---------------------------------------
         let seeded = rig
             .call(json!({"action": "eval", "name": "alpha", "expression":
                 "document.cookie='who=alpha; path=/'; localStorage.setItem('who','alpha'); \
@@ -498,7 +496,6 @@ fn two_contexts_have_separate_cookies_and_storage() {
         );
         assert_eq!(sc(&seeded)["value"].as_str(), Some("who=alpha"));
 
-        // --- beta sees none of it ---------------------------------------
         let beta_view = rig
             .call(json!({"action": "eval", "name": "beta", "expression":
                 "JSON.stringify([document.cookie, localStorage.getItem('who'), \
@@ -515,7 +512,6 @@ fn two_contexts_have_separate_cookies_and_storage() {
             "a second context must not see alpha's cookie or storage: {beta_view}"
         );
 
-        // --- alpha keeps its own ----------------------------------------
         let alpha_view = rig
             .call(json!({"action": "eval", "name": "alpha", "expression":
                 "JSON.stringify([document.cookie, localStorage.getItem('who'), \
@@ -526,7 +522,6 @@ fn two_contexts_have_separate_cookies_and_storage() {
             Some("[\"who=alpha\",\"alpha\",\"alpha\"]")
         );
 
-        // --- the context's own jar, read through CDP --------------------
         let jars = rig
             .call(json!({"action": "cookies", "name": "alpha"}))
             .await;
@@ -545,7 +540,6 @@ fn two_contexts_have_separate_cookies_and_storage() {
             "beta's jar is empty: {beta_jars}"
         );
 
-        // --- a verified cookie set lands in beta only -------------------
         let set = rig
             .call(json!({"action": "cookies", "name": "beta", "cookies": [
                 {"name": "betaonly", "value": "1", "url": format!("{}/", fixture.base)}
@@ -569,7 +563,6 @@ fn two_contexts_have_separate_cookies_and_storage() {
             "beta's cookie must not leak into alpha: {alpha_after}"
         );
 
-        // --- the context grows to several pages -------------------------
         let opened = rig
             .call(json!({"action": "open", "name": "beta", "url": format!("{}/?second", fixture.base)}))
             .await;
@@ -659,7 +652,6 @@ fn two_contexts_have_separate_cookies_and_storage() {
             "the refusal names the owning context: {hijack}"
         );
 
-        // --- close only the context's page ------------------------------
         let closed = rig
             .call(json!({"action": "close", "name": "alpha", "page": alpha_target}))
             .await;
@@ -689,7 +681,6 @@ fn two_contexts_have_separate_cookies_and_storage() {
             "the second page survives alpha's teardown: {beta_show}"
         );
 
-        // --- teardown, verified -----------------------------------------
         let destroyed = rig
             .call(json!({"action": "destroy", "name": "alpha"}))
             .await;
@@ -930,7 +921,6 @@ fn destroy_skips_page_teardown_handlers_while_close_runs_them() {
              observed {seen:?}"
         );
 
-        // --- control: an orderly page close does run them -----------------
         let orderly = rig
             .call(json!({"action": "create", "name": "orderly", "url": format!("{}/teardown", fixture.base)}))
             .await;
@@ -1646,7 +1636,6 @@ fn selection_is_registry_scoped_and_teardown_leaves_the_other_context_alone() {
     });
 }
 
-// ------------------------------------------------------- failure regressions
 
 /// A stale acquisition must never write into, or roll back, a later entry that
 /// reused the same name. Reproduced with a slowed first acquisition, a destroy
@@ -2531,7 +2520,6 @@ fn a_same_document_navigation_keeps_the_title_and_a_real_one_replaces_it() {
     });
 }
 
-// ---------------------------------------------------------------- attached
 /// An externally started engine this test owns only because it launched it: it
 /// stands in for "someone else's browser" that hand attaches to.
 struct ExternalEngine {
@@ -3006,7 +2994,6 @@ fn attached_connection_loss_is_unverified_not_gone_and_reconciles() {
         );
         assert_eq!(rig.reg.names().await, vec!["keep".to_string()]);
 
-        // --- restore the link: the next calls reconcile by probing ----------
         proxy.restore();
         let deadline = Instant::now() + Duration::from_secs(20);
         let mut reconciled = None;

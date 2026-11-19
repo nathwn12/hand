@@ -156,7 +156,6 @@ fn gate_holds_no_permits_and_no_injection_apis() {
     println!("NO_STEAL_MINT_OK permits=0 injection-apis=0");
 }
 
-// ---------------------------------------------------------------- server
 
 struct Session {
     child: Child,
@@ -515,7 +514,6 @@ fn focus_is_refused_with_or_without_the_flag() {
     println!("NO_STEAL_FOCUS_FLAG_OK hwnd={hwnd} fg={fg_before}");
 }
 
-// ---------------------------------------------------------------- live read-only
 
 fn live() -> bool {
     if std::env::var("HAND_LIVE_DESKTOP").as_deref() == Ok("1") {
@@ -690,7 +688,6 @@ fn window_text(hwnd: i64) -> String {
     String::from_utf16_lossy(&buf[..n.max(0) as usize])
 }
 
-// ------------------------------------------------- foreground ownership gate
 
 /// The decision core below restates the rule the burst gate already applies
 /// (`src/fixture.rs`: `FgOutcome` / `fg_outcome` / `FG_SAMPLES` /

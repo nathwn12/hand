@@ -864,7 +864,6 @@ fn a_cancelled_desktop_call_stays_silent_over_the_wire() {
     assert!(fresh.get("result").is_some(), "new id answers: {fresh}");
 }
 
-// ------------------------------------------------- page size vs transport
 
 /// A CDP reply larger than one WebSocket frame is a big page, not a dead
 /// engine.
