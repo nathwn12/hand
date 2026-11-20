@@ -127,15 +127,31 @@ function evaluateExpect(expect, results) {
   return { ok: failures.length === 0, detail: failures.join('; ') };
 }
 
-function payloadOf(result) {
-  if (result?.structuredContent && typeof result.structuredContent === 'object') return result.structuredContent;
+function messageOf(result) {
   const text = Array.isArray(result?.content)
     ? result.content.find((item) => item?.type === 'text' && typeof item.text === 'string')?.text
     : undefined;
-  if (typeof text === 'string' && text.trim()) {
+  return typeof text === 'string' ? text : '';
+}
+
+function payloadOf(result) {
+  if (result?.structuredContent && typeof result.structuredContent === 'object') return result.structuredContent;
+  const text = messageOf(result);
+  if (text.trim()) {
     try { return JSON.parse(text); } catch { return { text }; }
   }
   return {};
+}
+
+// A typed not_implemented is an absent capability, not a broken one. The
+// tool's own prose names the limit, so it becomes the pending reason. Other
+// typed errors stay failures: only this exact code promotes a task to pending.
+function notImplementedReason(record) {
+  if (!record.isError || record.payload?.code !== 'not_implemented') return null;
+  const keys = ['kind', 'action', 'field', 'name'];
+  const key = keys.find((name) => record.payload[name] !== undefined);
+  const name = key ? `${record.tool}(${key}=${record.payload[key]})` : record.tool;
+  return `waits for ${name}: ${record.message || record.payload.code}`;
 }
 
 function resolveTokens(value, tokens) {
@@ -235,9 +251,10 @@ async function runOnce({ manifest, client, tools, tokens, runNumber }) {
           const response = await client.request('tools/call', { name: call.tool, arguments: args }, { timeoutMs: CALL_TIMEOUT_MS });
           const result = response.result ?? {};
           const isError = result.isError === true;
-          record = { tool: call.tool, args, isError, error: isError ? payloadOf(result).code ?? payloadOf(result).message ?? '' : '', payload: payloadOf(result), elapsedMs: response.elapsedMs };
+          const payload = payloadOf(result);
+          record = { tool: call.tool, args, isError, error: isError ? payload.code ?? payload.message ?? '' : '', payload, message: messageOf(result), elapsedMs: response.elapsedMs };
         } catch (error) {
-          record = { tool: call.tool, args, isError: true, error: error.message, payload: {}, elapsedMs: 0 };
+          record = { tool: call.tool, args, isError: true, error: error.message, payload: {}, message: '', elapsedMs: 0 };
         }
         callRecords.push(record);
         applyBindings(task.bind, callRecords, localTokens);
@@ -245,6 +262,11 @@ async function runOnce({ manifest, client, tools, tokens, runNumber }) {
       const verdict = evaluateExpect(task.expect, callRecords);
       status = verdict.ok ? 'pass' : 'fail';
       reason = verdict.detail;
+      const absent = callRecords.map(notImplementedReason).find(Boolean);
+      if (absent) {
+        status = 'pending';
+        reason = absent;
+      }
       const cleanupErrors = [];
       for (const call of task.cleanup ?? []) {
         try {
