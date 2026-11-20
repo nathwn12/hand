@@ -143,15 +143,14 @@ existing target takes precedence over the hidden-launch request.
   attempts, 0 failures each. hand is **10 % slower** than Puppet here, and that
   is what the receipt says.
 
-  `desktop-capture` is **measured but not claimable**. One run on an active
-  desktop produced 100 attempts at p95 247.3 ms against the 500 ms target, but 37
-  attempts failed the safety precondition (`cursorUnchanged` false, one
-  `foregroundUnchanged` false), so the receipt's verdict is `fail` and the release
-  gate stays blocked. Over the 63 attempts that did hold the precondition, p95 was
-  224.7 ms with a 232.9 ms maximum — under target, but a subset is not a receipt.
-  A clean row needs an idle desktop for the full 100. The run also rejected the
-  binary as an unverified release because it was invoked from its install path;
-  `target\release\hand.exe` is the path the identity check accepts.
+  `desktop-capture` is **measured and passing**. One run on an active desktop
+  produced 100 attempts at p95 228.575 ms against the 500 ms target: all 100
+  passed, 0 failed, with no `cursorUnchanged:false` or
+  `foregroundUnchanged:false` results. This is one clean run, not a claim of
+  unconditional 0 of 100. The verdict is `pass`, but the receipt still carries
+  `releaseBlocked=true`: the binary was invoked from its install path, and the
+  identity check only accepts `target\release\hand.exe`, so the release gate
+  needs a re-run from the release binary.
 - Windows x64 only; no macOS/Linux desktop support is implied.
 
 ### Scope notes
