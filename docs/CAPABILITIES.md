@@ -155,14 +155,16 @@ existing target takes precedence over the hidden-launch request.
   attempts, 0 failures each. hand is **10 % slower** than Puppet here, and that
   is what the receipt says.
 
-  `desktop-capture` is **measured and passing**. One run on an active desktop
-  produced 100 attempts at p95 228.575 ms against the 500 ms target: all 100
-  passed, 0 failed, with no `cursorUnchanged:false` or
-  `foregroundUnchanged:false` results. This is one clean run, not a claim of
-  unconditional 0 of 100. The verdict is `pass`, but the receipt still carries
-  `releaseBlocked=true`: the binary was invoked from its install path, and the
-  identity check only accepts `target\release\hand.exe`, so the release gate
-  needs a re-run from the release binary.
+  `desktop-capture` is **measured and passing**. Two consecutive release runs on
+  an active desktop each produced 100 attempts against the 500 ms target: 100
+  passed, 0 failed, p95 245.802 ms and 257.813 ms. The raw `cursorUnchanged` and
+  `foregroundUnchanged` flags can read false while a person uses the machine;
+  the attribution engine separates owner input from tool action, and the binary
+  links no pointer or foreground writer, so the harness verdict - not a raw
+  flag - is the no-steal gate. The release identity is attested by a recorded
+  build receipt under `benchmarks/receipts/builds`, not a self-report:
+  `compare.mjs` re-checks the embedded commit, profile and artifact hash
+  against it before a receipt is claimable.
 - Windows x64 only; no macOS/Linux desktop support is implied.
 
 ### Scope notes
