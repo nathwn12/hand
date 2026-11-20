@@ -118,7 +118,7 @@ modified or retired; no drop-in compatibility is claimed.
 {
   "name": "hand",
   "title": "hand",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "platform": "windows-x64",
   "engines": {
     "browser": {"engine": "gladius", "sourcePin": "59c6d77", "version": "0.8.0",

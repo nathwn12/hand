@@ -9,7 +9,7 @@ not to be claimed.
 | | |
 |---|---|
 | Host | `NECESSE`, Windows 11 Pro, x64, Ryzen 7 5800X, 31.9 GB |
-| Build | `cargo` 1.100.0, dev and release profiles, `hand 0.1.0` |
+| Build | `cargo` 1.100.0, dev and release profiles, `hand 0.1.1` |
 | Browser | `chrome-headless-shell` 155.0.8059.84 (`Google Chrome for Testing`) |
 | Browser path | `%LOCALAPPDATA%\gladius\chromium\155.0.8059.84-5ca590a4\chrome-headless-shell-win64\chrome-headless-shell.exe` |
 | Browser SHA-256 | `64db9686dab042ba3282f7ab6fef98de266b015fd4d056c30760244425091d39` (matches `crates/browser-engine/scripts/chromium-manifest.json`) |
