@@ -8,7 +8,20 @@ permissions:
   id-token: write
 
 jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test
+      - run: cargo test -p browser-engine
+      - run: cargo test -p desktop-engine -- --skip live_
+      - run: node baseline/scripts/compare-catalog.mjs --serve target/debug/hand.exe --baseline hand
   publish:
+    needs: test
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
