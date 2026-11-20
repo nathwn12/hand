@@ -19,7 +19,7 @@ not to be claimed.
 | Capability | Evidence |
 |---|---|
 | One executable, one stdio MCP connection | `tests/discovery.rs` (7 tests): initialize, ping, tools/list, tools/call, server/discover, version gate |
-| Both catalogs plus hand's own tools, legacy bodies byte-identical except the declared additions in `baseline/declared-additions.json` | `catalog_is_the_floor_plus_hand_additions`, `tool_bodies_are_engine_bodies_under_the_prefix` (compares each published body with `baseline/hand-catalog.json` after the declared paths are checked present and stripped; `baseline/test/declared-additions.test.mjs` proves it red on an undeclared addition and on a deleted one); independent `baseline/scripts/compare-catalog.mjs` PASS: 32/32 legacy tools compared, 3 extras, 10 declared addition groups, 7 description differences. The live catalog is **35** tools: the 32-name compatibility floor plus `browser_context`, `browser_wheel` and `browser_drag`, which hand adds on top and which `baseline/hand-catalog.json` records under `live` |
+| Both catalogs plus hand's own tools, legacy bodies byte-identical except the declared additions in `baseline/declared-additions.json` | `catalog_is_the_floor_plus_hand_additions`, `tool_bodies_are_engine_bodies_under_the_prefix` (compares each published body with `baseline/hand-catalog.json` after the declared paths are checked present and stripped; `baseline/test/declared-additions.test.mjs` proves it red on an undeclared addition and on a deleted one); independent `baseline/scripts/compare-catalog.mjs` PASS: 32/32 legacy tools compared, additional hand tools reported as extras, 10 declared addition groups, 7 description differences. The live catalog is **38** tools: the 32-name compatibility floor plus `browser_context`, `browser_wheel`, `browser_drag`, `browser_form`, `browser_download` and `browser_assert`, which hand adds on top and which `baseline/hand-catalog.json` records under `live` |
 | Isolated, named browser contexts over the real MCP route | `tests/context_wire.rs`: published schema; two contexts with separate cookie jars; legacy page and legacy tab space untouched; `targets select` refuses a context page; typed errors; shutdown disposes only hand's contexts (two clients attached to one external engine, the other's context, page and cookie survive) |
 | Browser backend identity and availability | `initialize_identifies_version_platform_and_both_engines`: `gladius` pin, `puppet` pin, platform, counts, instructions |
 | Live headless browser inspect → act → verify | `tests/browser_live.rs`: loopback fixture; navigate, AX snapshot, click by `@eN`, DOM effect proven by evaluate, type into a labelled field and read back |
@@ -44,6 +44,15 @@ not to be claimed.
 | Pinned browser artifact | File SHA-256 recomputed and equal to the manifest; `--version` reports 155.0.8059.84 |
 | Selector engine: `role=`, `role=…[name="…"]`, `name=`, `text=`, `label=` | `tests/selectors.rs` (17 tests), resolved on `Accessibility.getFullAXTree` and acted on by backend id. Uniqueness is enforced before acting: zero → `invalid_target`/`not_found`, many → `invalid_target`/`ambiguous` listing every candidate. Names match case-insensitively after whitespace normalisation, and the resolver accepts both the raw AX name and the name `browser_snapshot` prints. `text=` reads visible text with fragments concatenated, innermost owner first; `label=` accepts only `labelfor`/`labelwrapped` provenance. CSS keeps first-match, `@eN` stays snapshot-bound with typed stale refs. Measured on 155.0.8059.84: a frame's tree excludes iframe content (the iframe is one opaque node), so scope is one frame tree and the refusals say so. |
 | Installed server proven, not assumed | `scripts/verify-install.mjs`: the installed binary's stamp must equal HEAD and not be `-dirty`; `--loaded` additionally requires a running process on that exact file started after it was written. The binary name is read from `Cargo.toml`, so a rename cannot leave a stale path. |
+| Extended navigation result | red-line-then-green test: `browser_navigate` returns an `observed` object with `status`, `redirects` and `timings` |
+| Frame-scoped layout, layout assertion and visual | red-line-then-green test: `browser_layout`, `browser_assert_layout` and `browser_visual` accept `frame=` and act inside that frame's DOM |
+| Trusted drag with a data transfer | red-line-then-green test: a trusted drag carries a `dataTransfer` into the page's `dragover` and `drop` handlers. CDP has no `dragstart` dispatch, so the page's native `dragstart` sees an empty `DataTransfer`; the tool description states this and the test locks it |
+| Ordered form batches | red-line-then-green test: `browser_form` runs an ordered batch and reports a per-step status and verdict |
+| Browser download | red-line-then-green test: `browser_download` writes to a caller-supplied directory and reports SHA-256 and MIME; a cancelled download cleans up its partial file |
+| Browser assertions | red-line-then-green test: `browser_assert` covers `dom`, `text` and `url` with bounded polling; `ax` and `network` kinds answer a typed `not_implemented` |
+| Per-monitor v2 DPI awareness | the process sets per-monitor v2 DPI awareness and reads it back at startup; `doctor` reports it |
+| Typed capture codes for frame and no-steal faults | `blank_frame`, `stale_frame`, `too_large` and `no_steal_violation` are typed codes; `no_steal_violation` fails closed and returns no pixels |
+| Repeatable browser task suite | `node fixtures/run-tasks.mjs`, three consecutive runs: pass=21 pending=9 fail=0, exit 0; a `pending` line names the tool it waits for |
 
 Commands run (all exit 0):
 
@@ -53,6 +62,7 @@ cargo test -p browser-engine
 cargo test -p desktop-engine -- --skip live_
 $env:HAND_LIVE_DESKTOP='1'; cargo test --test no_steal live_read_only_target_capture_keeps_foreground
 node baseline/scripts/compare-catalog.mjs --serve target\debug\hand.exe --baseline hand
+node fixtures/run-tasks.mjs
 ```
 
 ## Missing or unverified
@@ -67,24 +77,25 @@ These are not implemented, not exercised, or not safe to claim from this slice.
   crash boundary; IndexedDB and HTTP-cache separation expected but unverified;
   no per-context permissions; no dialog auto-handling in a context page; a hard
   kill of hand is not a cleanup path for an attached engine.
-- Frame-scoped acting beyond `snapshot`, `click`, `evaluate`, `type`, `hover`,
-  `select` and `upload`: those cover same-process frames and mapped OOPIFs; a
+- Frame-scoped acting: `snapshot`, `click`, `evaluate`, `type`, `hover` and
+  `select` cover same-process frames and mapped OOPIFs; `layout`,
+  `assert_layout` and `visual` are frame-scoped as well (verified above). A
   frame-scoped snapshot's refs are actionable only with the same `frame=`.
-  `layout`, `assert_layout` and `visual` remain main-frame only.
-- Downloads, and HTML5 `dragstart`/`drop` as a distinct primitive: `browser_drag`
-  sends one trusted pointer path, which the engine's own drag machinery sees on
-  a page that uses it, but no test pins a native `DataTransfer` drop here.
-- Ordered form batches with per-step partial failure reporting.
-- Extended navigation result with observed HTTP status and a versioned
-  interface (the legacy `navigate` result is unchanged).
-- Network interception, mocks, failure injection, offline mode.
+- Native HTML5 `dragstart`: CDP has no `dragstart` dispatch, so the page's
+  native `dragstart` sees an empty `DataTransfer`. Trusted `dragover`/`drop`
+  with a `dataTransfer` is verified above; that empty `dragstart` is the stated
+  limit, not a drop driven end to end from `dragstart`.
+- Network interception, mocks, failure injection, offline mode (row B3): a
+  scaffolded, hidden tool is present and returns a typed `not_implemented`
+  naming row B3. It is not advertised.
 - Deterministic clock, locale, per-context permissions, test-data reset.
-- Assertions on DOM/accessibility/text/URL/network with expected-vs-observed
-  verdicts beyond `assert_layout`.
-- Responsive viewport matrices, contrast/typography/focus-indicator target-size
-  evidence.
+- Assertions: `browser_assert` covers `dom`, `text` and `url` with bounded
+  polling (verified above). Its `ax` and `network` kinds answer a typed
+  `not_implemented` and are not claimed.
+- Responsive viewport matrices (row B7), contrast/typography/focus-indicator
+  target-size evidence: a scaffolded, hidden tool is present and returns a
+  typed `not_implemented` naming row B7. It is not advertised.
 - Opt-in traces/artifacts with redaction and retention.
-- Local fixtures and a repeatable assertion sequence through MCP.
 
 ### Desktop additions from the specification
 
@@ -98,7 +109,8 @@ These are not implemented, not exercised, or not safe to claim from this slice.
   writes remain prohibited.
 - Occlusion/minimized/elevated/secure-desktop reporting beyond what the engine
   already returns (partially visible in `list_windows`, not systematically
-  tested).
+  tested). The typed codes `occluded_unavailable` and `secure_desktop` are
+  declared, but their detection is unverified.
 
 Hidden launches use a kill-on-close job assigned at process creation. The
 creation-time job attribute requires Windows 10 version 1607 or later and the
@@ -108,7 +120,7 @@ existing target takes precedence over the hidden-launch request.
 
 ### Lifecycle and distribution
 
-- `oc-hand` OpenCode wiring: live at `C:\Users\nathan\.local\bin\hand.exe`, 35
+- `oc-hand` OpenCode wiring: live at `C:\Users\nathan\.local\bin\hand.exe`, 38
   tools. Private remote `github.com/nathwn12/hand`. No npm package and nothing
   published; the npm name `hand-mcp` is reserved by intent only.
 - Product and executable are `hand`; the repo, crate and binary were renamed
