@@ -148,3 +148,5 @@ Three commits in this history carried the local harness seed: `a0bdbe5`, `329543
 - [Compatibility](docs/COMPATIBILITY.md)
 - [Third-party notices](THIRD-PARTY-NOTICES.md)
 - [MIT](LICENSE)
+
+<p align="center"><sub>Built by nathwn12</sub></p>
