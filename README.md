@@ -9,7 +9,7 @@
 <p align="center">
   <a href="https://www.npmjs.com/package/hand-mcp"><img src="https://img.shields.io/npm/v/hand-mcp" alt="npm version"></a>
   <img src="https://img.shields.io/badge/platform-windows%20x64-blue" alt="platform">
-  <img src="https://img.shields.io/badge/tools-35-brightgreen" alt="35 tools">
+  <img src="https://img.shields.io/badge/tools-38-brightgreen" alt="38 tools">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT">
 </p>
 
@@ -53,14 +53,15 @@ The client spawns npx, which runs the bundled binary and speaks newline-delimite
 
 From source: `cargo build --release`, then `hand doctor` proves the build, the pinned engines and the browser path.
 
-## Browser, 28 tools
+## Browser, 31 tools
 
 `browser_snapshot` returns stable `@eN` references. Every action returns `resolved`, so a stale ref fails typed instead of clicking the wrong thing.
 
 - Navigate and inspect: `browser_navigate`, `browser_snapshot`, `browser_targets`, `browser_tabs`, `browser_viewport`, `browser_dialog`, `browser_history`
-- Act: `browser_click` (left, right, middle, double), `browser_type`, `browser_hover`, `browser_select`, `browser_key`, `browser_upload`, `browser_wheel`, `browser_drag`
-- Prove: `browser_assert_layout`, `browser_layout`, `browser_visual`, `browser_screenshot` (whole page, one element, or a clip; png, jpeg, webp)
+- Act: `browser_click` (left, right, middle, double), `browser_type`, `browser_hover`, `browser_select`, `browser_key`, `browser_upload`, `browser_wheel`, `browser_drag`, `browser_form` (ordered form batches)
+- Prove: `browser_assert_layout`, `browser_layout`, `browser_visual`, `browser_assert`, `browser_screenshot` (whole page, one element, or a clip; png, jpeg, webp)
 - Read: `browser_evaluate`, `browser_console`, `browser_network`, `browser_fetch_text`
+- Download: `browser_download` (caller directory, SHA-256, MIME, cancel cleanup)
 - Isolate: `browser_context` (named, separate cookie and storage jars)
 - Reach the protocol: `browser_cdp`
 - Wait and close: `browser_wait_for`, `browser_close`
@@ -91,7 +92,7 @@ await desktop_do({ hwnd: windows[0].hwnd, action: "invoke", name: "Install" });
 
 ## Compatibility
 
-hand serves a 35-tool floor: 28 browser tools (25 mapped one-to-one from Gladius plus `browser_context`, `browser_wheel`, `browser_drag`) and Puppet's 7 desktop tools. Names are prefixed, bodies are the pins'. A client migrating from either engine has a one-to-one mapping. Intentional differences, thirteen description rewrites included, are declared in `baseline/declared-additions.json`; `tests/discovery.rs` asserts them against the committed floor and `baseline/scripts/compare-catalog.mjs` recaptures it independently.
+hand serves 38 tools: 31 browser tools (25 mapped one-to-one from Gladius plus `browser_context`, `browser_wheel`, `browser_drag`, `browser_form`, `browser_download`, `browser_assert`) and Puppet's 7 desktop tools. Names are prefixed, bodies are the pins'. A client migrating from either engine has a one-to-one mapping. Intentional differences, thirteen description rewrites included, are declared in `baseline/declared-additions.json`; `tests/discovery.rs` asserts them against the committed floor and `baseline/scripts/compare-catalog.mjs` recaptures it independently.
 
 Engines: Gladius 0.8.0 (`59c6d77`) and Puppet 8.0.0 (`0f790be`), MIT, credited in `THIRD-PARTY-NOTICES.md`.
 
