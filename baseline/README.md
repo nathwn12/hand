@@ -12,8 +12,9 @@ reproduce, taken from the revisions the specification pins:
 ([specification](../docs/SPEC.md), "Initial public surface and lifecycle").
 
 The floor is what `hand` must serve; it is not the whole surface. The current
-build publishes **35** tools — those 32 plus `browser_context`,
-`browser_wheel` and `browser_drag` — and `hand-catalog.json` records both
+build publishes **38** tools — those 32 plus `browser_context`,
+`browser_wheel`, `browser_drag`, `browser_form`, `browser_download` and
+`browser_assert` — and `hand-catalog.json` records both
 halves: `counts` is the derived floor, `live` is what the binary answered
 `tools/list` with. Quoting `counts.total` as "the catalogue" is the mistake the
 `live` block exists to prevent.
@@ -56,9 +57,9 @@ implying that 32 is everything:
 | Field | Content |
 |---|---|
 | `counts.total` / `browser` / `desktop` | the derived floor, 32 = 25 + 7 pinned legacy tools |
-| `counts.live` | how many tools the served binary published (35 today) |
+| `counts.live` | how many tools the served binary published (38 today) |
 | `live.names` | every name the server answered with, sorted |
-| `live.extra` | the names above the floor, sorted (`browser_context`, `browser_drag`, `browser_wheel`) |
+| `live.extra` | the names above the floor, sorted (`browser_assert`, `browser_context`, `browser_download`, `browser_drag`, `browser_form`, `browser_wheel`) |
 | `live.toolCount` | `live.names.length` |
 | `live.protocolVersion` | the version the server negotiated for a `2025-11-25` request |
 | `live.capture` | the executable path, its SHA-256, and the binary's own `--version` line |
@@ -186,7 +187,8 @@ the gate cannot pass vacuously.
   private-desktop launch, semantic paging, visual-change waits, and the rest)
   are not in either catalogue and are not implied by this baseline. The `live`
   block records only what one build already adds — today `browser_context`,
-  `browser_wheel` and `browser_drag` — and says nothing about the rest.
+  `browser_wheel`, `browser_drag`, `browser_form`, `browser_download` and
+  `browser_assert` — and says nothing about the rest.
 - The capture says nothing about whether either binary passes its own tests on
   this machine in this session.
 - `ping`, `initialize` and `server/discover` results are captured for

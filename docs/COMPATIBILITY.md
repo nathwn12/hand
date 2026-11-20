@@ -126,7 +126,7 @@ modified or retired; no drop-in compatibility is claimed.
     "desktop": {"engine": "puppet", "sourcePin": "0f790be", "version": "8.0.0",
                  "available": true, "backend": "uia+win32", "toolCount": 7}
   },
-  "count": 35,
+  "count": 38,
   "isolatedContexts": {"tool": "browser_context", "available": true, "…": "…"}
 }
 ```
@@ -135,8 +135,9 @@ modified or retired; no drop-in compatibility is claimed.
 so an attached or capability-restricted engine is described as it really is.
 `engines.browser.toolCount` is the engine's own `list()` (25 pinned plus
 `wheel` and `drag`). `browser_context` is published from the engine's context
-module beside that list, so the wire carries 28 `browser_*` bodies and 35 tools
-in total.
+module beside that list. With `browser_form`, `browser_download` and
+`browser_assert` added, the wire carries 31 `browser_*` bodies and 38 tools in
+total.
 
 ## Preserved behavior
 
