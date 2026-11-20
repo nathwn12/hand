@@ -11,14 +11,19 @@
 //! Coordinate convention (documented in README + tool descriptions):
 //! 1. a `target` call takes `x`/`y` as CLIENT-AREA PHYSICAL PIXELS of the
 //!    locked window (`GetClientRect` space, origin at the client top-left);
-//! 2. a call without a target takes `x`/`y` as virtual-desktop screen pixels
-//!    (the legacy SendInput path, still gated behind `allow_cursor`);
+//! 2. a call without a target takes `x`/`y` as virtual-desktop screen pixels,
+//!    and a pointer act on that path is still refused with `no_cursor_policy`:
+//!    no cursor or foreground writer is linked, so there is no input path to
+//!    gate and `allow_cursor` buys nothing;
 //! 3. window/element rects reported by the tools stay in SCREEN pixels, so an
 //!    element centre is converted here with `screen_point_to_client`.
 //!
-//! This process is per-monitor DPI aware (main.rs), so client pixels are
-//! physical device pixels on every monitor; `dpi` is reported for callers
-//! that want logical units, and `scale_at_dpi` is the one conversion used.
+//! DPI awareness is NOT yet in force: `SetProcessDpiAwarenessContext` with
+//! PMv2 is imported at `lib.rs:69-71` but never called, and no application
+//! manifest declares it, so at non-100% scaling Windows may virtualise the
+//! coordinates read here. Enable it before trusting client pixels on a scaled
+//! monitor; `dpi` is reported for callers that want logical units and
+//! `scale_at_dpi` is the one conversion used.
 
 use serde_json::{Map, Value};
 use windows_sys::Win32::Foundation::{HWND, POINT, RECT};
