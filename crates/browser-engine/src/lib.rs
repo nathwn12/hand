@@ -29,6 +29,30 @@
 
 #![recursion_limit = "256"]
 
+/// Informational engine logs are opt-in: `HAND_DEBUG=1` or `HAND_VERBOSE=1`.
+pub fn verbose_logs() -> bool {
+    static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| {
+        ["HAND_DEBUG", "HAND_VERBOSE"]
+            .iter()
+            .any(|k| std::env::var(k).is_ok_and(|v| v == "1" || v == "true"))
+    });
+    *ON
+}
+
+#[macro_export]
+macro_rules! debug_eprintln {
+    ($($arg:tt)*) => {
+        if $crate::verbose_logs() { eprintln!($($arg)*); }
+    };
+}
+
+#[macro_export]
+macro_rules! err_eprintln {
+    ($code:literal, $($arg:tt)*) => {
+        eprintln!("[hand] {}: {}", $code, format!($($arg)*));
+    };
+}
+
 mod browser;
 mod capture;
 pub mod contexts;

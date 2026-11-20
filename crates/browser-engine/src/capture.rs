@@ -439,7 +439,7 @@ impl Capture {
 /// never swallowed: the capture still succeeds (the pixels are real), but the
 /// operator can see that a page may be left with a stale override.
 pub(crate) fn warn(msg: &str) {
-    eprintln!("[gladius] warn: {msg}");
+    err_eprintln!("EWARN", "[gladius] warn: {msg}");
 }
 
 /// Test-only hook: hold the critical section open for this many milliseconds

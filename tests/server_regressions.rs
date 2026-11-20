@@ -116,6 +116,7 @@ impl RawSession {
         use std::io::{BufRead, BufReader};
         use std::process::{Command, Stdio};
         let mut cmd = Command::new(env!("CARGO_BIN_EXE_hand"));
+        cmd.env("HAND_DEBUG", "1");
         cmd.env("HAND_TOOL_BUDGET_MS", "90000");
         cmd.env("GLADIUS_TOOL_BUDGET_MS", "90000");
         cmd.env("GLADIUS_BACKEND_CAPS", "render");

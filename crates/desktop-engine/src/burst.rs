@@ -2544,7 +2544,7 @@ pub fn do_burst(args: &DoArgs) -> String {
         let earned =
             private_desktop_earned(created, hidden_name.as_str(), target_desktop.as_deref());
         if hidden_mode && !earned {
-            eprintln!(
+            debug_eprintln!(
                 "puppet: desktop:'hidden' did not earn private-desktop permission \
                  (created={created}, target_desktop={target_desktop:?}, expected={:?}); \
                  using ordinary target rules",

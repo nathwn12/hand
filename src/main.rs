@@ -6,6 +6,28 @@
 
 #![windows_subsystem = "windows"]
 
+/// Informational logs are opt-in: `HAND_DEBUG=1` or `HAND_VERBOSE=1`.
+fn verbose_logs() -> bool {
+    static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| {
+        ["HAND_DEBUG", "HAND_VERBOSE"]
+            .iter()
+            .any(|k| std::env::var(k).is_ok_and(|v| v == "1" || v == "true"))
+    });
+    *ON
+}
+
+macro_rules! debug_eprintln {
+    ($($arg:tt)*) => {
+        if crate::verbose_logs() { eprintln!($($arg)*); }
+    };
+}
+
+macro_rules! err_eprintln {
+    ($code:literal, $($arg:tt)*) => {
+        eprintln!("[hand] {}: {}", $code, format!($($arg)*));
+    };
+}
+
 mod catalog;
 mod server;
 
@@ -19,7 +41,7 @@ fn main() {
         }
         Some("doctor") => doctor(),
         Some(other) => {
-            eprintln!("usage: hand [mcp|doctor|--version]; unknown subcommand: {other}");
+            err_eprintln!("EUSAGE", "Unknown subcommand '{other}'; use hand with mcp, doctor or --version.");
             2
         }
     };
@@ -62,7 +84,7 @@ fn run_server() -> i32 {
             {
                 Ok(rt) => rt,
                 Err(e) => {
-                    eprintln!("[hand] failed to start the async runtime: {e}");
+                    err_eprintln!("ERUNTIME", "[hand] failed to start the async runtime: {e}");
                     return 1;
                 }
             };
@@ -72,11 +94,11 @@ fn run_server() -> i32 {
             let code = match result {
                 Ok(Ok(())) => 0,
                 Ok(Err(e)) => {
-                    eprintln!("[hand] {e}");
+                    err_eprintln!("ESERVE", "[hand] {e}");
                     1
                 }
                 Err(_) => {
-                    eprintln!(
+                    err_eprintln!("EPANIC", 
                         "[hand] server loop panicked; its normal shutdown did not run, so an \
                          attached browser was NOT detached and any page state it changed is \
                          UNVERIFIED; in-flight desktop actions' outcomes are UNKNOWN"
@@ -90,13 +112,13 @@ fn run_server() -> i32 {
                 let outstanding =
                     server::ACTIVE_DESKTOP_JOBS.load(std::sync::atomic::Ordering::SeqCst);
                 if outstanding > 0 {
-                    eprintln!(
+                    err_eprintln!("ESHUTDOWN", 
                         "[hand] shutdown: runtime teardown reached its {RUNTIME_EXIT_BOUND:?} \
                          bound; {outstanding} blocking desktop job(s) were still running and were \
                          NOT stopped, so their outcome is UNKNOWN (the process exits now)"
                     );
                 } else {
-                    eprintln!(
+                    debug_eprintln!(
                         "[hand] shutdown: runtime teardown reached its {RUNTIME_EXIT_BOUND:?} \
                          bound before teardown completed; the process exits now"
                     );
@@ -107,7 +129,7 @@ fn run_server() -> i32 {
     match handle {
         Ok(h) => h.join().unwrap_or(1),
         Err(e) => {
-            eprintln!("[hand] failed to start the server thread: {e}");
+            err_eprintln!("ETHREAD", "[hand] failed to start the server thread: {e}");
             1
         }
     }

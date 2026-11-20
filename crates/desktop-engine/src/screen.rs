@@ -659,7 +659,7 @@ pub fn screenshot_desktop(a: &ShotArgs) -> String {
                 Ok((ai, oi)) => match dxgi_grab(ai, oi, gw as i32, gh as i32) {
                     Ok(im) => (im, "dxgi".to_string()),
                     Err(fb) => {
-                        eprintln!("puppet: dxgi unavailable ({fb}), using gdi");
+                        debug_eprintln!("puppet: dxgi unavailable ({fb}), using gdi");
                         match bitblt_grab(gl as i32, gt as i32, gw as i32, gh as i32) {
                             Ok(im) => (im, "gdi".to_string()),
                             Err(e) => {

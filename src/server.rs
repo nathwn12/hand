@@ -565,7 +565,7 @@ impl State {
             .filter(|w| w.kind == WorkerKind::Browser)
             .count();
         let desktop = abandoned.len() - browser;
-        eprintln!("{}", kind.abandonment(grace, browser, desktop));
+        err_eprintln!("EABANDON", "{}", kind.abandonment(grace, browser, desktop));
         for worker in abandoned.iter_mut() {
             worker.handle.abort();
         }
@@ -585,7 +585,7 @@ impl State {
             }
         }
         if unsettled > 0 {
-            eprintln!(
+            err_eprintln!("EABORT", 
                 "[hand] shutdown ({}): {unsettled} aborted wrapper(s) did not settle within \
                  {ABORT_SETTLE:?}; closing anyway (their cleanup is UNVERIFIED)",
                 kind.label()
@@ -634,7 +634,7 @@ async fn writer_loop(mut rx: mpsc::UnboundedReceiver<Value>) {
                 s
             }
             Err(e) => {
-                eprintln!("[hand] response serialization failed: {e}");
+                err_eprintln!("EWRITE", "[hand] response serialization failed: {e}");
                 continue;
             }
         };
@@ -654,14 +654,14 @@ fn install_payload_free_panic_hook() {
             .location()
             .map(|l| format!("{}:{}", l.file(), l.line()))
             .unwrap_or_else(|| "unknown location".to_string());
-        eprintln!("[hand] panic at {at} (payload suppressed: it can contain user content)");
+        err_eprintln!("EPANIC", "[hand] panic at {at} (payload suppressed: it can contain user content)");
     }));
 }
 
 pub async fn serve() -> Result<(), String> {
     install_payload_free_panic_hook();
     catalog::validate()?;
-    eprintln!(
+    debug_eprintln!(
         "[hand] engine hand {} (gladius {}, puppet {}) platform {}",
         env!("CARGO_PKG_VERSION"),
         browser_engine::UPSTREAM_PIN,
@@ -726,7 +726,7 @@ async fn shutdown(state: &Arc<State>) {
         .await
         .is_err()
     {
-        eprintln!(
+        err_eprintln!("ECONTEXT", 
             "[hand] shutdown ({}): context disposal did not finish within {CONTEXT_CLOSE_GRACE:?}; \
              what the registry still tracks is reported by a later `browser_context list`, and any \
              context it had already removed from tracking is not claimed as disposed",
@@ -737,7 +737,7 @@ async fn shutdown(state: &Arc<State>) {
         .await
         .is_err()
     {
-        eprintln!(
+        err_eprintln!("ECLOSE", 
             "[hand] shutdown ({}): {} did not finish within {BROWSER_CLOSE_GRACE:?}; continuing",
             kind.label(),
             if kind == EngineKind::Attached {
@@ -948,7 +948,7 @@ async fn dispatch_call(
                 let body = match outcome {
                     Ok(Ok(value)) => Some(value),
                     Ok(Err(join)) => {
-                        eprintln!(
+                        err_eprintln!("EENGINE", 
                             "[hand] browser call '{legacy}': engine task failed ({})",
                             if join.is_panic() { "panic" } else { "aborted" }
                         );
@@ -988,7 +988,7 @@ async fn dispatch_call(
                 {
                     worker.abort();
                     let _ = (&mut worker.0).await;
-                    eprintln!(
+                    err_eprintln!("ECLEANUP", 
                         "[hand] browser call '{legacy}': engine cleanup did not finish \
                          within {ENGINE_CLEANUP_GRACE:?} after the budget answer; aborted \
                          (its started restore is UNVERIFIED)"
@@ -1051,7 +1051,7 @@ async fn dispatch_call(
                 let result = tokio::task::spawn_blocking(move || {
                     let _active = ActiveDesktopJob::enter();
                     if let Some(ms) = stuck_ms {
-                        eprintln!(
+                        debug_eprintln!(
                             "[hand] TEST HOOK (debug build, HAND_TEST_HOOKS=1): blocking desktop \
                              job started for {ms} ms; no window is touched; TEST ONLY"
                         );
