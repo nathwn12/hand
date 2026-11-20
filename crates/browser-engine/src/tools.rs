@@ -278,7 +278,7 @@ pub fn list() -> Value {
             .position(|t| t.get("name").and_then(|v| v.as_str()) == Some("close"))
             .unwrap_or(tools.len());
         tools.insert(at, json!({"name": "assert_layout", "title": "Assert Layout",
-          "description": "Prove geometry without pixels: one call, one or many targets (ref @eN and/or CSS selector, string or array), several checks. Checks: exists (default true; false asserts absence), visible (a real box, not display:none/visibility:hidden/collapse, opacity>0), stableFrames (N animation frames, identical bbox), box {x,y,w,h,tolerance} in VIEWPORT CSS px from DOM.getBoxModel, hitTarget (elementFromPoint at the exact centre is the target or a descendant - the same guard click uses), computed (subset of getComputedStyle, string-exact), noOverflow (scrollWidth/Height <= clientWidth/Height + tolerance), inViewport (whole box inside the visual viewport). Returns per-check {target, check, pass, expected, actual, delta} plus an overall pass. deterministic:true measures under the same freeze a deterministic screenshot uses (animation:none, WAAPI/SMIL/media held, frames and open shadow roots walked) and echoes freezeApplied:true - the ONLY way to compare geometry with a deterministic capture, because that capture measures the animation-off state. screenshotOnFail:true adds one deterministic capture's path/bytes/checksum. Values are engine measurements (DOM.getBoxModel + Runtime.evaluate), never guesses. Headless + CDP only: no OS cursor, no OS keyboard, no window, no foreground tab.",
+          "description": "Prove geometry without pixels: one call, one or many targets (ref @eN and/or CSS selector, string or array), several checks. Checks: exists (default true; false asserts absence), visible (a real box, not display:none/visibility:hidden/collapse, opacity>0), stableFrames (N animation frames, identical bbox), box {x,y,w,h,tolerance} in VIEWPORT CSS px from DOM.getBoxModel, hitTarget (elementFromPoint at the exact centre is the target or a descendant - the same guard click uses), computed (subset of getComputedStyle, string-exact), noOverflow (scrollWidth/Height <= clientWidth/Height + tolerance), inViewport (whole box inside the visual viewport). Returns per-check {target, check, pass, expected, actual, delta} plus an overall pass. deterministic:true measures under the same freeze a deterministic screenshot uses (animation:none, WAAPI/SMIL/media held, frames and open shadow roots walked) and echoes freezeApplied:true - the ONLY way to compare geometry with a deterministic capture, because that capture measures the animation-off state. screenshotOnFail:true adds one deterministic capture's path/bytes/checksum. Values are engine measurements (DOM.getBoxModel + Runtime.evaluate), never guesses. frame=<CDP frameId> from targets scopes every measurement to that iframe's realm (CSS selectors; refs are main-frame only); the main frame is measured when frame is absent. Headless + CDP only: no OS cursor, no OS keyboard, no window, no foreground tab.",
           "inputSchema": {"type": "object", "properties": {
               "ref": {"oneOf": [{"type": "string"}, {"type": "array", "items": {"type": "string"}}]},
               "selector": {"oneOf": [{"type": "string"}, {"type": "array", "items": {"type": "string"}}]},
@@ -297,7 +297,7 @@ pub fn list() -> Value {
                   "additionalProperties": false},
               "screenshotOnFail": {"type": "boolean"},
               "screenshotPath": {"type": "string"},
-              "deterministic": {"type": "boolean"}},
+              "deterministic": {"type": "boolean"}, "frame": {"type": "string"}},
               "anyOf": [{"required": ["ref"]}, {"required": ["selector"]}],
               "additionalProperties": false},
           "outputSchema": {"type": "object",
@@ -307,11 +307,11 @@ pub fn list() -> Value {
              "required": ["pass", "checks", "targets"], "additionalProperties": false},
           "annotations": {"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}}));
         tools.insert(at + 1, json!({"name": "layout", "title": "Layout",
-          "description": "The where-is-it-actually primitive: every match of a selector or ref list with its viewport rect, page-coordinate box (DOM.getBoxModel), content quad count, scroll size (scrollWidth/Height vs clientWidth/Height), computed display/visibility/opacity, a z-order hint (paint order, z-index, position, stacking-context flag) and every detected overlapping pair with its intersection rect and area (includeOverlaps default true). Main frame; read-only; engine measurements only. Headless + CDP only: no OS input, no window.",
+          "description": "The where-is-it-actually primitive: every match of a selector or ref list with its viewport rect, page-coordinate box (DOM.getBoxModel), content quad count, scroll size (scrollWidth/Height vs clientWidth/Height), computed display/visibility/opacity, a z-order hint (paint order, z-index, position, stacking-context flag) and every detected overlapping pair with its intersection rect and area (includeOverlaps default true). frame=<CDP frameId> from targets scopes every measurement to that iframe's realm (CSS selectors; refs are main-frame only); the main frame is measured when frame is absent. Read-only; engine measurements only. Headless + CDP only: no OS input, no window.",
           "inputSchema": {"type": "object", "properties": {
               "ref": {"oneOf": [{"type": "string"}, {"type": "array", "items": {"type": "string"}}]},
               "selector": {"oneOf": [{"type": "string"}, {"type": "array", "items": {"type": "string"}}]},
-              "includeOverlaps": {"type": "boolean"}},
+              "includeOverlaps": {"type": "boolean"}, "frame": {"type": "string"}},
               "anyOf": [{"required": ["ref"]}, {"required": ["selector"]}],
               "additionalProperties": false},
           "outputSchema": {"type": "object",
@@ -321,10 +321,11 @@ pub fn list() -> Value {
              "required": ["elements", "overlaps", "viewport"], "additionalProperties": false},
           "annotations": {"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}}));
         tools.insert(at + 2, json!({"name": "visual", "title": "Visual Baselines",
-          "description": "Deterministic visual-regression baselines under GLADIUS_VISUAL_DIR (default %LOCALAPPDATA%/gladius/visual on Windows, never the caller's cwd), names sanitised to [A-Za-z0-9._-]. The store is capped at 500 baselines and 500 .diff.png by-products (GLADIUS_VISUAL_CAP overrides both): a save at the cap is a typed refusal naming `visual delete` and GLADIUS_VISUAL_CAP, never a silent eviction, while overwriting a stored baseline is always allowed; .diff.png files are the only by-products aged out automatically (oldest first) and `list` reports dir, count, cap and diffCount. action save captures a deterministic PNG named <name> plus <name>.meta.json (browser, viewport, deviceScaleFactor, url, checksum, createdAt). compare captures the same deterministic shot and diffs it against the baseline in a scratch headless target created with background:true (the engine decodes both PNGs onto a canvas - no new runtime dependency), returning two separate verdicts plus the numbers: pixelsIdentical (checksum == baselineChecksum, a fact about the bytes, never a judgement) and passWithinTolerance (the whole predicate: no size mismatch, diffPixels/maxDiffPixels, ratio/maxDiffRatio, ignoredPixels when allowIgnoredAA is off, and environment.match when requireEnvironmentMatch is on). pass is an ALIAS of passWithinTolerance, always equal to it, kept for 0.7.x clients; it means 'the diff is within the requested tolerance', never 'the images are the same'. Also returned: diffPixels, totalPixels, ratio, bbox, maxChannelDelta, baselinePath, diffPath and environment {match, known, unknownAxes, baseline, current}; the environment compares browser major AND full version, viewport, deviceScaleFactor, platform, user agent, colour scheme, forced colours, contrast and reduced-motion preferences, the installed-font fingerprint and the scrollbar width - all read live - and any mismatch adds a baseline_environment_mismatch warning (not a failure unless requireEnvironmentMatch:true), while an axis a 0.7.x sidecar does not record is named in unknownAxes and reported as baseline_environment_unknown_axes, never as a silent match. Anti-aliasing is subtracted by a deterministic rule - a candidate whose 3x3 luminance neighbourhood has >=32 levels of contrast in BOTH images is suppressed when its 4-connected component is no larger than minDiffCluster (default 2) - and that subtraction does NOT pass by default: allowIgnoredAA:true is the explicit opt-in that re-admits it, and the warning always names the count and the flag. The threshold is never raised for tolerance. antialias (default true) and includeAA (default false) are inverses. threshold is a per-channel fraction of the 0-255 range (default 0.1), maxDiffPixels/maxDiffRatio set the pass bar (default 0/0), maskRects skip regions and are metered (maskRectsApplied echoes the clipped rects, maskedPixels counts their union, maskCoverageRatio is that over totalPixels, a rect that clips away is named mask_rect_dropped and coverage over 10% warns mask_coverage); update:true rewrites the baseline and its sidecar; list and delete manage them. compare opens and closes one scratch target on the connected engine, always created with background:true so it never activates (on an external attach that is a real extra tab for a moment); an engine that refuses a background target is refused with a typed scratch_background_unsupported error, never retried in the foreground. Headless + CDP only: no OS input, no window.",
+          "description": "Deterministic visual-regression baselines under GLADIUS_VISUAL_DIR (default %LOCALAPPDATA%/gladius/visual on Windows, never the caller's cwd), names sanitised to [A-Za-z0-9._-]. The store is capped at 500 baselines and 500 .diff.png by-products (GLADIUS_VISUAL_CAP overrides both): a save at the cap is a typed refusal naming `visual delete` and GLADIUS_VISUAL_CAP, never a silent eviction, while overwriting a stored baseline is always allowed; .diff.png files are the only by-products aged out automatically (oldest first) and `list` reports dir, count, cap and diffCount. action save captures a deterministic PNG named <name> plus <name>.meta.json (browser, viewport, deviceScaleFactor, url, checksum, createdAt). frame=<CDP frameId> from targets scopes a save/compare capture to that iframe's box and reports the clip used; refs are main-frame only and the main frame is captured when frame is absent. compare captures the same deterministic shot and diffs it against the baseline in a scratch headless target created with background:true (the engine decodes both PNGs onto a canvas - no new runtime dependency), returning two separate verdicts plus the numbers: pixelsIdentical (checksum == baselineChecksum, a fact about the bytes, never a judgement) and passWithinTolerance (the whole predicate: no size mismatch, diffPixels/maxDiffPixels, ratio/maxDiffRatio, ignoredPixels when allowIgnoredAA is off, and environment.match when requireEnvironmentMatch is on). pass is an ALIAS of passWithinTolerance, always equal to it, kept for 0.7.x clients; it means 'the diff is within the requested tolerance', never 'the images are the same'. Also returned: diffPixels, totalPixels, ratio, bbox, maxChannelDelta, baselinePath, diffPath and environment {match, known, unknownAxes, baseline, current}; the environment compares browser major AND full version, viewport, deviceScaleFactor, platform, user agent, colour scheme, forced colours, contrast and reduced-motion preferences, the installed-font fingerprint and the scrollbar width - all read live - and any mismatch adds a baseline_environment_mismatch warning (not a failure unless requireEnvironmentMatch:true), while an axis a 0.7.x sidecar does not record is named in unknownAxes and reported as baseline_environment_unknown_axes, never as a silent match. Anti-aliasing is subtracted by a deterministic rule - a candidate whose 3x3 luminance neighbourhood has >=32 levels of contrast in BOTH images is suppressed when its 4-connected component is no larger than minDiffCluster (default 2) - and that subtraction does NOT pass by default: allowIgnoredAA:true is the explicit opt-in that re-admits it, and the warning always names the count and the flag. The threshold is never raised for tolerance. antialias (default true) and includeAA (default false) are inverses. threshold is a per-channel fraction of the 0-255 range (default 0.1), maxDiffPixels/maxDiffRatio set the pass bar (default 0/0), maskRects skip regions and are metered (maskRectsApplied echoes the clipped rects, maskedPixels counts their union, maskCoverageRatio is that over totalPixels, a rect that clips away is named mask_rect_dropped and coverage over 10% warns mask_coverage); update:true rewrites the baseline and its sidecar; list and delete manage them. compare opens and closes one scratch target on the connected engine, always created with background:true so it never activates (on an external attach that is a real extra tab for a moment); an engine that refuses a background target is refused with a typed scratch_background_unsupported error, never retried in the foreground. Headless + CDP only: no OS input, no window.",
           "inputSchema": {"type": "object", "properties": {
               "action": {"type": "string", "enum": ["save", "compare", "list", "delete"]},
               "name": {"type": "string"}, "fullPage": {"type": "boolean"},
+               "frame": {"type": "string"},
               "threshold": {"type": "number"}, "maxDiffPixels": {"type": "integer"},
               "maxDiffRatio": {"type": "number"},
               "antialias": {"type": "boolean"},
@@ -365,7 +366,8 @@ pub fn list() -> Value {
                  "diffCount": {"type": "integer"}, "deleted": {"type": "array"},
                  "sizeMismatch": {"type": "boolean"}, "size": {"type": "object"},
                  "threshold": {"type": "number"}, "maxDiffPixels": {"type": "integer"},
-                 "maxDiffRatio": {"type": "number"}, "fullPage": {"type": "boolean"}},
+                 "maxDiffRatio": {"type": "number"}, "fullPage": {"type": "boolean"},
+                  "frame": {"type": "string"}, "clip": {"type": "object"}},
              "required": ["ok", "action"], "additionalProperties": false},
           "annotations": {"readOnlyHint": false, "destructiveHint": true, "idempotentHint": false, "openWorldHint": false}}));
         tools.insert(at + 3, json!({"name": "drag", "title": "Drag",
@@ -2542,7 +2544,7 @@ fn frame_lookup_err(tool: &str, fid: &str, e: String) -> ToolErr {
 /// stay on the page session, whose visual surface owns the coordinates.
 /// Unknown frames are typed `invalid_target`/`not_found` - never a
 /// main-frame evaluation.
-async fn frame_realm_eval(
+pub(crate) async fn frame_realm_eval(
     browser: &Browser,
     tool: &str,
     fid: &str,
@@ -3861,8 +3863,10 @@ async fn tool_assert_layout(browser: &Browser, args: &Value) -> Result<Value, To
             "screenshotOnFail",
             "screenshotPath",
             "deterministic",
+            "frame",
         ],
     )?;
+    let fid = frame_id_ok("assert_layout", args.get("frame").and_then(|v| v.as_str()))?;
     let specs = layout_specs(browser, "assert_layout", args).await?;
     let on_fail = args
         .get("screenshotOnFail")
@@ -3886,6 +3890,7 @@ async fn tool_assert_layout(browser: &Browser, args: &Value) -> Result<Value, To
         on_fail,
         shot_path,
         deterministic,
+        fid.as_deref(),
     )
     .await
     .map(|v| ok_text(v.to_string()))
@@ -3893,15 +3898,65 @@ async fn tool_assert_layout(browser: &Browser, args: &Value) -> Result<Value, To
 
 /// `layout` body.
 async fn tool_layout(browser: &Browser, args: &Value) -> Result<Value, ToolErr> {
-    check_unknown("layout", args, &["ref", "selector", "includeOverlaps"])?;
+    check_unknown("layout", args, &["ref", "selector", "includeOverlaps", "frame"])?;
+    let fid = frame_id_ok("layout", args.get("frame").and_then(|v| v.as_str()))?;
     let specs = layout_specs(browser, "layout", args).await?;
     let overlaps = args
         .get("includeOverlaps")
         .and_then(|v| v.as_bool())
         .unwrap_or(true);
-    crate::layout::layout(browser, &specs, overlaps)
+    crate::layout::layout(browser, &specs, overlaps, fid.as_deref())
         .await
         .map(|v| ok_text(v.to_string()))
+}
+
+/// Page-space clip of a frame's viewport, for frame-scoped visual captures.
+/// The leaf box is read in the frame realm, mapped to main-viewport CSS px
+/// through the owner chain, then offset by the live page scroll.
+async fn visual_frame_clip(
+    browser: &Browser,
+    fid: &str,
+) -> Result<(crate::capture::Clip, Value), ToolErr> {
+    let b = frame_realm_eval(
+        browser,
+        "visual",
+        fid,
+        "(() => { const r = document.documentElement.getBoundingClientRect(); \
+         return {x:r.left,y:r.top,w:r.width,h:r.height}; })()",
+    )
+    .await?;
+    let g = |k: &str| b.get(k).and_then(|v| v.as_f64()).unwrap_or(0.0);
+    let (x, y, w, h) = (g("x"), g("y"), g("w"), g("h"));
+    let levels = browser
+        .frame_chain_points(fid, x, y)
+        .await
+        .map_err(ToolErr::from)?;
+    let (mx, my) = levels.last().map(|(_, px, py)| (*px, *py)).unwrap_or((x, y));
+    let scroll = browser
+        .eval("[window.scrollX, window.scrollY]")
+        .await
+        .unwrap_or_else(|_| json!([0, 0]));
+    let sx = scroll.get(0).and_then(|v| v.as_f64()).unwrap_or(0.0);
+    let sy = scroll.get(1).and_then(|v| v.as_f64()).unwrap_or(0.0);
+    let clip = crate::capture::Clip {
+        x: mx + sx,
+        y: my + sy,
+        width: w,
+        height: h,
+    };
+    let j = json!({"x": clip.x, "y": clip.y, "w": clip.width, "h": clip.height});
+    Ok((clip, j))
+}
+
+fn stamp_frame(v: &mut Value, fid: Option<&str>, clip: Value) {
+    if let Some(obj) = v.as_object_mut() {
+        if let Some(f) = fid {
+            obj.insert("frame".to_string(), json!(f));
+        }
+        if !clip.is_null() {
+            obj.insert("clip".to_string(), clip);
+        }
+    }
 }
 
 /// `visual` body: save / compare / list / delete.
@@ -3923,8 +3978,10 @@ async fn tool_visual(browser: &Browser, args: &Value) -> Result<Value, ToolErr> 
             "allowIgnoredAA",
             "minDiffCluster",
             "requireEnvironmentMatch",
+            "frame",
         ],
     )?;
+    let fid = frame_id_ok("visual", args.get("frame").and_then(|v| v.as_str()))?;
     let action = args.get("action").and_then(|v| v.as_str()).unwrap_or("");
     if matches!(action, "save" | "compare") {
         match crate::browser::backend_caps() {
@@ -3966,9 +4023,22 @@ async fn tool_visual(browser: &Browser, args: &Value) -> Result<Value, ToolErr> 
                 .get("fullPage")
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
-            crate::visual::save(browser, safe, full)
-                .await
-                .map(|v| ok_text(v.to_string()))
+            let (clip, clip_json) = match &fid {
+                Some(f) => {
+                    let (c, j) = visual_frame_clip(browser, f).await?;
+                    (Some(c), j)
+                }
+                None => (None, Value::Null),
+            };
+            if full && clip.is_some() {
+                return Err(ToolErr::typed(
+                    "visual: 'fullPage' and 'frame' are mutually exclusive".to_string(),
+                    json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::NeedOption.as_str(), "tool": "visual", "arg": "frame"}),
+                ));
+            }
+            let mut v = crate::visual::save(browser, safe, full, clip).await?;
+            stamp_frame(&mut v, fid.as_deref(), clip_json);
+            Ok(ok_text(v.to_string()))
         }
         "list" => crate::visual::list()
             .map(|v| ok_text(v.to_string()))
@@ -3985,6 +4055,13 @@ async fn tool_visual(browser: &Browser, args: &Value) -> Result<Value, ToolErr> 
             if !crate::visual::exists(safe) {
                 return Err(not_found_baseline(safe));
             }
+            let (clip, clip_json) = match &fid {
+                Some(f) => {
+                    let (c, j) = visual_frame_clip(browser, f).await?;
+                    (Some(c), j)
+                }
+                None => (None, Value::Null),
+            };
             let antialias_arg = args.get("antialias").and_then(|v| v.as_bool());
             let include_aa = args.get("includeAA").and_then(|v| v.as_bool());
             if let (Some(a), Some(i)) = (antialias_arg, include_aa) {
@@ -4032,6 +4109,7 @@ async fn tool_visual(browser: &Browser, args: &Value) -> Result<Value, ToolErr> 
                     .get("fullPage")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false),
+                clip,
                 update: args
                     .get("update")
                     .and_then(|v| v.as_bool())
@@ -4053,9 +4131,9 @@ async fn tool_visual(browser: &Browser, args: &Value) -> Result<Value, ToolErr> 
                     json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "visual", "arg": "threshold"}),
                 ));
             }
-            crate::visual::compare(browser, safe, &opt)
-                .await
-                .map(|v| ok_text(v.to_string()))
+            let mut v = crate::visual::compare(browser, safe, &opt).await?;
+            stamp_frame(&mut v, fid.as_deref(), clip_json);
+            Ok(ok_text(v.to_string()))
         }
         other => Err(ToolErr::typed(
             format!("visual: unknown action '{other}' (want save|compare|list|delete)"),

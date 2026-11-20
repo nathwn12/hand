@@ -136,6 +136,21 @@ fn quad_rect(q: &Value) -> Option<Rect> {
     })
 }
 
+/// Evaluate one JS expression in the requested realm. A frame routes through
+/// the site's frame verifier (OOPIF session or same-process isolated world);
+/// the main frame uses the page evaluation the engine already uses.
+async fn realm_eval(
+    browser: &Browser,
+    tool: &str,
+    frame: Option<&str>,
+    expr: &str,
+) -> Result<Value, ToolErr> {
+    match frame {
+        Some(fid) => crate::tools::frame_realm_eval(browser, tool, fid, expr).await,
+        None => browser.eval(expr).await.map_err(ToolErr::from),
+    }
+}
+
 async fn root_node(browser: &Browser) -> Result<i64, ToolErr> {
     let r = browser
         .command(
@@ -160,7 +175,46 @@ async fn root_node(browser: &Browser) -> Result<i64, ToolErr> {
 /// page, so an attribute lookup here would find nothing. A node the DOM no
 /// longer knows is a typed `stale_ref`/`node_gone`, never a silent
 /// `exists:false`. An invalid selector is a typed `invalid_args`/`bad_value`.
-async fn resolve(browser: &Browser, tool: &str, specs: &[Spec]) -> Result<Vec<Node>, ToolErr> {
+async fn resolve(
+    browser: &Browser,
+    tool: &str,
+    specs: &[Spec],
+    frame: Option<&str>,
+) -> Result<Vec<Node>, ToolErr> {
+    if let Some(fid) = frame {
+        let mut out: Vec<Node> = Vec::new();
+        for spec in specs {
+            let s = match spec {
+                Spec::Ref(id) => {
+                    return Err(ToolErr::typed(
+                        format!("{tool}: refs are main-frame only; with frame={fid} use a CSS selector ({id})"),
+                        json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": tool, "arg": "ref", "frame": fid}),
+                    ))
+                }
+                Spec::Selector(s) => s.clone(),
+            };
+            let sel = serde_json::to_string(&s).map_err(|e| ToolErr::fallback(e.to_string()))?;
+            let count = realm_eval(
+                browser,
+                tool,
+                frame,
+                &format!("document.querySelectorAll({sel}).length"),
+            )
+            .await?;
+            let n = count.as_i64().unwrap_or(0).max(0) as usize;
+            for i in 0..n {
+                out.push(Node {
+                    label: if n > 1 { format!("{s}[{i}]") } else { s.clone() },
+                    key: s.clone(),
+                    selector: s.clone(),
+                    index: i,
+                    node_id: 0,
+                    object_id: None,
+                });
+            }
+        }
+        return Ok(out);
+    }
     let root = root_node(browser).await?;
     let mut out: Vec<Node> = Vec::new();
     for spec in specs {
@@ -270,7 +324,17 @@ async fn frontend_node(
 /// Border box from `DOM.getBoxModel` (page coordinates) plus the content quad
 /// count from `DOM.getContentQuads`. `None` means the node has no layout box
 /// (display:none, detached, zero-size) - a measurement, not an error.
-async fn box_geom(browser: &Browser, node_id: i64) -> Result<Option<(Rect, i64)>, ToolErr> {
+async fn box_geom(
+    browser: &Browser,
+    node_id: i64,
+    frame: Option<&str>,
+) -> Result<Option<(Rect, i64)>, ToolErr> {
+    // CDP DOM geometry is session-scoped to the page's main document. In a
+    // frame the JS rect is the measured box instead (see the callers), so no
+    // node-id lookup is attempted here.
+    if frame.is_some() {
+        return Ok(None);
+    }
     let bm = match browser
         .command("DOM.getBoxModel", json!({"nodeId": node_id}), true)
         .await
@@ -313,10 +377,11 @@ async fn element_info(
     browser: &Browser,
     node: &Node,
     computed_keys: &[String],
+    frame: Option<&str>,
 ) -> Result<Option<Value>, ToolErr> {
     let keys =
         serde_json::to_string(computed_keys).map_err(|e| ToolErr::fallback(e.to_string()))?;
-    let v = run_on_node(browser, node, |el| {
+    let v = run_on_node(browser, node, frame, |el| {
         format!(
             r#"function() {{
   const el = {el};
@@ -361,7 +426,12 @@ async fn element_info(
 /// runs as `Runtime.callFunctionOn` with the element as `this` (so a node
 /// inside an open shadow root is measured directly); a selector or legacy-ref
 /// match is looked up in the page by `querySelectorAll(selector)[index]`.
-async fn run_on_node<F>(browser: &Browser, node: &Node, body: F) -> Result<Value, ToolErr>
+async fn run_on_node<F>(
+    browser: &Browser,
+    node: &Node,
+    frame: Option<&str>,
+    body: F,
+) -> Result<Value, ToolErr>
 where
     F: Fn(&str) -> String,
 {
@@ -372,10 +442,7 @@ where
                 .map_err(|e| ToolErr::fallback(e.to_string()))?;
             let binding = format!("document.querySelectorAll({sel})[{}]", node.index);
             let f = body(&binding);
-            browser
-                .eval(&format!("({f})()"))
-                .await
-                .map_err(ToolErr::from)
+            realm_eval(browser, "layout", frame, &format!("({f})()")).await
         }
     }
 }
@@ -383,9 +450,14 @@ where
 /// Sample the element's viewport rect once per animation frame, `frames`
 /// times. Each wait is raced against a timer so a background/shadowed page
 /// that starves rAF still returns a sample set instead of hanging.
-async fn stable_sample(browser: &Browser, node: &Node, frames: i64) -> Result<Vec<Rect>, ToolErr> {
+async fn stable_sample(
+    browser: &Browser,
+    node: &Node,
+    frames: i64,
+    frame: Option<&str>,
+) -> Result<Vec<Rect>, ToolErr> {
     let n = frames.clamp(1, 60);
-    let v = run_on_node(browser, node, |el| {
+    let v = run_on_node(browser, node, frame, |el| {
         format!(
             r#"function() {{
   const el = {el};
@@ -560,6 +632,7 @@ pub async fn assert_layout(
     screenshot_on_fail: bool,
     screenshot_path: Option<&str>,
     deterministic: bool,
+    frame: Option<&str>,
 ) -> Result<Value, ToolErr> {
     if !deterministic {
         return assert_layout_inner(
@@ -569,6 +642,7 @@ pub async fn assert_layout(
             screenshot_on_fail,
             screenshot_path,
             false,
+            frame,
         )
         .await;
     }
@@ -580,6 +654,7 @@ pub async fn assert_layout(
         screenshot_on_fail,
         screenshot_path,
         true,
+        frame,
     )
     .await;
     crate::capture::restore_freeze(browser).await;
@@ -593,9 +668,10 @@ async fn assert_layout_inner(
     screenshot_on_fail: bool,
     screenshot_path: Option<&str>,
     deterministic: bool,
+    frame: Option<&str>,
 ) -> Result<Value, ToolErr> {
     let wanted = parse_checks("assert_layout", checks)?;
-    let nodes = resolve(browser, "assert_layout", specs).await?;
+    let nodes = resolve(browser, "assert_layout", specs, frame).await?;
     let computed_keys: Vec<String> = wanted
         .computed
         .as_ref()
@@ -648,8 +724,8 @@ async fn assert_layout_inner(
         };
         let Some(node) = node else { continue };
         let label = node.label.clone();
-        let geom = box_geom(browser, node.node_id).await?;
-        let info = element_info(browser, node, &computed_keys).await?;
+        let geom = box_geom(browser, node.node_id, frame).await?;
+        let info = element_info(browser, node, &computed_keys, frame).await?;
         let Some(info) = info else {
             push(
                 &mut results,
@@ -677,12 +753,14 @@ async fn assert_layout_inner(
         });
         let doc_rect = geom.map(|(r, _)| r);
         let quads = geom.map(|(_, q)| q).unwrap_or(0);
-        let box_rect = doc_rect.map(|r| Rect {
-            x: r.x - scroll_x,
-            y: r.y - scroll_y,
-            w: r.w,
-            h: r.h,
-        });
+        let box_rect = doc_rect
+            .map(|r| Rect {
+                x: r.x - scroll_x,
+                y: r.y - scroll_y,
+                w: r.w,
+                h: r.h,
+            })
+            .or_else(|| frame.map(|_| js_rect));
         let has_box = box_rect.is_some() && js_rect.w > 0.0 && js_rect.h > 0.0;
         targets.push(json!({
             "target": label.clone(), "found": true, "nodeId": node.node_id,
@@ -758,7 +836,7 @@ async fn assert_layout_inner(
         }
 
         if let Some(n) = wanted.stable_frames {
-            let samples = stable_sample(browser, node, n).await?;
+            let samples = stable_sample(browser, node, n, frame).await?;
             let mut delta = 0.0f64;
             let mut pass = samples.len() as i64 == n;
             if let Some(first) = samples.first() {
@@ -932,13 +1010,18 @@ pub async fn layout(
     browser: &Browser,
     specs: &[Spec],
     include_overlaps: bool,
+    frame: Option<&str>,
 ) -> Result<Value, ToolErr> {
-    let nodes = resolve(browser, "layout", specs).await?;
+    let nodes = resolve(browser, "layout", specs, frame).await?;
     let mut elements: Vec<Value> = Vec::new();
     let mut rects: Vec<(String, Rect, bool)> = Vec::new();
-    let viewport = match browser
-        .eval("[window.innerWidth, window.innerHeight]")
-        .await
+    let viewport = match realm_eval(
+        browser,
+        "layout",
+        frame,
+        "[window.innerWidth, window.innerHeight]",
+    )
+    .await
     {
         Ok(v) => {
             let a = v.as_array().cloned().unwrap_or_default();
@@ -948,10 +1031,17 @@ pub async fn layout(
         Err(e) => return Err(ToolErr::from(e)),
     };
     for node in &nodes {
-        let info = element_info(browser, node, &[]).await?;
-        let geom = box_geom(browser, node.node_id).await?;
+        let info = element_info(browser, node, &[], frame).await?;
+        let geom = box_geom(browser, node.node_id, frame).await?;
         let Some(info) = info else { continue };
-        let (scroll_x, scroll_y) = match browser.eval("[window.scrollX, window.scrollY]").await {
+        let (scroll_x, scroll_y) = match realm_eval(
+            browser,
+            "layout",
+            frame,
+            "[window.scrollX, window.scrollY]",
+        )
+        .await
+        {
             Ok(v) => {
                 let a = v.as_array().cloned().unwrap_or_default();
                 (
@@ -969,12 +1059,14 @@ pub async fn layout(
         });
         let doc_rect = geom.map(|(r, _)| r);
         let quads = geom.map(|(_, q)| q).unwrap_or(0);
-        let box_rect = doc_rect.map(|r| Rect {
-            x: r.x - scroll_x,
-            y: r.y - scroll_y,
-            w: r.w,
-            h: r.h,
-        });
+        let box_rect = doc_rect
+            .map(|r| Rect {
+                x: r.x - scroll_x,
+                y: r.y - scroll_y,
+                w: r.w,
+                h: r.h,
+            })
+            .or_else(|| frame.map(|_| js_rect));
         let has_box = box_rect.is_some() && js_rect.w > 0.0 && js_rect.h > 0.0;
         let vis = visible_of(&info, has_box);
         let computed = info.get("computed").cloned().unwrap_or(Value::Null);

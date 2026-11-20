@@ -74,7 +74,7 @@ use base64::Engine as _;
 use serde_json::{json, Value};
 
 use crate::browser::Browser;
-use crate::capture::{self, Options};
+use crate::capture::{self, Clip, Options};
 use crate::tools::{ToolCode, ToolErr, ToolReason};
 
 /// Budget for the scratch diff target: page load + decode + pixel loop.
@@ -687,7 +687,7 @@ fn civil_from_days(days: i64) -> (i64, u32, u32) {
 ///
 /// The cap is checked BEFORE the capture: a refused save costs no capture and
 /// writes nothing (S2.4).
-pub async fn save(browser: &Browser, name: &str, full_page: bool) -> Result<Value, ToolErr> {
+pub async fn save(browser: &Browser, name: &str, full_page: bool, clip: Option<Clip>) -> Result<Value, ToolErr> {
     let safe = sanitise_name(name).map_err(ToolErr::from)?;
     if let Some(refusal) = cap_refusal(&safe) {
         return Err(refusal);
@@ -699,6 +699,7 @@ pub async fn save(browser: &Browser, name: &str, full_page: bool) -> Result<Valu
             deterministic: true,
             width: None,
             height: None,
+            clip,
             ..Default::default()
         },
     )
@@ -810,6 +811,7 @@ pub struct DiffOpts {
     pub max_diff_ratio: f64,
     pub mask_rects: Vec<Value>,
     pub full_page: bool,
+    pub clip: Option<Clip>,
     pub update: bool,
     pub antialias: bool,
     pub min_diff_cluster: i64,
@@ -828,6 +830,7 @@ impl Default for DiffOpts {
             max_diff_ratio: 0.0,
             mask_rects: Vec::new(),
             full_page: false,
+            clip: None,
             update: false,
             antialias: true,
             min_diff_cluster: 2,
@@ -1340,6 +1343,7 @@ pub async fn compare(browser: &Browser, name: &str, opts: &DiffOpts) -> Result<V
             deterministic: true,
             width: None,
             height: None,
+            clip: opts.clip,
             ..Default::default()
         },
     )

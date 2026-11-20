@@ -26,6 +26,10 @@ const NAV: &str = r#"<!doctype html><html><head><title>Nav Page</title></head>
 <body><h1>nav</h1></body></html>"#;
 const NEXT: &str = r#"<!doctype html><html><head><title>Next Page</title></head>
 <body><h1>next</h1></body></html>"#;
+const FRAMES: &str = r#"<!doctype html><html><head><title>Frames</title></head>
+<body><iframe id="f" src="/frame" style="width:300px;height:200px;border:0"></iframe></body></html>"#;
+const FRAME: &str = r#"<!doctype html><html><head><title>Frame</title></head>
+<body><div id="in-frame" style="width:120px;height:40px">Inside</div></body></html>"#;
 
 struct Fixture {
     base: String,
@@ -84,6 +88,8 @@ fn serve(mut stream: TcpStream) -> std::io::Result<()> {
     let (status, body): (&str, String) = match path.as_str() {
         "/" => ("200 OK", NAV.to_string()),
         "/next" => ("200 OK", NEXT.to_string()),
+        "/frames" => ("200 OK", FRAMES.to_string()),
+        "/frame" => ("200 OK", FRAME.to_string()),
         "/redirect" => {
             let head = "HTTP/1.1 302 Found\r\nLocation: /next\r\nContent-Length: 0\r\n\
                         Cache-Control: no-store\r\nConnection: close\r\n\r\n";
@@ -101,6 +107,68 @@ fn serve(mut stream: TcpStream) -> std::io::Result<()> {
     );
     stream.write_all(response.as_bytes())?;
     stream.flush()
+}
+
+fn child_frame(s: &mut Session) -> String {
+    let targets = s.call("browser_targets", json!({"action": "list"}));
+    assert!(!is_error(&targets), "{}", text_of(&targets));
+    structured(&targets)["frames"]
+        .as_array()
+        .expect("frames")
+        .iter()
+        .find(|f| f.get("url").and_then(|v| v.as_str()).unwrap_or("").ends_with("/frame"))
+        .and_then(|f| f.get("frameId").and_then(|v| v.as_str()))
+        .map(str::to_string)
+        .unwrap_or_else(|| panic!("no child frame in fixture: {}", text_of(&targets)))
+}
+
+#[test]
+fn b9_frame_scoped_layout_assert_layout_visual() {
+    let _g = serial();
+    let fx = Fixture::start();
+    let visual_dir = std::env::temp_dir().join(format!("hand-browser-rows-visual-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&visual_dir);
+    let mut s = Session::spawn_with_env(&[("GLADIUS_VISUAL_DIR", visual_dir.to_string_lossy().as_ref())]);
+    let r = s.call("browser_navigate", json!({"url": format!("{}/frames", fx.base)}));
+    assert!(!is_error(&r), "{}", text_of(&r));
+    let fid = child_frame(&mut s);
+
+    // The main frame cannot see an element inside the iframe.
+    let main = s.call("browser_layout", json!({"selector": "#in-frame"}));
+    assert!(!is_error(&main), "{}", text_of(&main));
+    assert_eq!(structured(&main)["count"].as_i64(), Some(0));
+
+    // Frame-scoped layout finds it, with a real measured rect.
+    let scoped = s.call("browser_layout", json!({"selector": "#in-frame", "frame": fid}));
+    assert!(!is_error(&scoped), "frame layout failed: {}", text_of(&scoped));
+    let sc = structured(&scoped);
+    assert_eq!(sc["count"].as_i64(), Some(1), "frame layout: {sc:?}");
+    let el = &sc["elements"][0];
+    assert!(el["rect"]["w"].as_f64().unwrap_or(0.0) > 0.0, "frame rect: {el:?}");
+    assert_eq!(el["computed"]["display"].as_str().unwrap_or(""), "block");
+
+    // assert_layout honours the same frame contract.
+    let a = s.call("browser_assert_layout", json!({
+        "selector": "#in-frame", "frame": fid,
+        "checks": {"exists": true, "visible": true,
+                   "box": {"w": 120.0, "h": 40.0, "tolerance": 1.0}}
+    }));
+    assert!(!is_error(&a), "frame assert_layout failed: {}", text_of(&a));
+    let asc = structured(&a);
+    assert_eq!(asc["pass"].as_bool(), Some(true), "checks: {:?}", asc["checks"]);
+
+    // visual accepts the same frame id and scopes its capture to it.
+    let v = s.call("browser_visual", json!({
+        "action": "save", "name": "frame-baseline", "frame": fid
+    }));
+    assert!(!is_error(&v), "frame visual failed: {}", text_of(&v));
+    let vsc = structured(&v);
+    assert_eq!(vsc["frame"].as_str(), Some(fid.as_str()));
+    let clip = &vsc["clip"];
+    assert!((clip["w"].as_f64().unwrap_or(0.0) - 300.0).abs() <= 1.0,
+            "capture must be clipped to the 300px iframe: {clip:?}");
+    drop(s);
+    let _ = std::fs::remove_dir_all(&visual_dir);
 }
 
 #[test]
