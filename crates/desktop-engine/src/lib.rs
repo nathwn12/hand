@@ -67,10 +67,83 @@ use windows_sys::Win32::System::Threading::{
     THREAD_QUERY_INFORMATION,
 };
 use windows_sys::Win32::UI::HiDpi::{
-    GetDpiForWindow, SetProcessDpiAwareness, SetProcessDpiAwarenessContext,
-    DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, PROCESS_PER_MONITOR_DPI_AWARE,
+    AreDpiAwarenessContextsEqual, GetAwarenessFromDpiAwarenessContext, GetDpiForWindow,
+    GetThreadDpiAwarenessContext, SetProcessDpiAwareness, SetProcessDpiAwarenessContext,
+    DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, DPI_AWARENESS_PER_MONITOR_AWARE,
+    DPI_AWARENESS_SYSTEM_AWARE, PROCESS_PER_MONITOR_DPI_AWARE,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::*;
+
+/// The DPI awareness level actually in force, as set by
+/// `enable_per_monitor_dpi_v2` or read back by `current_dpi_awareness`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DpiAwarenessLevel {
+    PerMonitorV2,
+    PerMonitor,
+    System,
+    None,
+}
+
+impl DpiAwarenessLevel {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            DpiAwarenessLevel::PerMonitorV2 => "per-monitor-v2",
+            DpiAwarenessLevel::PerMonitor => "per-monitor",
+            DpiAwarenessLevel::System => "system",
+            DpiAwarenessLevel::None => "none",
+        }
+    }
+}
+
+/// Read the DPI awareness context in force on the calling thread.
+///
+/// `GetAwarenessFromDpiAwarenessContext` reports PMv1 and PMv2 both as
+/// `DPI_AWARENESS_PER_MONITOR_AWARE`, so the context is compared to the PMv2
+/// constant with `AreDpiAwarenessContextsEqual` to tell the two apart. Contexts
+/// are opaque handles on some Windows versions; raw `==` is not a valid test.
+pub fn current_dpi_awareness() -> DpiAwarenessLevel {
+    unsafe {
+        let ctx = GetThreadDpiAwarenessContext();
+        match GetAwarenessFromDpiAwarenessContext(ctx) {
+            DPI_AWARENESS_PER_MONITOR_AWARE
+                if AreDpiAwarenessContextsEqual(
+                    ctx,
+                    DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
+                ) != 0 =>
+            {
+                DpiAwarenessLevel::PerMonitorV2
+            }
+            DPI_AWARENESS_PER_MONITOR_AWARE => DpiAwarenessLevel::PerMonitor,
+            DPI_AWARENESS_SYSTEM_AWARE => DpiAwarenessLevel::System,
+            _ => DpiAwarenessLevel::None,
+        }
+    }
+}
+
+/// Put per-monitor v2 DPI awareness in force for this process, falling back to
+/// per-monitor v1 and then system awareness on older Windows.
+///
+/// Call once before any window or monitor query: without it Windows may
+/// virtualise the coordinates this crate reads on a scaled monitor (see
+/// `target.rs`). Windows refuses a second awareness call once a level is set,
+/// so when every setter fails the effective context is read back instead of
+/// reporting a bogus "none"; this keeps the result honest on a call that only
+/// re-asserts an already-set level.
+pub fn enable_per_monitor_dpi_v2() -> DpiAwarenessLevel {
+    unsafe {
+        if SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) != 0 {
+            return DpiAwarenessLevel::PerMonitorV2;
+        }
+        // SetProcessDpiAwareness returns an HRESULT; success is >= 0.
+        if SetProcessDpiAwareness(PROCESS_PER_MONITOR_DPI_AWARE) >= 0 {
+            return DpiAwarenessLevel::PerMonitor;
+        }
+        if SetProcessDPIAware() != 0 {
+            return DpiAwarenessLevel::System;
+        }
+        current_dpi_awareness()
+    }
+}
 
 
 const MODE_B_NOTE: &str = "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.";
@@ -1553,6 +1626,29 @@ pub fn engine_version() -> &'static str {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// The enable call must put PMv2 in force. Read the real thread context
+    /// back instead of trusting the setter's return. On a host running at
+    /// 100% scaling this changes no visible coordinate, but the readback still
+    /// proves the process accepted the PMv2 context (not just a no-op path).
+    #[test]
+    fn dpi_v2_is_in_force_after_enable() {
+        let achieved = enable_per_monitor_dpi_v2();
+        unsafe {
+            let ctx = GetThreadDpiAwarenessContext();
+            assert_eq!(
+                GetAwarenessFromDpiAwarenessContext(ctx),
+                DPI_AWARENESS_PER_MONITOR_AWARE,
+                "thread must be per-monitor aware (enable returned {achieved:?})"
+            );
+            assert_ne!(
+                AreDpiAwarenessContextsEqual(ctx, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2),
+                0,
+                "context must be PMv2, not PMv1 (enable returned {achieved:?})"
+            );
+        }
+        assert_eq!(current_dpi_awareness(), DpiAwarenessLevel::PerMonitorV2);
+    }
 
     #[test]
     fn region_validator_table() {

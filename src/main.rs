@@ -32,6 +32,9 @@ mod catalog;
 mod server;
 
 fn main() {
+    // Set process DPI awareness before any window or monitor query so Win32
+    // coordinates are physical pixels, never virtualised by Windows scaling.
+    desktop_engine::enable_per_monitor_dpi_v2();
     let args: Vec<String> = std::env::args().skip(1).collect();
     let code = match args.first().map(String::as_str) {
         None | Some("mcp") => run_server(),
@@ -161,6 +164,10 @@ fn doctor_report() -> serde_json::Value {
     let mut desktop = desktop_engine::provenance();
     if let Some(obj) = desktop.as_object_mut() {
         obj.insert("toolCount".to_string(), serde_json::json!(desktop_tools));
+        obj.insert(
+            "dpiAwareness".to_string(),
+            serde_json::json!(desktop_engine::current_dpi_awareness().as_str()),
+        );
     }
     let report = serde_json::json!({
         "name": "hand",
