@@ -9,8 +9,16 @@ pub fn list() -> Value {
          "description": "Navigate the active page to a URL",
          "inputSchema": {"type": "object", "properties": {"url": {"type": "string", "format": "uri"}}, "required": ["url"], "additionalProperties": false},
          "outputSchema": {"type": "object",
-            "properties": {"url": {"type": "string"}, "title": {"type": "string"}, "warning": {"type": "string"}},
-            "required": ["url", "title"], "additionalProperties": false},
+            "properties": {"url": {"type": "string"}, "title": {"type": "string"}, "warning": {"type": "string"},
+               "observed": {"type": "object", "properties": {
+                   "status": {"type": ["integer", "null"]},
+                   "redirects": {"type": "array", "items": {"type": "object"}},
+                   "timings": {"type": "object", "properties": {
+                       "request": {"type": "number"}, "response": {"type": ["number", "null"]},
+                       "finish": {"type": ["number", "null"]}}},
+                   "note": {"type": "string"}},
+                   "required": ["status", "redirects", "timings"], "additionalProperties": false}},
+            "required": ["url", "title", "observed"], "additionalProperties": false},
          "annotations": {"readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": true}},
         {"name": "snapshot", "title": "Snapshot",
          "description": "Snapshot: one line per node with a stable ref (@eN, unique per snapshot), role/name/value, plus page text. Default is the real Accessibility tree of the page itself: open shadow roots are included, iframe content is NOT part of this tree (snapshot the frame with frame= to see inside it), and hidden/ignored subtrees are excluded. mode:\"legacy\" keeps the old DOM heuristic (the only path that stamps an attribute into the page); mode:\"text\" is text-only. frame=<CDP frameId> from targets scopes the snapshot to that iframe: a same-process frame is read on the page session, a mapped out-of-process frame (OOPIF) is read on its own session, and an OOPIF with no mapped session is a typed error rather than the page's tree. AX refs resolve by backend node id, so a shadow ref is actionable exactly like a light-DOM ref. Paging: pass the snapshotId from the offset:0 render with offset>0 (required; paging slices that render and never re-renders).",
@@ -1558,6 +1566,8 @@ async fn tool_navigate(browser: &Browser, url: &str) -> Result<Value, ToolErr> {
     let lower = url.trim().to_ascii_lowercase();
     let requested_page = lower.starts_with("http://") || lower.starts_with("https://");
     browser.command("Page.enable", json!({}), true).await?;
+    let _ = browser.ensure_network().await;
+    browser.begin_nav_observe().await;
     let nav = browser
         .command("Page.navigate", json!({"url": url}), true)
         .await?;
@@ -1572,6 +1582,7 @@ async fn tool_navigate(browser: &Browser, url: &str) -> Result<Value, ToolErr> {
     browser
         .wait_for_load(std::time::Duration::from_secs(10))
         .await;
+    let observed = browser.nav_observed().await;
     let title = browser
         .eval("document.title")
         .await?
@@ -1591,7 +1602,9 @@ async fn tool_navigate(browser: &Browser, url: &str) -> Result<Value, ToolErr> {
         ));
     }
     if !title.is_empty() || cur.is_empty() || cur == "about:blank" {
-        return Ok(ok_text(json!({"url": cur, "title": title}).to_string()));
+        return Ok(ok_text(
+            json!({"url": cur, "title": title, "observed": observed}).to_string(),
+        ));
     }
     let body_len = browser
         .eval("(((document.body && document.body.innerText) || '') + '').length")
@@ -1607,12 +1620,12 @@ async fn tool_navigate(browser: &Browser, url: &str) -> Result<Value, ToolErr> {
             ));
         }
         Ok(ok_text(
-            json!({"url": cur, "title": title,
+            json!({"url": cur, "title": title, "observed": observed.clone(),
                    "warning": "possible blank-load race: committed URL with empty document (empty title and empty body text); re-navigate to confirm"})
             .to_string(),
         ))
     } else {
-        Ok(ok_text(json!({"url": cur, "title": title}).to_string()))
+        Ok(ok_text(json!({"url": cur, "title": title, "observed": observed}).to_string()))
     }
 }
 

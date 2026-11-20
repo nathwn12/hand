@@ -116,6 +116,39 @@ impl NetEntry {
     }
 }
 
+/// One navigation's worth of CDP observations, filled by the reader while a
+/// `Page.navigate` is in flight. `status`/redirect chain are real network
+/// facts; a client-side or non-HTTP navigation produces no Document response
+/// and leaves `status` as None (reported as null, never invented).
+#[derive(Clone, Debug, Default)]
+struct NavObs {
+    armed: bool,
+    doc_id: Option<String>,
+    start_ts: Option<f64>,
+    status: Option<i64>,
+    response_ts: Option<f64>,
+    finish_ts: Option<f64>,
+    redirects: Vec<Value>,
+}
+
+impl NavObs {
+    fn observed(self) -> Value {
+        let t0 = self.start_ts.unwrap_or(0.0);
+        let ms = |t: Option<f64>| t.map(|x| ((x - t0) * 1000.0).max(0.0));
+        let mut out = json!({
+            "status": self.status,
+            "redirects": self.redirects,
+            "timings": {"request": ms(self.start_ts).unwrap_or(0.0),
+                        "response": ms(self.response_ts),
+                        "finish": ms(self.finish_ts)},
+        });
+        if self.status.is_none() {
+            out["note"] = json!("no network response for this navigation (client-side or non-HTTP target); status is null");
+        }
+        out
+    }
+}
+
 /// Ring cap for captured network entries (stated in the `network` tool
 /// description so agents can reason about depth).
 pub const NET_CAP: usize = 500;
@@ -202,6 +235,9 @@ struct Shared {
     /// `loadingFinished` / `loadingFailed` once the Network domain is
     /// enabled; drained by the `network` tool. Empty (and free) until then.
     net_log: AsyncMutex<VecDeque<NetEntry>>,
+    /// Armed around one `Page.navigate`; the reader stamps the main Document
+    /// response, redirect chain and timings here for the `observed` result.
+    nav_obs: AsyncMutex<NavObs>,
     /// Dialog policy applied by the reader when a JS dialog opens
     /// (auto-accept is the default, matching the pre-policy behavior).
     dialog_policy: AsyncMutex<DialogPolicy>,
@@ -389,6 +425,7 @@ fn new_shared(sink: WsSink, excluded_contexts: Arc<Mutex<HashMap<String, String>
         net_enabled: AsyncMutex::new(HashSet::new()),
         viewport: AsyncMutex::new(None),
         net_log: AsyncMutex::new(VecDeque::new()),
+        nav_obs: AsyncMutex::new(NavObs::default()),
         dialog_policy: AsyncMutex::new(DialogPolicy::default()),
         extra_sessions: AsyncMutex::new(HashMap::new()),
         capture: Arc::new(AsyncMutex::new(())),
@@ -1980,6 +2017,33 @@ impl Browser {
     /// false idle. On Chromium `Network.enable` alone is sufficient to
     /// observe request starts via `Network.requestWillBeSent`; no
     /// `Fetch.enable` interception is used.
+    /// Arm a fresh navigation observer. Call immediately before `Page.navigate`;
+    /// the reader stamps the main Document's status, redirect chain and
+    /// timings until `nav_observed` takes it.
+    pub async fn begin_nav_observe(&self) {
+        let guard = self.state.lock().await;
+        if let Some(inner) = guard.as_ref() {
+            *inner.shared.nav_obs.lock().await = NavObs {
+                armed: true,
+                ..Default::default()
+            };
+        }
+    }
+
+    /// Take the armed navigation observation and disarm it. Returns the
+    /// `observed` object: real status/redirects/timings when the navigation
+    /// hit the network, `status:null` plus a note when it did not.
+    pub async fn nav_observed(&self) -> Value {
+        let guard = self.state.lock().await;
+        match guard.as_ref() {
+            Some(inner) => {
+                let mut o = inner.shared.nav_obs.lock().await;
+                std::mem::replace(&mut *o, NavObs::default()).observed()
+            }
+            None => NavObs::default().observed(),
+        }
+    }
+
     pub async fn ensure_network(&self) -> Result<(), String> {
         let shared = self.shared().await?;
         if let Some(s) = shared.session.lock().await.clone() {
@@ -3470,6 +3534,60 @@ async fn record_finish(shared: &Arc<Shared>, p: &Value) {
     }
 }
 
+/// Stamp one navigation observer from a `Network.requestWillBeSent`. The first
+/// Document request claims `doc_id`; a redirect hop reuses that id and carries
+/// `redirectResponse`, so the chain is the list of hops that led here.
+async fn record_nav_request(shared: &Arc<Shared>, p: &Value) {
+    let mut o = shared.nav_obs.lock().await;
+    if !o.armed || p.get("type").and_then(|t| t.as_str()) != Some("Document") {
+        return;
+    }
+    let rid = match p.get("requestId").and_then(|r| r.as_str()) {
+        Some(r) => r.to_string(),
+        None => return,
+    };
+    if o.doc_id.is_none() {
+        o.doc_id = Some(rid.clone());
+        o.start_ts = p.get("timestamp").and_then(|t| t.as_f64());
+    }
+    if o.doc_id.as_deref() == Some(rid.as_str()) {
+        if let Some(rr) = p.get("redirectResponse") {
+            o.redirects.push(json!({
+                "url": rr.get("url").and_then(|u| u.as_str()).unwrap_or(""),
+                "status": rr.get("status").and_then(|s| s.as_i64()),
+            }));
+        }
+    }
+}
+
+/// Stamp the main Document status from `Network.responseReceived`.
+async fn record_nav_response(shared: &Arc<Shared>, p: &Value) {
+    let mut o = shared.nav_obs.lock().await;
+    if !o.armed || p.get("type").and_then(|t| t.as_str()) != Some("Document") {
+        return;
+    }
+    let rid = p.get("requestId").and_then(|r| r.as_str()).unwrap_or("");
+    if o.doc_id.as_deref() != Some(rid) {
+        return;
+    }
+    if let Some(resp) = p.get("response") {
+        o.status = resp.get("status").and_then(|s| s.as_i64());
+        o.response_ts = p.get("timestamp").and_then(|t| t.as_f64());
+    }
+}
+
+/// Stamp the main Document finish time from `Network.loadingFinished`.
+async fn record_nav_finish(shared: &Arc<Shared>, p: &Value) {
+    let mut o = shared.nav_obs.lock().await;
+    if !o.armed {
+        return;
+    }
+    let rid = p.get("requestId").and_then(|r| r.as_str()).unwrap_or("");
+    if o.doc_id.as_deref() == Some(rid) {
+        o.finish_ts = p.get("timestamp").and_then(|t| t.as_f64());
+    }
+}
+
 async fn reader_loop(mut stream: WsReader, shared: Arc<Shared>) {
     while let Some(msg) = stream.next().await {
         let text = match msg {
@@ -3515,12 +3633,14 @@ async fn reader_loop(mut stream: WsReader, shared: Arc<Shared>) {
                 if let Some(rid) = p.get("requestId").and_then(|r| r.as_str()) {
                     shared.net_inflight.lock().await.insert(rid.to_string());
                 }
+                record_nav_request(&shared, p).await;
                 record_request(&shared, p).await;
             }
             continue;
         }
         if v.get("method").and_then(|m| m.as_str()) == Some("Network.responseReceived") {
             if let Some(p) = v.get("params") {
+                record_nav_response(&shared, p).await;
                 record_response(&shared, p).await;
             }
             continue;
@@ -3529,6 +3649,7 @@ async fn reader_loop(mut stream: WsReader, shared: Arc<Shared>) {
             || v.get("method").and_then(|m| m.as_str()) == Some("Network.loadingFailed")
         {
             if let Some(p) = v.get("params") {
+                record_nav_finish(&shared, p).await;
                 if let Some(rid) = p.get("requestId").and_then(|r| r.as_str()) {
                     shared.net_inflight.lock().await.remove(rid);
                     record_finish(&shared, p).await;
