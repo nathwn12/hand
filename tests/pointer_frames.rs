@@ -23,6 +23,17 @@ const POINTER: &str = include_str!("../fixtures/interaction/pointer.html");
 const PARENT: &str = include_str!("../fixtures/interaction/oopif-parent.html");
 const CHILD: &str = include_str!("../fixtures/interaction/oopif-child.html");
 
+/// One browser at a time inside this binary. Every test launches a real
+/// `chrome-headless-shell`; a dozen launching at once on this machine can fail
+/// a navigation with ERR_SOCKET_NOT_CONNECTED before any selector runs (measured:
+/// 9 concurrent launches flaky, 4 never). Serialising the browsers keeps the
+/// assertions about interaction, not about the machine.
+static ONE_BROWSER: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn serial() -> std::sync::MutexGuard<'static, ()> {
+    ONE_BROWSER.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 /// Two loopback listeners on different hosts: `127.0.0.1` and `localhost` are
 /// different sites, so the iframe below is a real cross-site frame and the
 /// engine gives it its own renderer.
@@ -138,6 +149,7 @@ fn oopif_frame(s: &mut Session) -> String {
 /// opens is what `snapshot` then reports as `menu`/`menuitem` nodes.
 #[test]
 fn right_click_opens_the_pages_menu_and_snapshot_reports_it() {
+    let _serial = serial();
     let fx = Fixture::start();
     let mut s = Session::spawn();
     s.call("browser_navigate", json!({"url": format!("{}/pointer.html", fx.a)}));
@@ -169,6 +181,7 @@ fn right_click_opens_the_pages_menu_and_snapshot_reports_it() {
 /// `dblclick` fires, which no single click can produce.
 #[test]
 fn click_count_two_raises_dblclick() {
+    let _serial = serial();
     let fx = Fixture::start();
     let mut s = Session::spawn();
     s.call("browser_navigate", json!({"url": format!("{}/pointer.html", fx.a)}));
@@ -194,6 +207,7 @@ fn click_count_two_raises_dblclick() {
 /// the reply's read-back matches the page's own `scrollY`.
 #[test]
 fn wheel_scrolls_the_document_and_reports_it() {
+    let _serial = serial();
     let fx = Fixture::start();
     let mut s = Session::spawn();
     s.call("browser_navigate", json!({"url": format!("{}/pointer.html", fx.a)}));
@@ -220,6 +234,7 @@ fn wheel_scrolls_the_document_and_reports_it() {
 /// synthetic DragEvent or a `.value`/array write.
 #[test]
 fn drag_reorders_with_trusted_pointer_events() {
+    let _serial = serial();
     let fx = Fixture::start();
     let mut s = Session::spawn();
     s.call("browser_navigate", json!({"url": format!("{}/pointer.html", fx.a)}));
@@ -267,6 +282,7 @@ fn drag_reorders_with_trusted_pointer_events() {
 /// and a ref that was never minted is a typed refusal.
 #[test]
 fn element_screenshot_is_the_box_and_is_deterministic() {
+    let _serial = serial();
     let fx = Fixture::start();
     let mut s = Session::spawn();
     s.call("browser_navigate", json!({"url": format!("{}/pointer.html", fx.a)}));
@@ -309,6 +325,7 @@ fn element_screenshot_is_the_box_and_is_deterministic() {
 /// session owns stays a typed error instead of a main-frame action.
 #[test]
 fn oopif_frame_snapshot_and_click_with_typed_unmapped_frame() {
+    let _serial = serial();
     let fx = Fixture::start();
     let mut s = Session::spawn();
     s.call("browser_navigate", json!({"url": format!("{}/oopif-parent.html", fx.a)}));
