@@ -54,16 +54,42 @@ pub fn typed_error(prose: &str, structured: serde_json::Value) -> serde_json::Va
     tools::typed_envelope(prose, structured)
 }
 
-/// One-line engine provenance for the initialization response.
-pub fn engine_info() -> serde_json::Value {
-    let info = backend_info();
+/// Upstream identity of the vendored browser engine. Single source for every
+/// pin and version hand reports; do not repeat these literals elsewhere.
+pub const UPSTREAM_PIN: &str = "59c6d77";
+pub const UPSTREAM_VERSION: &str = "0.8.0";
+
+fn provenance_from(info: &serde_json::Value) -> serde_json::Value {
     serde_json::json!({
         "engine": "gladius",
-        "sourcePin": "59c6d77",
-        "version": "0.8.0",
+        "sourcePin": UPSTREAM_PIN,
+        "version": UPSTREAM_VERSION,
+        "available": true,
         "backend": info.get("backend").cloned().unwrap_or(serde_json::Value::Null),
-        "caps": info.get("caps").cloned().unwrap_or(serde_json::Value::Null),
-        "cdpUrl": info.get("cdpUrl").cloned().unwrap_or(serde_json::Value::Null),
         "toolCount": list().get("tools").and_then(|t| t.as_array()).map(|a| a.len()).unwrap_or(0),
     })
+}
+
+/// The vendored engine's provenance, as published by hand's diagnostics and
+/// handshake. The engine is credited provenance, not hand's definition.
+pub fn provenance() -> serde_json::Value {
+    provenance_from(&backend_info())
+}
+
+/// One-line engine provenance for the initialization response. Keeps the
+/// pinned `caps` and `cdpUrl` fields on top of the shared provenance block.
+pub fn engine_info() -> serde_json::Value {
+    let backend = backend_info();
+    let mut info = provenance_from(&backend);
+    if let Some(obj) = info.as_object_mut() {
+        obj.insert(
+            "caps".to_string(),
+            backend.get("caps").cloned().unwrap_or(serde_json::Value::Null),
+        );
+        obj.insert(
+            "cdpUrl".to_string(),
+            backend.get("cdpUrl").cloned().unwrap_or(serde_json::Value::Null),
+        );
+    }
+    info
 }

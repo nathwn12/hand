@@ -1500,9 +1500,31 @@ pub fn cancel_call(id_key: &str) {
     cancel::cancel(id_key);
 }
 
-/// The engine's compile-time version string used by its catalog.
+/// Upstream identity of the vendored desktop engine. Single source for every
+/// pin and version hand reports; do not repeat these literals elsewhere.
+pub const UPSTREAM_PIN: &str = "0f790be";
+pub const UPSTREAM_VERSION: &str = "8.0.0";
+
+/// The vendored engine's provenance, as published by hand's diagnostics and
+/// handshake. The engine is credited provenance, not hand's definition.
+pub fn provenance() -> Value {
+    serde_json::json!({
+        "engine": "puppet",
+        "sourcePin": UPSTREAM_PIN,
+        "version": UPSTREAM_VERSION,
+        "available": true,
+        "backend": "uia+win32",
+        "toolCount": tools_list()
+            .get("tools")
+            .and_then(|t| t.as_array())
+            .map(|a| a.len())
+            .unwrap_or(0),
+    })
+}
+
+/// The vendored engine's version, not this crate's packaging version.
 pub fn engine_version() -> &'static str {
-    env!("CARGO_PKG_VERSION")
+    UPSTREAM_VERSION
 }
 
 #[cfg(test)]
@@ -1604,5 +1626,20 @@ mod tests {
             v.get("structuredContent").is_none(),
             "error envelope carries no string-result structuredContent, got: {v}"
         );
+    }
+
+    /// The engine version is the pinned upstream version, not this crate's
+    /// packaging version. The crate is `0.1.0`; the engine it vendors is 8.0.0.
+    #[test]
+    fn engine_version_is_the_upstream_version() {
+        assert_eq!(engine_version(), UPSTREAM_VERSION);
+        assert_eq!(engine_version(), "8.0.0");
+        let info = provenance();
+        assert_eq!(info["engine"], json!("puppet"));
+        assert_eq!(info["sourcePin"], json!(UPSTREAM_PIN));
+        assert_eq!(info["version"], json!(UPSTREAM_VERSION));
+        assert_eq!(info["available"], json!(true));
+        assert_eq!(info["backend"], json!("uia+win32"));
+        assert_eq!(info["toolCount"], json!(7));
     }
 }
