@@ -43,13 +43,19 @@
   },
   "metadata": {
     "description": [
+      "browser_assert_layout",
       "browser_click",
       "browser_hover",
       "browser_screenshot",
       "browser_select",
       "browser_snapshot",
       "browser_type",
-      "browser_upload"
+      "browser_upload",
+      "browser_visual",
+      "desktop_diff",
+      "desktop_do",
+      "desktop_elements",
+      "desktop_screenshot"
     ]
   }
 }

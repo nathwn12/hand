@@ -50,7 +50,7 @@ PASS hand baseline: 32 baseline tools vs 35 candidate tools
 
 The 32-name floor is served **with exactly the allowances declared in
 `baseline/declared-additions.json` and no other difference**: two input schemas
-and eight output-schema groups carry the properties listed there, seven tool
+and eight output-schema groups carry the properties listed there, thirteen tool
 descriptions are rewritten there, and every other property, `required` list,
 annotation, `title`, description and name is the pin's. The three extras above
 are hand's own tools, not legacy bodies. The file is not a relaxed mode: an
@@ -175,7 +175,7 @@ in total.
 
 3. **One initialize.** The old servers each described themselves; hand answers
    once with both engines under `engines`. Tool bodies and descriptions are the
-   pinned ones, except the schema additions and the seven description rewrites
+   pinned ones, except the schema additions and the thirteen description rewrites
    declared in `baseline/declared-additions.json`.
 
 4. **Budget environment.** `_budgetMs` is the browser contract. The default also
@@ -234,7 +234,8 @@ in total.
    - `metadata.description`: `browser_click`, `browser_type`, `browser_upload`,
      `browser_hover`, `browser_select`, `browser_snapshot` and
      `browser_screenshot` have a rewritten description, because each one now
-     names the parameters or the result field this tree added to it. A
+     names the parameters or the result field this tree added to it; the six
+     presentation trims in item 10 are declared here too. A
      description is a failing comparison by default, exactly like a schema: the
      file is the only place one may differ, and a listed tool whose description
      still equals the pin fails as a stale declaration. `title` has no declared
@@ -258,6 +259,16 @@ in total.
    "description drifted … and is not declared", and with `browser_navigate` added
    it fails with "identical to the pin: a stale declaration". Both were run, not
    assumed.
+
+10. **Six descriptions are presentation trims.** Each becomes one line stating
+    the action and its required argument, to cut per-session catalog cost. No
+    schema, name, title or body changes:
+    - `browser_visual`: 3,469 chars upstream; one line naming `action`.
+    - `browser_assert_layout`: 1,288 chars upstream; one line naming the `ref`/`selector` targets.
+    - `desktop_screenshot`: 1,581 chars upstream; one line naming the capture scope.
+    - `desktop_elements`: 1,462 chars upstream; one line naming `target`/`hwnd`.
+    - `desktop_do`: 4,027 chars upstream; one line naming `actions`.
+    - `desktop_diff`: 1,133 chars upstream; one line naming `base` and `next`.
 
 ## External CDP engines
 

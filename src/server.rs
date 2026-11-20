@@ -119,7 +119,7 @@ fn server_info() -> Value {
 }
 
 fn instructions() -> &'static str {
-    "hand is a standalone MCP server for headless browser testing and Windows desktop computer use on one connection: browser_* tools drive the browser (owned chrome-headless-shell over CDP; GLADIUS_CDP_URL attaches an explicit external engine instead), desktop_* tools drive the desktop (UIA inspection, background-safe window messages, capture). Browser: start with browser_snapshot for stable @eN refs, then act; snapshot refs are invalidated by navigation and stale refs fail typed. Desktop: list or identify exactly one window first; hand never falls back to the foreground window, never moves the physical pointer, never activates a window and never writes the clipboard. Both domains report typed errors as tool results (structuredContent code/reason), not protocol errors. Verification is separate from delivery: an accepted click is not proof the application reacted. Cancellation and budget expiry settle the answer, never the work: browser calls answer typed cancelled/timeout results with stopped:false, outcome:unknown and retry:unsafe (an action already sent may still land and a retry can duplicate it), and discard their late result; desktop calls stay silent and drop the result (a cancelled desktop id is outcome-unknown too), per Puppet's contract. No telemetry and no upload by default."
+    "hand is a standalone MCP server. browser_*: navigate, snapshot, screenshot, click, type, evaluate, wait_for, targets, dialog, history, network, console, storage, tabs, viewport, select, hover, key, upload, layout, assert_layout, visual, cdp, close, fetch_text, context, wheel, drag. desktop_*: screenshot, diff, list_windows, window, do, cursor, elements. Browser: start with browser_snapshot for @eN refs; refs die on navigation and stale refs fail typed. Desktop: select one named window; never the foreground window, activation, pointer or clipboard. Errors are typed tool results, not protocol errors. Cancel or budget expiry: outcome:unknown, retry:unsafe. Verification is separate from delivery. No telemetry or upload."
 }
 
 /// One `initialize`/`server/discover` result.
@@ -1113,29 +1113,26 @@ fn adapt_desktop_frame(mut frame: Value, modern: bool) -> Value {
 mod tests {
     use super::*;
 
-    /// The opening states hand's identity; the operating rules stay intact.
     #[test]
-    fn instructions_open_with_hand_identity_and_keep_the_rules() {
+    fn instructions_index_every_tool_and_keep_the_rules() {
         let text = instructions();
         assert!(
             text.starts_with("hand is a standalone MCP server"),
-            "instructions must open with hand's own identity: {text}"
+            "instructions must open with hand's identity: {text}"
         );
+        assert!(text.len() <= 1200, "instructions grew to {} bytes", text.len());
+        for name in catalog::BROWSER_TOOLS.iter().chain(catalog::DESKTOP_TOOLS.iter()) {
+            assert!(text.contains(*name), "instructions omit {name:?}: {text}");
+        }
         for needle in [
-            "browser_snapshot for stable @eN refs",
-            "snapshot refs are invalidated by navigation and stale refs fail typed",
-            "list or identify exactly one window first",
-            "never falls back to the foreground window",
-            "never moves the physical pointer",
-            "never activates a window",
-            "never writes the clipboard",
-            "typed errors as tool results (structuredContent code/reason), not protocol errors",
+            "browser_snapshot for @eN refs",
+            "refs die on navigation and stale refs fail typed",
+            "select one named window",
+            "never the foreground window, activation, pointer or clipboard",
+            "typed tool results, not protocol errors",
+            "outcome:unknown, retry:unsafe",
             "Verification is separate from delivery",
-            "stopped:false, outcome:unknown and retry:unsafe",
-            "discard their late result",
-            "desktop calls stay silent and drop the result",
-            "a cancelled desktop id is outcome-unknown too",
-            "No telemetry and no upload by default",
+            "No telemetry or upload",
         ] {
             assert!(text.contains(needle), "instructions lost {needle:?}: {text}");
         }

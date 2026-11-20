@@ -77,6 +77,35 @@ pub fn split(name: &str) -> Option<(Domain, &str)> {
     None
 }
 
+/// One-line descriptions for six entries; schemas, titles and bodies stay pinned.
+fn present(tool: &mut Value) {
+    let Some(name) = tool.get("name").and_then(|n| n.as_str()) else {
+        return;
+    };
+    let short = match name {
+        "browser_visual" => {
+            "Deterministic visual-regression baselines under GLADIUS_VISUAL_DIR; requires action."
+        }
+        "browser_assert_layout" => {
+            "Prove element geometry without pixels using checks on ref and/or selector targets."
+        }
+        "desktop_screenshot" => {
+            "Capture the virtual desktop, one monitor, a window or a region without focusing; scope with window or target."
+        }
+        "desktop_elements" => {
+            "List a window's UI Automation elements as JSON without pixels or input; pass target or hwnd."
+        }
+        "desktop_do" => {
+            "Run an ordered actions[] batch against one locked window; requires actions."
+        }
+        "desktop_diff" => "Pixel-diff two captures; requires base and next.",
+        _ => return,
+    };
+    if let Some(obj) = tool.as_object_mut() {
+        obj.insert("description".to_string(), Value::String(short.to_string()));
+    }
+}
+
 fn prefixed(prefix: &str, tools: Value) -> Vec<Value> {
     tools
         .get("tools")
@@ -93,6 +122,7 @@ fn prefixed(prefix: &str, tools: Value) -> Vec<Value> {
                             );
                         }
                     }
+                    present(&mut tool);
                     tool
                 })
                 .collect()

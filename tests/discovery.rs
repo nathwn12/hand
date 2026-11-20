@@ -100,8 +100,9 @@ fn initialize_identifies_version_platform_and_both_engines() {
     for needle in [
         "browser_snapshot",
         "desktop_",
-        "never moves the physical pointer",
-        "typed",
+        "never the foreground window",
+        "outcome:unknown, retry:unsafe",
+        "typed tool results",
     ] {
         assert!(
             instructions.contains(needle),
