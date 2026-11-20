@@ -3875,6 +3875,41 @@ fn check_chromium_child(guard: &mut ChildGuard) -> Result<(), String> {
     }
 }
 
+/// Read the port Chromium chose from `<profile>/DevToolsActivePort`. Launching
+/// with `--remote-debugging-port=0` lets the browser bind its own free port,
+/// which removes the pick-then-free race where a local squatter claimed our
+/// probe port before the browser bound it. The first line of the file is the
+/// port; poll it inside the existing startup budget and fail closed if the
+/// child exits or the deadline passes first.
+async fn read_devtools_port(
+    profile: &std::path::Path,
+    start: Instant,
+    deadline: Duration,
+    guard: &mut ChildGuard,
+) -> Result<u16, String> {
+    let file = profile.join("DevToolsActivePort");
+    loop {
+        check_chromium_child(guard)?;
+        let remaining = startup_remaining(start, deadline).ok_or_else(|| {
+            format!(
+                "timeout waiting for chromium DevToolsActivePort at {}: \
+                 deadline passed with no chosen port",
+                file.display()
+            )
+        })?;
+        if let Ok(text) = std::fs::read_to_string(&file) {
+            if let Some(port) = text
+                .lines()
+                .next()
+                .and_then(|line| line.trim().parse::<u16>().ok())
+            {
+                return Ok(port);
+            }
+        }
+        tokio::time::sleep(remaining.min(Duration::from_millis(50))).await;
+    }
+}
+
 /// Owned-launch attempts: the pick-port ÔåÆ spawn ÔåÆ readiness sequence runs up
 /// to this many times, with a FRESH `:0` pick per attempt (the pick lives
 /// inside the single-attempt function below, so a stale pick is never
@@ -3974,23 +4009,11 @@ async fn launch_owned_chromium_once(
     sweep_stale_profiles();
     let profile = ProfileDir::create()?;
     let chromium = find_chromium()?;
-    let port = {
-        let listener = std::net::TcpListener::bind("127.0.0.1:0")
-            .map_err(|e| format!("chromium free port: {e}"))?;
-        let port = listener
-            .local_addr()
-            .map_err(|e| format!("chromium free port: {e}"))?
-            .port();
-        drop(listener);
-        port
-    };
-    debug_eprintln!(
-        "[gladius] backend: chromium {} (port {port})",
-        chromium.display()
-    );
     debug_eprintln!("[gladius] profile: {}", profile.path().display());
     let mut std_cmd = std::process::Command::new(&chromium);
-    std_cmd.args(chromium_argv(port, profile.path()));
+    // Port 0: the browser binds its own free port and records it in
+    // DevToolsActivePort, so no squatter can claim a probe port we freed.
+    std_cmd.args(chromium_argv(0, profile.path()));
     std_cmd
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -4019,8 +4042,13 @@ async fn launch_owned_chromium_once(
     };
     let pid = guard.pid;
     let record = PidRecord::write(pid, profile.path())?;
-    let base = format!("http://127.0.0.1:{port}");
     let start = Instant::now();
+    let port = read_devtools_port(profile.path(), start, deadline, &mut guard).await?;
+    debug_eprintln!(
+        "[gladius] backend: chromium {} (port {port})",
+        chromium.display()
+    );
+    let base = format!("http://127.0.0.1:{port}");
     let ws_request = loop {
         check_chromium_child(&mut guard)?;
         let remaining = startup_remaining(start, deadline).ok_or_else(|| {
