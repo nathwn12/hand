@@ -36,14 +36,15 @@ const DRAG: &str = r#"<!doctype html><html><head><title>Drag</title></head><body
 <script>
 window.dragLog = [];
 document.getElementById('src').addEventListener('dragstart', function (e) {
-  window.dragLog.push({type:'dragstart', trusted:e.isTrusted});
-  e.dataTransfer.setData('text/plain', 'from-page');
+  window.dragLog.push({type:'dragstart', trusted:e.isTrusted,
+    types:Array.prototype.slice.call(e.dataTransfer.types)});
 });
 var dst = document.getElementById('dst');
 dst.addEventListener('dragover', function (e) { e.preventDefault(); });
 dst.addEventListener('drop', function (e) {
   e.preventDefault();
   window.dragLog.push({type:'drop', trusted:e.isTrusted,
+    types:Array.prototype.slice.call(e.dataTransfer.types),
     text:e.dataTransfer.getData('text/plain'),
     extra:e.dataTransfer.getData('application/x-hand')});
 });
@@ -244,8 +245,13 @@ fn b10_native_datatransfer_drag_is_trusted() {
     let arr = log.as_array().expect("dragLog array");
     let start = arr.iter().find(|e| e["type"] == "dragstart").expect("dragstart");
     assert_eq!(start["trusted"].as_bool(), Some(true), "dragstart trusted: {start:?}");
+    let start_types = start["types"].as_array().expect("dragstart DataTransfer.types array");
+    assert!(start_types.is_empty(), "CDP items must not be claimed on native dragstart: {start:?}");
     let drop = arr.iter().find(|e| e["type"] == "drop").expect("drop");
     assert_eq!(drop["trusted"].as_bool(), Some(true), "drop trusted: {drop:?}");
+    let types = drop["types"].as_array().expect("drop DataTransfer.types array");
+    assert!(types.iter().any(|t| t.as_str() == Some("text/plain")), "text/plain item missing from page DataTransfer: {drop:?}");
+    assert!(types.iter().any(|t| t.as_str() == Some("application/x-hand")), "application/x-hand item missing from page DataTransfer: {drop:?}");
     assert_eq!(drop["text"].as_str().unwrap_or(""), "payload-42", "drop data: {drop:?}");
     assert_eq!(drop["extra"].as_str().unwrap_or(""), "row-7", "second mime item: {drop:?}");
 }
