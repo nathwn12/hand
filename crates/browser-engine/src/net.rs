@@ -10,11 +10,13 @@ use serde_json::{json, Value};
 use crate::browser::Browser;
 use crate::tools::ToolErr;
 
-/// Row id this module owns.
+/// Row id this module owns. The stub test reads it; lib code does not.
+#[cfg_attr(not(test), allow(dead_code))]
 pub const ROW: &str = "B3";
 
 /// Frozen input/output contract for row B3 (`browser_network` interception).
 /// Implementation is not present in this scaffold.
+#[allow(dead_code)] // row B3 has no dispatch arm yet; nothing here is reachable
 pub fn schema() -> Value {
     json!({
         "name": "network",
@@ -44,6 +46,7 @@ pub fn schema() -> Value {
 }
 
 /// The single typed error every call returns while this row is a stub.
+#[cfg_attr(not(test), allow(dead_code))]
 fn not_implemented() -> ToolErr {
     ToolErr::typed(
         "row B3: network interception is not implemented".to_string(),
@@ -53,6 +56,7 @@ fn not_implemented() -> ToolErr {
 
 /// Dispatcher entry point for the B3 fill lane. Intended one-line arm:
 /// `crate::net::handle(browser, args).await`.
+#[allow(dead_code)] // row B3 has no dispatch arm yet; the fill lane owns the wiring
 pub async fn handle(_browser: &Browser, _args: &Value) -> Result<Value, ToolErr> {
     Err(not_implemented())
 }

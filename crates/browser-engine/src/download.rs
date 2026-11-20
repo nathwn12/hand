@@ -16,7 +16,8 @@ use serde_json::{json, Value};
 use crate::browser::Browser;
 use crate::tools::{check_unknown, ok_text, ToolCode, ToolErr, ToolReason};
 
-/// Row id this module owns.
+/// Row id this module owns. The stub test reads it; lib code does not.
+#[cfg_attr(not(test), allow(dead_code))]
 pub const ROW: &str = "B5";
 
 /// Frozen input/output contract for row B5 (`browser_download`).

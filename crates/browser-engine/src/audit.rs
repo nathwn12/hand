@@ -10,11 +10,13 @@ use serde_json::{json, Value};
 use crate::browser::Browser;
 use crate::tools::ToolErr;
 
-/// Row id this module owns.
+/// Row id this module owns. The stub test reads it; lib code does not.
+#[cfg_attr(not(test), allow(dead_code))]
 pub const ROW: &str = "B7";
 
 /// Frozen input/output contract for row B7 (`browser_audit`).
 /// Implementation is not present in this scaffold.
+#[allow(dead_code)] // the arm exists; the schema stays unlisted until row B7 fills
 pub fn schema() -> Value {
     json!({
         "name": "audit",

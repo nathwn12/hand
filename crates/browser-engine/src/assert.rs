@@ -12,7 +12,8 @@ use serde_json::{json, Value};
 use crate::browser::Browser;
 use crate::tools::{check_unknown, ok_text, ToolCode, ToolErr, ToolReason};
 
-/// Row id this module owns.
+/// Row id this module owns. The stub test reads it; lib code does not.
+#[cfg_attr(not(test), allow(dead_code))]
 pub const ROW: &str = "B2";
 
 /// Frozen input/output contract for row B2 (`browser_assert`).
@@ -288,8 +289,8 @@ pub async fn handle(browser: &Browser, args: &Value) -> Result<Value, ToolErr> {
     let poll = Duration::from_millis(poll_ms);
 
     let mut polls = 0u64;
-    let mut observed = Value::Null;
-    let mut checks: Vec<Value> = Vec::new();
+    let mut observed;
+    let mut checks: Vec<Value>;
     let verdict: bool;
     loop {
         let current = match kind {
