@@ -119,7 +119,7 @@ fn server_info() -> Value {
 }
 
 fn instructions() -> &'static str {
-    "hand exposes two prefixed catalogs on one connection: browser_* is the Gladius headless browser (owned chrome-headless-shell over CDP; GLADIUS_CDP_URL attaches an explicit external engine instead), desktop_* is the Puppet Windows desktop engine (UIA inspection, background-safe window messages, capture). Browser: start with browser_snapshot for stable @eN refs, then act; snapshot refs are invalidated by navigation and stale refs fail typed. Desktop: list or identify exactly one window first; hand never falls back to the foreground window, never moves the physical pointer, never activates a window and never writes the clipboard. Both domains report typed errors as tool results (structuredContent code/reason), not protocol errors. Verification is separate from delivery: an accepted click is not proof the application reacted. Cancellation and budget expiry settle the answer, never the work: browser calls answer typed cancelled/timeout results with stopped:false, outcome:unknown and retry:unsafe (an action already sent may still land and a retry can duplicate it), and discard their late result; desktop calls stay silent and drop the result (a cancelled desktop id is outcome-unknown too), per Puppet's contract. No telemetry and no upload by default."
+    "hand is a standalone MCP server for headless browser testing and Windows desktop computer use on one connection: browser_* tools drive the browser (owned chrome-headless-shell over CDP; GLADIUS_CDP_URL attaches an explicit external engine instead), desktop_* tools drive the desktop (UIA inspection, background-safe window messages, capture). Browser: start with browser_snapshot for stable @eN refs, then act; snapshot refs are invalidated by navigation and stale refs fail typed. Desktop: list or identify exactly one window first; hand never falls back to the foreground window, never moves the physical pointer, never activates a window and never writes the clipboard. Both domains report typed errors as tool results (structuredContent code/reason), not protocol errors. Verification is separate from delivery: an accepted click is not proof the application reacted. Cancellation and budget expiry settle the answer, never the work: browser calls answer typed cancelled/timeout results with stopped:false, outcome:unknown and retry:unsafe (an action already sent may still land and a retry can duplicate it), and discard their late result; desktop calls stay silent and drop the result (a cancelled desktop id is outcome-unknown too), per Puppet's contract. No telemetry and no upload by default."
 }
 
 /// One `initialize`/`server/discover` result.
@@ -265,8 +265,8 @@ fn desktop_no_response_envelope(tool: &str) -> Value {
 fn unknown_tool_envelope(name: &str) -> Value {
     browser_engine::typed_error(
         &format!(
-            "hand: unknown tool '{name}'; tools are namespaced browser_<gladius name> or \
-             desktop_<puppet name>"
+            "hand: unknown tool '{name}'; tools are namespaced browser_<name> or \
+             desktop_<name>"
         ),
         json!({"code": "invalid_args", "reason": "unknown_tool", "name": name}),
     )
@@ -1113,9 +1113,35 @@ fn adapt_desktop_frame(mut frame: Value, modern: bool) -> Value {
 mod tests {
     use super::*;
 
-    /// The handshake's engine blocks are the crates' provenance, not local
-    /// copies. A stale literal in `server_info` can no longer disagree with
-    /// the vendored source the binary actually carries.
+    /// The opening states hand's identity; the operating rules stay intact.
+    #[test]
+    fn instructions_open_with_hand_identity_and_keep_the_rules() {
+        let text = instructions();
+        assert!(
+            text.starts_with("hand is a standalone MCP server"),
+            "instructions must open with hand's own identity: {text}"
+        );
+        for needle in [
+            "browser_snapshot for stable @eN refs",
+            "snapshot refs are invalidated by navigation and stale refs fail typed",
+            "list or identify exactly one window first",
+            "never falls back to the foreground window",
+            "never moves the physical pointer",
+            "never activates a window",
+            "never writes the clipboard",
+            "typed errors as tool results (structuredContent code/reason), not protocol errors",
+            "Verification is separate from delivery",
+            "stopped:false, outcome:unknown and retry:unsafe",
+            "discard their late result",
+            "desktop calls stay silent and drop the result",
+            "a cancelled desktop id is outcome-unknown too",
+            "No telemetry and no upload by default",
+        ] {
+            assert!(text.contains(needle), "instructions lost {needle:?}: {text}");
+        }
+    }
+
+    /// The handshake publishes the crates' provenance.
     #[test]
     fn server_info_engines_match_crate_provenance() {
         let info = server_info();
@@ -1131,7 +1157,7 @@ mod tests {
         assert_eq!(info["engines"]["desktop"], desktop);
     }
 
-    /// D4 (the accumulation half): one finished `JoinHandle` per call used to
+    /// One finished `JoinHandle` per call accumulates
     /// be kept for the life of the process. Tracking must drop finished
     /// handles and keep running ones.
     #[tokio::test]
@@ -1160,7 +1186,7 @@ mod tests {
         }
     }
 
-    /// D6: a panicking engine task is observed and mapped to a typed tool
+    /// A panicking engine task is observed and mapped to a typed tool
     /// error, so the request id is answered instead of left pending.
     #[tokio::test]
     async fn a_panicking_engine_task_maps_to_a_typed_answer() {
@@ -1253,7 +1279,7 @@ mod tests {
         assert!(mixed.contains("closed next"), "{mixed}");
     }
 
-    /// D3: the entry of a cancelled desktop call stays published until its
+    /// The entry of a cancelled desktop call stays published until its
     /// worker ends, so a reused id is refused instead of silently riding the
     /// already-flipped token (which would be answered with nothing).
     #[tokio::test]

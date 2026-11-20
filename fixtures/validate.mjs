@@ -288,7 +288,6 @@ async function runStaticChecks(payload, hashes) {
     try {
       readme = await readFile(join(root, 'README.md'), 'utf8');
     } catch {
-      // the check below reports the absence
     }
     const staleReadme = PAYLOAD_FILES.filter(
       (file) => !readme.includes(`${hashes.get(file)}  ${file}`),
@@ -396,7 +395,6 @@ class Cdp {
         try {
           ws.close();
         } catch {
-          // ignore
         }
         reject(new Error('CDP WebSocket connect timeout'));
       }, timeoutMs);
@@ -506,7 +504,6 @@ class Cdp {
     try {
       this.ws.close();
     } catch {
-      // ignore
     }
   }
 }
@@ -570,7 +567,6 @@ async function runBrowserChecks(origin, manifest, requests) {
         });
         if (response.ok) versionInfo = await response.json();
       } catch {
-        // retry until the DevTools endpoint is ready
       }
       if (!versionInfo) await delay(50);
     }
@@ -899,7 +895,6 @@ async function runBrowserChecks(origin, manifest, requests) {
       try {
         await cdp.send('Browser.close', {}, undefined, 3000);
       } catch {
-        // socket commonly closes before the response
       }
       cdp.close();
     }

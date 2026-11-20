@@ -1,4 +1,4 @@
-//! Slice 1: one MCP server, both engine catalogs, honest availability.
+//! One MCP server, both engine catalogs, honest availability.
 //!
 //! These tests use the real executable over stdio and compare every published
 //! floor tool body against the committed baseline (`baseline/hand-catalog.json`).

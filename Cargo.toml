@@ -8,7 +8,7 @@ version = "0.1.0"
 edition = "2021"
 license = "MIT"
 rust-version = "1.88"
-description = "hand: one MCP server for headless browser testing (CDP) and Windows desktop computer use (UIA), integrating the Gladius and Puppet engines"
+description = "hand: one MCP server for headless browser testing (CDP) and Windows desktop computer use"
 repository = "https://github.com/nathwn12/hand"
 
 [[bin]]

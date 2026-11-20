@@ -4740,7 +4740,7 @@ mod tests {
         println!("OFFSCREEN_CLICK_REFUSED_OK code=offscreen_element posts=0 rect={rect}");
     }
 
-    /// P2 dry-run honesty: a dry run must report the refusal the live path
+    /// Dry-run honesty: a dry run must report the refusal the live path
     /// gives. It used to return `ok:true` for an element the live click
     /// refuses with `offscreen_element`, so a caller who dry-ran a burst got a
     /// green light for a click that could never land.
@@ -4811,7 +4811,7 @@ mod tests {
         println!("OFFSCREEN_CLICK_DRY_RUN_REFUSED_OK code=offscreen_element");
     }
 
-    /// P1 focus_window lock: a `hwnd` that names a window is refused with
+    /// Focus_window lock: a `hwnd` that names a window is refused with
     /// the POLICY code (`no_foreground_policy`) ÔÇö focusing IS taking the
     /// foreground, and the gate fires before anything else. No window is
     /// touched, recycled handle or not.

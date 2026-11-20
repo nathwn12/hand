@@ -1,5 +1,5 @@
 <h1 align="center">hand-mcp</h1>
-<p align="center"><strong>One MCP server for the headless browser and the Windows desktop: the Gladius and Puppet engines under one stdio connection.</strong></p>
+<p align="center"><strong>hand is one MCP server for headless browser testing and Windows desktop computer use.</strong></p>
 
 ## Install
 

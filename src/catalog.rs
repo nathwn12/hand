@@ -1,9 +1,9 @@
-//! The one `hand` catalog: both legacy catalogs, namespaced by prefix.
+//! The one `hand` catalog: the browser and desktop tool sets, namespaced by prefix.
 //!
 //! The prefix is the only change to a tool entry. Every schema, description,
-//! annotation, output schema and result body stays the pinned engine's, so a
-//! client migrating from Gladius or Puppet has a one-to-one mapping:
-//! `hand` = `browser_` + Gladius name, or `desktop_` + Puppet name.
+//! annotation, output schema and result body stays the pinned source's, so a
+//! client has a one-to-one mapping: `hand` = `browser_` + Gladius name, or
+//! `desktop_` + Puppet name.
 
 use serde_json::{json, Value};
 

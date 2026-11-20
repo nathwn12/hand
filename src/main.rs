@@ -1,5 +1,5 @@
-//! hand: one Rust MCP server for browser testing and Windows desktop
-//! computer use, integrating the Gladius and Puppet engines in one process.
+//! hand: one Rust MCP server for headless browser testing and Windows desktop
+//! computer use.
 //!
 //! `hand` with no arguments serves MCP over stdio. Diagnostics go to
 //! stderr; stdout carries protocol frames only.
@@ -131,8 +131,7 @@ fn doctor_report() -> serde_json::Value {
         .count();
     let mut browser = browser_engine::provenance();
     if let Some(obj) = browser.as_object_mut() {
-        // Doctor reports the tools hand serves, including `browser_context`,
-        // and the full backend info the diagnostics have always carried.
+        // Doctor reports served tools, including hand's `browser_context`.
         obj.insert("chromium".to_string(), chromium);
         obj.insert("toolCount".to_string(), serde_json::json!(browser_tools));
         obj.insert("backend".to_string(), browser_engine::backend_info());
@@ -170,8 +169,7 @@ fn doctor() -> i32 {
 mod tests {
     use super::*;
 
-    /// Doctor's engine pin and version come from the engine crates, so a stale
-    /// literal in the report cannot disagree with the vendored source.
+    /// Doctor's pins and versions come from the engine crates.
     #[test]
     fn doctor_engine_pins_match_the_crate_constants() {
         let report = doctor_report();

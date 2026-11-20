@@ -480,7 +480,7 @@ pub struct ElementModel {
 /// or scroll must not invalidate the fingerprint, so `expect_fp` refuses
 /// only a genuinely changed control, never one that merely moved. The
 /// path is the enumeration address, never part of the identity either.
-/// Element text cap (P4c): at most this many chars per entry, with a
+/// Element text cap: at most this many chars per entry, with a
 /// `text_truncated` flag when the source was longer. Applied only when
 /// `detail:true` requests text; identity (`fp`) never covers text.
 pub const ELEMENT_TEXT_CAP: usize = 4000;
@@ -886,7 +886,7 @@ mod tests {
         );
     }
 
-    /// P2 honesty rule: a translation is only adopted when the recapture that
+    /// Honesty rule: a translation is only adopted when the recapture that
     /// re-rendered the pixels succeeded. When it failed the image still comes
     /// from the pre-capture rect, so that rect is what must be reported (with
     /// a note) - reporting the post rect would pair new coordinates with old

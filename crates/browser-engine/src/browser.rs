@@ -5624,7 +5624,7 @@ mod tests {
         rig.shutdown().await;
     }
 
-    /// P2 regression: `wait_for` honors its OWN budget while the lazy
+    /// `wait_for` honors its OWN budget while the lazy
     /// `Network.enable` enable is still outstanding. The peer answers the
     /// attach flow (so the CDP session is established) and then holds the
     /// `Network.enable` response forever: pre-fix the unwrapped await paid

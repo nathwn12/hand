@@ -722,7 +722,7 @@ fn image_block(b64: &str, mime: &str) -> String {
     )
 }
 
-/// P2a envelope: `structuredContent` carries the real machine-readable value
+/// `structuredContent` carries the real machine-readable value
 /// parsed from the tool's JSON text (never a double-encoded string), while
 /// the text block stays byte-identical for legacy clients. A top-level
 /// array (only `list_windows`) is namespaced as `{"windows": [...]}`; any
@@ -795,13 +795,13 @@ fn err_result_text(s: &str) -> String {
     format!("{{\"content\":[{}],\"isError\":true}}", text_block(s))
 }
 
-/// P3a hidden-desktop capture: the `do` text envelope plus the hidden
+/// Hidden-desktop capture: the `do` text envelope plus the hidden
 /// PrintWindow PNG as a real MCP `image` content block alongside the JSON
 /// text (not only base64 inside it). `structuredContent` and `isError`
 /// follow the same rule as `wrapped_text` (a `do` burst is a tool error only
 /// when nothing succeeded). Only the hidden path with a
 /// successful capture uses this; every other `do` call keeps the exact
-/// P2a text-only envelope.
+/// Text-only envelope.
 pub(crate) fn wrapped_text_with_image(s: &str, png_b64: &str, mime: &str) -> String {
     let Some(sc) = structured_of_text(s) else {
         return tool_err_blocks(&[text_block(
@@ -818,7 +818,7 @@ pub(crate) fn wrapped_text_with_image(s: &str, png_b64: &str, mime: &str) -> Str
     )
 }
 
-/// P2a screenshot success: text/image blocks byte-identical, plus the
+/// Screenshot success: text/image blocks byte-identical, plus the
 /// coordinate-map object as `structuredContent` (no base64 duplication;
 /// the optional third elements block stays text-only).
 pub fn screenshot_ok(blocks: &[String], cmap: &Value) -> String {
@@ -829,7 +829,7 @@ pub fn screenshot_ok(blocks: &[String], cmap: &Value) -> String {
     )
 }
 
-/// P2a tool-level failure with pre-rendered content blocks (screenshot
+/// Tool-level failure with pre-rendered content blocks (screenshot
 /// domain errors): text blocks byte-identical, `isError: true`.
 pub fn tool_err_blocks(blocks: &[String]) -> String {
     format!("{{\"content\":[{}],\"isError\":true}}", blocks.join(","))
@@ -1500,13 +1500,11 @@ pub fn cancel_call(id_key: &str) {
     cancel::cancel(id_key);
 }
 
-/// Upstream identity of the vendored desktop engine. Single source for every
-/// pin and version hand reports; do not repeat these literals elsewhere.
+/// Upstream identity of the vendored desktop engine. Single source for pins and versions.
 pub const UPSTREAM_PIN: &str = "0f790be";
 pub const UPSTREAM_VERSION: &str = "8.0.0";
 
-/// The vendored engine's provenance, as published by hand's diagnostics and
-/// handshake. The engine is credited provenance, not hand's definition.
+/// Provenance hand publishes for this engine.
 pub fn provenance() -> Value {
     serde_json::json!({
         "engine": "puppet",
@@ -1628,8 +1626,7 @@ mod tests {
         );
     }
 
-    /// The engine version is the pinned upstream version, not this crate's
-    /// packaging version. The crate is `0.1.0`; the engine it vendors is 8.0.0.
+    /// The engine version is the upstream version, not this crate's version.
     #[test]
     fn engine_version_is_the_upstream_version() {
         assert_eq!(engine_version(), UPSTREAM_VERSION);

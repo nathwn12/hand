@@ -59,7 +59,7 @@ type WindowResolve = (
 );
 
 /// Screenshot domain error: the aggregated text block is unchanged for
-/// legacy clients; P2a reports it as a real tool failure (`isError: true`).
+/// legacy clients; it is a real tool failure (`isError: true`).
 pub fn shot_err_list(items: Vec<String>) -> String {
     tool_err_blocks(&[text_block(&serde_json::to_string(&items).unwrap())])
 }

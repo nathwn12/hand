@@ -2,7 +2,7 @@
   <img src="assets/icon.svg" width="120" height="120" alt="hand icon" />
 </p>
 <h1 align="center">hand</h1>
-<p align="center"><strong>One MCP server for the headless browser and the Windows desktop: the Gladius and Puppet engines under one stdio connection, with targets an agent can mean and refusals that say why.</strong></p>
+<p align="center"><strong>hand is one MCP server for headless browser testing and Windows desktop computer use, with targets an agent can mean and refusals that say why.</strong></p>
 
 ## Install
 

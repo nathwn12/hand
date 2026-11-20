@@ -54,8 +54,7 @@ pub fn typed_error(prose: &str, structured: serde_json::Value) -> serde_json::Va
     tools::typed_envelope(prose, structured)
 }
 
-/// Upstream identity of the vendored browser engine. Single source for every
-/// pin and version hand reports; do not repeat these literals elsewhere.
+/// Upstream identity of the vendored browser engine. Single source for pins and versions.
 pub const UPSTREAM_PIN: &str = "59c6d77";
 pub const UPSTREAM_VERSION: &str = "0.8.0";
 
@@ -70,14 +69,12 @@ fn provenance_from(info: &serde_json::Value) -> serde_json::Value {
     })
 }
 
-/// The vendored engine's provenance, as published by hand's diagnostics and
-/// handshake. The engine is credited provenance, not hand's definition.
+/// Provenance hand publishes for this engine.
 pub fn provenance() -> serde_json::Value {
     provenance_from(&backend_info())
 }
 
-/// One-line engine provenance for the initialization response. Keeps the
-/// pinned `caps` and `cdpUrl` fields on top of the shared provenance block.
+/// Initialization provenance, with the pinned `caps` and `cdpUrl` fields.
 pub fn engine_info() -> serde_json::Value {
     let backend = backend_info();
     let mut info = provenance_from(&backend);
