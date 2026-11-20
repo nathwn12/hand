@@ -29,6 +29,7 @@
     "bin/",
     "hand.exe",
     "LICENSE",
-    "README.md"
+    "README.md",
+    "signature.svg"
   ]
 }
