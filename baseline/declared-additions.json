@@ -2,23 +2,42 @@
   "$comment": "The one place a legacy tool may differ by hand. `inputSchema` and `outputSchema` list dotted paths relative to the schema object, so a top-level property is 'properties.<name>': each listed path must be PRESENT in the candidate (a missing or renamed one fails), and every property this file does not list must stay structurally identical to the pinned body in hand-catalog.json. `metadata.description` lists bare tool names whose description was deliberately rewritten: such a tool's description must DIFFER from the pin (an identical one is a stale declaration), and an unlisted description difference fails. `title` has no declared exceptions at all. A new entry needs its justification in docs/COMPATIBILITY.md under 'Intentional differences', and an entry is staged with the commit that ships it.",
   "version": 1,
   "inputSchema": {
+    "browser_assert_layout": [
+      "properties.frame"
+    ],
     "browser_click": [
       "properties.button",
       "properties.clickCount"
+    ],
+    "browser_drag": [
+      "properties.dataTransfer"
+    ],
+    "browser_layout": [
+      "properties.frame"
     ],
     "browser_screenshot": [
       "properties.clip",
       "properties.element",
       "properties.format",
       "properties.quality"
+    ],
+    "browser_visual": [
+      "properties.frame"
     ]
   },
   "outputSchema": {
     "browser_click": [
       "properties.resolved"
     ],
+    "browser_drag": [
+      "properties.dataTransfer",
+      "properties.dragEvents"
+    ],
     "browser_hover": [
       "properties.resolved"
+    ],
+    "browser_navigate": [
+      "properties.observed"
     ],
     "browser_screenshot": [
       "properties.clip",
@@ -34,6 +53,10 @@
     "browser_upload": [
       "properties.resolved"
     ],
+    "browser_visual": [
+      "properties.frame",
+      "properties.clip"
+    ],
     "desktop_elements": [
       "properties.noSteal"
     ],
@@ -46,6 +69,7 @@
       "browser_assert_layout",
       "browser_click",
       "browser_hover",
+      "browser_layout",
       "browser_screenshot",
       "browser_select",
       "browser_snapshot",

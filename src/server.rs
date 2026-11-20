@@ -119,7 +119,7 @@ fn server_info() -> Value {
 }
 
 fn instructions() -> &'static str {
-    "hand is a standalone MCP server. browser_*: navigate, snapshot, screenshot, click, type, evaluate, wait_for, targets, dialog, history, network, console, storage, tabs, viewport, select, hover, key, upload, layout, assert_layout, visual, cdp, close, fetch_text, context, wheel, drag. desktop_*: screenshot, diff, list_windows, window, do, cursor, elements. Browser: start with browser_snapshot for @eN refs; refs die on navigation and stale refs fail typed. Desktop: select one named window; never the foreground window, activation, pointer or clipboard. Errors are typed tool results, not protocol errors. Cancel or budget expiry: outcome:unknown, retry:unsafe. Verification is separate from delivery. No telemetry or upload."
+    "hand is a standalone MCP server. browser_*: navigate, snapshot, screenshot, click, type, evaluate, wait_for, targets, dialog, history, network, console, storage, tabs, viewport, select, hover, key, upload, layout, assert_layout, visual, cdp, close, fetch_text, context, wheel, drag, form. desktop_*: screenshot, diff, list_windows, window, do, cursor, elements. Browser: start with browser_snapshot for @eN refs; refs die on navigation and stale refs fail typed. Desktop: select one named window; never the foreground window, activation, pointer or clipboard. Errors are typed tool results, not protocol errors. Cancel or budget expiry: outcome:unknown, retry:unsafe. Verification is separate from delivery. No telemetry or upload."
 }
 
 /// One `initialize`/`server/discover` result.
