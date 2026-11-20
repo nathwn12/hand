@@ -1,0 +1,211 @@
+{
+  "schema": "hand-mcp.benchmark.comparison/v1",
+  "generatedAtUtc": "2026-11-20T15:47:13.694Z",
+  "receipts": [
+    {
+      "file": "Q:\\PROJECTS\\PERSONAL\\hand\\benchmarks\\receipts\\hand-desktop-capture-20261120T154649135Z.json",
+      "sha256": "sha256:4df2962391751a104c1b21c49663254f57af226a43a548eeaefc288957a1e4cf",
+      "product": "hand",
+      "scenario": "desktop-capture",
+      "status": "pass",
+      "testOnly": false,
+      "p50": 205.038,
+      "p95": 219.628,
+      "max": 236.235,
+      "failed": 0,
+      "attempts": 100,
+      "observed": 100,
+      "recordedAttempts": 100,
+      "recordedFailures": 0,
+      "recordedObserved": 100,
+      "declaredMeasuredFailures": 0,
+      "recomputedP50Ms": 205.038,
+      "recomputedP95Ms": 219.628,
+      "recomputedMaxMs": 236.235,
+      "targetP95Ms": 500,
+      "warmupFailures": 0,
+      "recordedWarmups": 10,
+      "recordedWarmupFailures": 0,
+      "machineHash": "sha256:993049499f61bbe0fe2f531d589535b0ae7e89934300b1cf01c6669a49ae22a7",
+      "fixtureHash": null,
+      "fixtureFiles": [],
+      "fixturePinEntries": null,
+      "recomputedFixtureHash": null,
+      "browserHash": null,
+      "browserLaunchVerified": false,
+      "browserLaunchPath": null,
+      "browserLaunchSha256": null,
+      "targetHash": "sha256:3b2defd1f0948186aafe7e7076e483f1db79b8e1685ae99d66fd0f6d672415d3",
+      "binaryPath": "Q:\\PROJECTS\\PERSONAL\\hand\\target\\release\\hand.exe",
+      "binarySha256": "sha256:e15f47f78d04e2a5e01ea2d22dae9dfd3fe1487c316c01a5b82ec22cbabb43f0",
+      "binaryStillMatches": true,
+      "buildConfiguration": "release",
+      "releaseEvidenceVerified": true,
+      "releaseEvidenceKind": "local-release-build",
+      "releaseEvidenceReference": "Q:\\PROJECTS\\PERSONAL\\hand\\benchmarks\\receipts\\builds\\hand-16ffc42f-20261120T154607383Z-release.json",
+      "releaseEvidenceReason": null,
+      "claimedReleaseIdentityVerified": false,
+      "claimedReleaseIdentityBasis": "embedded-build-metadata",
+      "paramsHash": "sha256:cb37d09f9abb63b7a026eacc82e2257bb9615bbe5787bdee3d35361ef76f0589",
+      "protocol": {
+        "warmup": 10,
+        "measured": 100,
+        "sequential": true,
+        "timeoutMs": 60000,
+        "framing": "newline-delimited JSON-RPC",
+        "latencyBasis": "stdin write to complete response frame; validation happens after the measurement"
+      },
+      "protocolKey": "{\"framing\":\"newline-delimited JSON-RPC\",\"latencyBasis\":\"stdin write to complete response frame; validation happens after the measurement\",\"measured\":100,\"sequential\":true,\"timeoutMs\":60000,\"warmup\":10}",
+      "version": "hand 0.2.0 (16ffc42fc00a7f9f274a3d61cacfc11e5c96e99f; release)",
+      "reasons": [],
+      "warnings": [
+        "release identity is unverified (embedded-build-metadata): the binary embeds commit 16ffc42fc00a7f9f274a3d61cacfc11e5c96e99f and profile \"release\"; a self-report is not an attestation, so compare.mjs re-checks it against a recorded --release build receipt and artifact hash"
+      ]
+    }
+  ],
+  "groups": [
+    {
+      "scenario": "warm-ping",
+      "products": [],
+      "comparable": false,
+      "differences": [
+        "missing product receipt(s): hand, gladius, puppet",
+        "no measured receipt in group"
+      ],
+      "allPass": false,
+      "members": []
+    },
+    {
+      "scenario": "browser-snapshot",
+      "products": [],
+      "comparable": false,
+      "differences": [
+        "missing product receipt(s): hand, gladius",
+        "no measured receipt in group"
+      ],
+      "allPass": false,
+      "members": []
+    },
+    {
+      "scenario": "desktop-enumerate",
+      "products": [],
+      "comparable": false,
+      "differences": [
+        "missing product receipt(s): hand, puppet",
+        "no measured receipt in group"
+      ],
+      "allPass": false,
+      "members": []
+    },
+    {
+      "scenario": "desktop-capture",
+      "products": [
+        "hand"
+      ],
+      "comparable": false,
+      "differences": [
+        "missing product receipt(s): puppet"
+      ],
+      "allPass": false,
+      "members": [
+        {
+          "file": "Q:\\PROJECTS\\PERSONAL\\hand\\benchmarks\\receipts\\hand-desktop-capture-20261120T154649135Z.json",
+          "sha256": "sha256:4df2962391751a104c1b21c49663254f57af226a43a548eeaefc288957a1e4cf",
+          "product": "hand",
+          "scenario": "desktop-capture",
+          "status": "pass",
+          "testOnly": false,
+          "p50": 205.038,
+          "p95": 219.628,
+          "max": 236.235,
+          "failed": 0,
+          "attempts": 100,
+          "observed": 100,
+          "recordedAttempts": 100,
+          "recordedFailures": 0,
+          "recordedObserved": 100,
+          "declaredMeasuredFailures": 0,
+          "recomputedP50Ms": 205.038,
+          "recomputedP95Ms": 219.628,
+          "recomputedMaxMs": 236.235,
+          "targetP95Ms": 500,
+          "warmupFailures": 0,
+          "recordedWarmups": 10,
+          "recordedWarmupFailures": 0,
+          "machineHash": "sha256:993049499f61bbe0fe2f531d589535b0ae7e89934300b1cf01c6669a49ae22a7",
+          "fixtureHash": null,
+          "fixtureFiles": [],
+          "fixturePinEntries": null,
+          "recomputedFixtureHash": null,
+          "browserHash": null,
+          "browserLaunchVerified": false,
+          "browserLaunchPath": null,
+          "browserLaunchSha256": null,
+          "targetHash": "sha256:3b2defd1f0948186aafe7e7076e483f1db79b8e1685ae99d66fd0f6d672415d3",
+          "binaryPath": "Q:\\PROJECTS\\PERSONAL\\hand\\target\\release\\hand.exe",
+          "binarySha256": "sha256:e15f47f78d04e2a5e01ea2d22dae9dfd3fe1487c316c01a5b82ec22cbabb43f0",
+          "binaryStillMatches": true,
+          "buildConfiguration": "release",
+          "releaseEvidenceVerified": true,
+          "releaseEvidenceKind": "local-release-build",
+          "releaseEvidenceReference": "Q:\\PROJECTS\\PERSONAL\\hand\\benchmarks\\receipts\\builds\\hand-16ffc42f-20261120T154607383Z-release.json",
+          "releaseEvidenceReason": null,
+          "claimedReleaseIdentityVerified": false,
+          "claimedReleaseIdentityBasis": "embedded-build-metadata",
+          "paramsHash": "sha256:cb37d09f9abb63b7a026eacc82e2257bb9615bbe5787bdee3d35361ef76f0589",
+          "protocol": {
+            "warmup": 10,
+            "measured": 100,
+            "sequential": true,
+            "timeoutMs": 60000,
+            "framing": "newline-delimited JSON-RPC",
+            "latencyBasis": "stdin write to complete response frame; validation happens after the measurement"
+          },
+          "protocolKey": "{\"framing\":\"newline-delimited JSON-RPC\",\"latencyBasis\":\"stdin write to complete response frame; validation happens after the measurement\",\"measured\":100,\"sequential\":true,\"timeoutMs\":60000,\"warmup\":10}",
+          "version": "hand 0.2.0 (16ffc42fc00a7f9f274a3d61cacfc11e5c96e99f; release)",
+          "reasons": [],
+          "warnings": [
+            "release identity is unverified (embedded-build-metadata): the binary embeds commit 16ffc42fc00a7f9f274a3d61cacfc11e5c96e99f and profile \"release\"; a self-report is not an attestation, so compare.mjs re-checks it against a recorded --release build receipt and artifact hash"
+          ]
+        }
+      ]
+    }
+  ],
+  "gate": {
+    "pass": false,
+    "failures": [
+      {
+        "scenario": "warm-ping",
+        "differences": [
+          "missing product receipt(s): hand, gladius, puppet",
+          "no measured receipt in group"
+        ]
+      },
+      {
+        "scenario": "browser-snapshot",
+        "differences": [
+          "missing product receipt(s): hand, gladius",
+          "no measured receipt in group"
+        ]
+      },
+      {
+        "scenario": "desktop-enumerate",
+        "differences": [
+          "missing product receipt(s): hand, puppet",
+          "no measured receipt in group"
+        ]
+      },
+      {
+        "scenario": "desktop-capture",
+        "differences": [
+          "missing product receipt(s): puppet"
+        ]
+      }
+    ]
+  },
+  "notes": [
+    "Rows are receipts, not reruns; a missing product is named, not green.",
+    "A release gate needs release binaries, re-verifiable hashes, identical protocol and params, and no test-only receipts.",
+    "Warmup failures are reported and do not fail the gate; every measured failure does."
+  ]
+}

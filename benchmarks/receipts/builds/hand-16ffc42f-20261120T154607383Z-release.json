@@ -1,0 +1,67 @@
+{
+  "schema": "hand-mcp.benchmark.build-receipt/v1",
+  "ok": true,
+  "product": "hand",
+  "profile": "release",
+  "source": {
+    "root": "Q:\\PROJECTS\\PERSONAL\\hand",
+    "gitHead": "16ffc42fc00a7f9f274a3d61cacfc11e5c96e99f",
+    "branch": "feat/0.2.0",
+    "dirty": false,
+    "statusSha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "trackedDiffSha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "command": {
+    "program": "cargo",
+    "args": [
+      "build",
+      "--release",
+      "--locked",
+      "--manifest-path",
+      "Q:\\PROJECTS\\PERSONAL\\hand\\Cargo.toml",
+      "--bin",
+      "hand",
+      "--target-dir",
+      "Q:\\PROJECTS\\PERSONAL\\hand\\target"
+    ],
+    "cwd": "Q:\\PROJECTS\\PERSONAL\\hand",
+    "startedAtUtc": "2026-11-20T15:45:39.979Z",
+    "finishedAtUtc": "2026-11-20T15:46:07.075Z",
+    "durationMs": 27095,
+    "exitCode": 0,
+    "stdoutBytes": 0,
+    "stderrBytes": 1804,
+    "stdoutSha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stderrSha256": "sha256:a1c9edad577ae3c27d57e753f3319a6293fc94f11239539a4269176e98d604fd",
+    "stdoutTail": "",
+    "stderrTail": "   Compiling hand v0.2.0 (Q:\\PROJECTS\\PERSONAL\\hand)\nwarning: value assigned to `posted` is never read\n    --> crates\\desktop-engine\\src\\burst.rs:3539:41\n     |\n3514 |                         posted += 1;\n     |                         ----------- `posted` is overwritten here before the previous value is read\n...\n3539 |                                         posted += 1;\n     |                                         ^^^^^^^^^^^ this value is reassigned later and never used\n     |\n     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default\n\nwarning: value assigned to `posted` is never read\n    --> crates\\desktop-engine\\src\\burst.rs:3738:37\n     |\n3738 |                                     posted += 1;\n     |                                     ^^^^^^^^^^^ this value is reassigned later and never used\n...\n3751 |                         posted += 1;\n     |                         ----------- `posted` is overwritten here before the previous value is read\n\nwarning: `desktop-engine` (lib) generated 2 warnings\nwarning: use of deprecated method `std::sync::atomic::Atomic::<u32>::fetch_update`: renamed to `try_update` for consistency\n   --> crates\\browser-engine\\src\\capture.rs:535:10\n    |\n535 |         .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))\n    |          ^^^^^^^^^^^^\n    |\n    = note: `#[warn(deprecated)]` on by default\nhelp: replace the use of the deprecated method\n    |\n535 -         .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))\n535 +         .try_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))\n    |\n\nwarning: `browser-engine` (lib) generated 1 warning (run `cargo fix --lib -p browser-engine` to apply 1 suggestion)\n    Finished `release` profile [optimized] target(s) in 27.03s\n"
+  },
+  "toolchain": {
+    "cargo": {
+      "status": 0,
+      "stdout": "cargo 1.100.0 (3acc79c0c 2026-11-05)",
+      "stderr": ""
+    },
+    "rustc": {
+      "status": 0,
+      "stdout": "rustc 1.100.0 (0ef1bc386 2026-11-09)\nbinary: rustc\ncommit-hash: 0ef1bc386059596dada8fb65b50425aab2ea637a\ncommit-date: 2026-11-09\nhost: x86_64-pc-windows-msvc\nrelease: 1.100.0\nLLVM version: 23.1.5",
+      "stderr": ""
+    },
+    "host": "x86_64-pc-windows-msvc",
+    "target": "x86_64-pc-windows-msvc"
+  },
+  "output": {
+    "path": "Q:\\PROJECTS\\PERSONAL\\hand\\benchmarks\\receipts\\builds\\artifacts\\hand-16ffc42f-20261120T154607322Z-hand.exe",
+    "buildPath": "Q:\\PROJECTS\\PERSONAL\\hand\\target\\release\\hand.exe",
+    "bytes": 20102144,
+    "sha256": "sha256:e15f47f78d04e2a5e01ea2d22dae9dfd3fe1487c316c01a5b82ec22cbabb43f0",
+    "modifiedAtUtc": "2026-11-20T15:46:06.999Z",
+    "durable": true
+  },
+  "version": {
+    "status": 0,
+    "stdout": "hand 0.2.0 (16ffc42fc00a7f9f274a3d61cacfc11e5c96e99f; release)",
+    "stderr": ""
+  },
+  "generatedAtUtc": "2026-11-20T15:46:07.383Z"
+}

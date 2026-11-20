@@ -1,0 +1,4345 @@
+{
+  "schema": "hand-mcp.benchmark.receipt/v1",
+  "driverVersion": "1.0.0",
+  "generatedAtUtc": "2026-11-20T15:46:49.135Z",
+  "testOnly": false,
+  "evidence": "measured against the resolved product binary on this machine",
+  "product": {
+    "id": "hand",
+    "label": "hand",
+    "command": "Q:\\PROJECTS\\PERSONAL\\hand\\target\\release\\hand.exe",
+    "args": [],
+    "cwd": "Q:\\PROJECTS\\PERSONAL\\hand",
+    "source": "explicit --command",
+    "testFixture": false,
+    "resolved": true,
+    "executable": {
+      "path": "Q:\\PROJECTS\\PERSONAL\\hand\\target\\release\\hand.exe",
+      "bytes": 20102144,
+      "sha256": "sha256:e15f47f78d04e2a5e01ea2d22dae9dfd3fe1487c316c01a5b82ec22cbabb43f0"
+    },
+    "version": {
+      "status": 0,
+      "stdout": "hand 0.2.0 (16ffc42fc00a7f9f274a3d61cacfc11e5c96e99f; release)",
+      "stderr": ""
+    },
+    "entrypoint": null,
+    "releaseIdentity": {
+      "claimed": "release",
+      "verified": false,
+      "basis": "embedded-build-metadata",
+      "embedded": {
+        "sha": "16ffc42fc00a7f9f274a3d61cacfc11e5c96e99f",
+        "dirty": false,
+        "profile": "release"
+      },
+      "reason": "the binary embeds commit 16ffc42fc00a7f9f274a3d61cacfc11e5c96e99f and profile \"release\"; a self-report is not an attestation, so compare.mjs re-checks it against a recorded --release build receipt and artifact hash"
+    }
+  },
+  "scenario": {
+    "id": "desktop-capture",
+    "title": "controlled 1280x720 window capture at native resolution",
+    "domain": "desktop",
+    "specTargetP95Ms": 500,
+    "tool": "desktop_screenshot",
+    "method": null,
+    "params": {
+      "target": {
+        "titleContains": "hand-bench-fixture"
+      },
+      "fmt": "png",
+      "max_px": 8192,
+      "allow_crop_fallback": false
+    },
+    "paramsHash": "sha256:cb37d09f9abb63b7a026eacc82e2257bb9615bbe5787bdee3d35361ef76f0589"
+  },
+  "protocol": {
+    "warmup": 10,
+    "measured": 100,
+    "sequential": true,
+    "timeoutMs": 60000,
+    "framing": "newline-delimited JSON-RPC",
+    "latencyBasis": "stdin write to complete response frame; validation happens after the measurement"
+  },
+  "fingerprint": {
+    "machine": {
+      "hostname": "NECESSE",
+      "platform": "win32",
+      "release": "10.0.26300",
+      "version": "Windows 11 Pro",
+      "arch": "x64",
+      "cpu": {
+        "model": "AMD Ryzen 7 5800X 8-Core Processor",
+        "logicalCores": 16,
+        "speedMHz": 4392
+      },
+      "memoryTotalBytes": 34276126720,
+      "display": {
+        "width": 2560,
+        "height": 1440,
+        "dpi": 96,
+        "scaleFactor": 1
+      },
+      "displayProbe": {
+        "ok": true
+      },
+      "node": {
+        "version": "v26.13.1",
+        "arch": "x64",
+        "execPath": "C:\\Users\\nathan\\scoop\\apps\\nodejs-lts\\current\\node.exe"
+      },
+      "hash": "sha256:993049499f61bbe0fe2f531d589535b0ae7e89934300b1cf01c6669a49ae22a7"
+    },
+    "browser": null,
+    "fixture": null,
+    "desktopTarget": {
+      "matcher": {
+        "titleContains": "hand-bench-fixture"
+      },
+      "identity": {
+        "title": "hand-bench-fixture",
+        "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+        "class": "WindowsForms10.Window.8.app.0.34f5582_r6_ad1",
+        "clientRect": [
+          100,
+          100,
+          1380,
+          820
+        ],
+        "rect": [
+          100,
+          100,
+          1380,
+          820
+        ],
+        "dpi": 96,
+        "minimized": false
+      },
+      "hwnd": 16319456,
+      "hash": "sha256:3b2defd1f0948186aafe7e7076e483f1db79b8e1685ae99d66fd0f6d672415d3"
+    }
+  },
+  "samples": {
+    "warmup": {
+      "attempts": [
+        {
+          "index": 1,
+          "ok": true,
+          "elapsedMs": 206.945,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 2,
+          "ok": true,
+          "elapsedMs": 204.897,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 3,
+          "ok": true,
+          "elapsedMs": 204.124,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 4,
+          "ok": true,
+          "elapsedMs": 205.437,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 5,
+          "ok": true,
+          "elapsedMs": 205.988,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 6,
+          "ok": true,
+          "elapsedMs": 203.175,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 7,
+          "ok": true,
+          "elapsedMs": 209.498,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 8,
+          "ok": true,
+          "elapsedMs": 204.36,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 9,
+          "ok": true,
+          "elapsedMs": 205.151,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 10,
+          "ok": true,
+          "elapsedMs": 205.08,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        }
+      ],
+      "failures": 0
+    },
+    "measured": {
+      "attempts": [
+        {
+          "index": 1,
+          "ok": true,
+          "elapsedMs": 203.701,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 2,
+          "ok": true,
+          "elapsedMs": 205.413,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 3,
+          "ok": true,
+          "elapsedMs": 204.438,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 4,
+          "ok": true,
+          "elapsedMs": 203.964,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 5,
+          "ok": true,
+          "elapsedMs": 210.852,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 6,
+          "ok": true,
+          "elapsedMs": 209.029,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 7,
+          "ok": true,
+          "elapsedMs": 204.579,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 8,
+          "ok": true,
+          "elapsedMs": 204.908,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 9,
+          "ok": true,
+          "elapsedMs": 204.4,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 10,
+          "ok": true,
+          "elapsedMs": 204.917,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 11,
+          "ok": true,
+          "elapsedMs": 204.705,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 12,
+          "ok": true,
+          "elapsedMs": 210.51,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 13,
+          "ok": true,
+          "elapsedMs": 208.969,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 14,
+          "ok": true,
+          "elapsedMs": 210.078,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 15,
+          "ok": true,
+          "elapsedMs": 204.422,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 16,
+          "ok": true,
+          "elapsedMs": 210.166,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 17,
+          "ok": true,
+          "elapsedMs": 203.95,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 18,
+          "ok": true,
+          "elapsedMs": 204.723,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 19,
+          "ok": true,
+          "elapsedMs": 204.955,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 20,
+          "ok": true,
+          "elapsedMs": 204.746,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 21,
+          "ok": true,
+          "elapsedMs": 210.01,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 22,
+          "ok": true,
+          "elapsedMs": 204.234,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 23,
+          "ok": true,
+          "elapsedMs": 210.275,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 24,
+          "ok": true,
+          "elapsedMs": 205.4,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 25,
+          "ok": true,
+          "elapsedMs": 204.265,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 26,
+          "ok": true,
+          "elapsedMs": 204.728,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 27,
+          "ok": true,
+          "elapsedMs": 203.933,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 28,
+          "ok": true,
+          "elapsedMs": 205.038,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 29,
+          "ok": true,
+          "elapsedMs": 209.988,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 30,
+          "ok": true,
+          "elapsedMs": 204.587,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 31,
+          "ok": true,
+          "elapsedMs": 209.763,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 32,
+          "ok": true,
+          "elapsedMs": 204.564,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 33,
+          "ok": true,
+          "elapsedMs": 212.184,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 34,
+          "ok": true,
+          "elapsedMs": 229.449,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 35,
+          "ok": true,
+          "elapsedMs": 213.025,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 36,
+          "ok": true,
+          "elapsedMs": 209.79,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 37,
+          "ok": true,
+          "elapsedMs": 204.464,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 38,
+          "ok": true,
+          "elapsedMs": 204.559,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 39,
+          "ok": true,
+          "elapsedMs": 205.216,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 40,
+          "ok": true,
+          "elapsedMs": 215.156,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 41,
+          "ok": true,
+          "elapsedMs": 203.867,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 42,
+          "ok": true,
+          "elapsedMs": 204.597,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 43,
+          "ok": true,
+          "elapsedMs": 220.179,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": false,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": true,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 44,
+          "ok": true,
+          "elapsedMs": 236.235,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": false,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": true,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 45,
+          "ok": true,
+          "elapsedMs": 233.106,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": false,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": true,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 46,
+          "ok": true,
+          "elapsedMs": 204.959,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": false,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": true,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 47,
+          "ok": true,
+          "elapsedMs": 210.072,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 48,
+          "ok": true,
+          "elapsedMs": 203.331,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 49,
+          "ok": true,
+          "elapsedMs": 211.44,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 50,
+          "ok": true,
+          "elapsedMs": 208.573,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 51,
+          "ok": true,
+          "elapsedMs": 204.615,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 52,
+          "ok": true,
+          "elapsedMs": 205.718,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 53,
+          "ok": true,
+          "elapsedMs": 204.569,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 54,
+          "ok": true,
+          "elapsedMs": 209.865,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 55,
+          "ok": true,
+          "elapsedMs": 203.689,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 56,
+          "ok": true,
+          "elapsedMs": 204.614,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 57,
+          "ok": true,
+          "elapsedMs": 209.521,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 58,
+          "ok": true,
+          "elapsedMs": 205.358,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 59,
+          "ok": true,
+          "elapsedMs": 216.928,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": false,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": true,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 60,
+          "ok": true,
+          "elapsedMs": 207.737,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 61,
+          "ok": true,
+          "elapsedMs": 207.871,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 62,
+          "ok": true,
+          "elapsedMs": 201.782,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 63,
+          "ok": true,
+          "elapsedMs": 205.883,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 64,
+          "ok": true,
+          "elapsedMs": 219.628,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": false,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": true,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 65,
+          "ok": true,
+          "elapsedMs": 203.033,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 66,
+          "ok": true,
+          "elapsedMs": 209.346,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 67,
+          "ok": true,
+          "elapsedMs": 204.385,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 68,
+          "ok": true,
+          "elapsedMs": 206.034,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 69,
+          "ok": true,
+          "elapsedMs": 204.47,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 70,
+          "ok": true,
+          "elapsedMs": 203.999,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 71,
+          "ok": true,
+          "elapsedMs": 205.351,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 72,
+          "ok": true,
+          "elapsedMs": 204.346,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 73,
+          "ok": true,
+          "elapsedMs": 205.406,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 74,
+          "ok": true,
+          "elapsedMs": 204.381,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 75,
+          "ok": true,
+          "elapsedMs": 209.464,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 76,
+          "ok": true,
+          "elapsedMs": 204.833,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 77,
+          "ok": true,
+          "elapsedMs": 204.401,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 78,
+          "ok": true,
+          "elapsedMs": 205.038,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 79,
+          "ok": true,
+          "elapsedMs": 204.362,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 80,
+          "ok": true,
+          "elapsedMs": 205.111,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 81,
+          "ok": true,
+          "elapsedMs": 204.19,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 82,
+          "ok": true,
+          "elapsedMs": 204.923,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 83,
+          "ok": true,
+          "elapsedMs": 210.004,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 84,
+          "ok": true,
+          "elapsedMs": 210.08,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 85,
+          "ok": true,
+          "elapsedMs": 204.272,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 86,
+          "ok": true,
+          "elapsedMs": 209.779,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 87,
+          "ok": true,
+          "elapsedMs": 209.882,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 88,
+          "ok": true,
+          "elapsedMs": 209.776,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 89,
+          "ok": true,
+          "elapsedMs": 204.344,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 90,
+          "ok": true,
+          "elapsedMs": 205.041,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 91,
+          "ok": true,
+          "elapsedMs": 204.372,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 92,
+          "ok": true,
+          "elapsedMs": 210.624,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 93,
+          "ok": true,
+          "elapsedMs": 203.736,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 94,
+          "ok": true,
+          "elapsedMs": 205.067,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 95,
+          "ok": true,
+          "elapsedMs": 204.431,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 96,
+          "ok": true,
+          "elapsedMs": 205.753,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 97,
+          "ok": true,
+          "elapsedMs": 204.781,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 98,
+          "ok": true,
+          "elapsedMs": 203.604,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 99,
+          "ok": true,
+          "elapsedMs": 225.071,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        },
+        {
+          "index": 100,
+          "ok": true,
+          "elapsedMs": 210.262,
+          "dispatched": true,
+          "detail": {
+            "image": {
+              "w": 1280,
+              "h": 720
+            },
+            "source": {
+              "w": 1280,
+              "h": 720
+            },
+            "scale": 1,
+            "hwnd": 16319456,
+            "pid": 18764,
+            "title": "hand-bench-fixture",
+            "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+            "backend": "printwindow",
+            "blank": {
+              "verdict": "content",
+              "max_channel": 255,
+              "threshold": 8
+            },
+            "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+            "stale": true,
+            "foregroundUnchanged": true,
+            "cursorUnchanged": true,
+            "attribution": "noSteal",
+            "foregroundExternal": false,
+            "cursorExternal": false,
+            "bannedImports": [],
+            "driverProbe": null
+          }
+        }
+      ],
+      "failures": 0
+    }
+  },
+  "setup": {
+    "ok": true,
+    "steps": [
+      {
+        "name": "resolve controlled fixture window",
+        "tool": "desktop_list_windows",
+        "params": {},
+        "ok": true,
+        "elapsedMs": 2.977,
+        "error": null,
+        "detail": {
+          "hwnd": 16319456,
+          "title": "hand-bench-fixture",
+          "windows": 21
+        }
+      },
+      {
+        "name": "verify native 1280x720 capture geometry",
+        "tool": "desktop_screenshot",
+        "params": {
+          "target": {
+            "titleContains": "hand-bench-fixture"
+          },
+          "fmt": "png",
+          "max_px": 8192,
+          "allow_crop_fallback": false
+        },
+        "ok": true,
+        "elapsedMs": 74.983,
+        "error": null,
+        "detail": {
+          "image": {
+            "w": 1280,
+            "h": 720
+          },
+          "source": {
+            "w": 1280,
+            "h": 720
+          },
+          "scale": 1,
+          "hwnd": 16319456,
+          "pid": 18764,
+          "title": "hand-bench-fixture",
+          "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+          "backend": "printwindow",
+          "blank": {
+            "verdict": "content",
+            "max_channel": 255,
+            "threshold": 8
+          },
+          "note": "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.",
+          "stale": false,
+          "foregroundUnchanged": true,
+          "cursorUnchanged": true,
+          "attribution": "noSteal",
+          "foregroundExternal": false,
+          "cursorExternal": false,
+          "bannedImports": [],
+          "driverProbe": null
+        }
+      }
+    ],
+    "failure": null,
+    "controlledTarget": {
+      "identity": {
+        "title": "hand-bench-fixture",
+        "exe": "hand-desktop-fixture-1b8347d8e6ac6887.exe",
+        "class": "WindowsForms10.Window.8.app.0.34f5582_r6_ad1",
+        "clientRect": [
+          100,
+          100,
+          1380,
+          820
+        ],
+        "rect": [
+          100,
+          100,
+          1380,
+          820
+        ],
+        "dpi": 96,
+        "minimized": false
+      },
+      "hwnd": 16319456,
+      "hash": "sha256:3b2defd1f0948186aafe7e7076e483f1db79b8e1685ae99d66fd0f6d672415d3"
+    }
+  },
+  "coldStart": {
+    "ok": true,
+    "spawnToInitializeMs": 17.235,
+    "initializeRoundTripMs": 12.094,
+    "error": null
+  },
+  "catalog": {
+    "toolCount": 38,
+    "sha256": "sha256:cb4ea80346c9facf022925b2b4eb5496ec30c38e12f130f17e3c54bdee8b54b5",
+    "names": [
+      "browser_navigate",
+      "browser_snapshot",
+      "browser_screenshot",
+      "browser_click",
+      "browser_type",
+      "browser_evaluate",
+      "browser_wait_for",
+      "browser_targets",
+      "browser_dialog",
+      "browser_history",
+      "browser_network",
+      "browser_cdp",
+      "browser_console",
+      "browser_upload",
+      "browser_fetch_text",
+      "browser_hover",
+      "browser_select",
+      "browser_key",
+      "browser_viewport",
+      "browser_tabs",
+      "browser_storage",
+      "browser_assert_layout",
+      "browser_layout",
+      "browser_visual",
+      "browser_drag",
+      "browser_wheel",
+      "browser_close",
+      "browser_download",
+      "browser_assert",
+      "browser_form",
+      "browser_context",
+      "desktop_screenshot",
+      "desktop_diff",
+      "desktop_list_windows",
+      "desktop_window",
+      "desktop_do",
+      "desktop_cursor",
+      "desktop_elements"
+    ]
+  },
+  "load": {
+    "sampling": "whole-machine os.cpus() idle/total delta across the run; free memory at start/end; no per-request sampling",
+    "cpuBusyPercent": 12.01,
+    "freeMemoryBytesStart": 18016010240,
+    "freeMemoryBytesEnd": 18009669632,
+    "sequential": true,
+    "maxConcurrentRequests": 1,
+    "unrelatedLoad": "not externally audited; concurrent work on this machine would appear in cpuBusyPercent. The driver issues one request at a time."
+  },
+  "stats": {
+    "attempted": 100,
+    "observed": 100,
+    "passed": 100,
+    "failed": 0,
+    "percentileMethod": "nearest-rank",
+    "percentileBase": {
+      "observed": 100,
+      "attempted": 100
+    },
+    "minMs": 201.782,
+    "p50Ms": 205.038,
+    "p95Ms": 219.628,
+    "maxMs": 236.235,
+    "meanMs": 207.721,
+    "sumMs": 20772.142
+  },
+  "phases": [
+    {
+      "name": "cold server start (spawn to initialize reply)",
+      "kind": "setup",
+      "elapsedMs": 17.235,
+      "notThresholded": true
+    },
+    {
+      "name": "initialize round trip",
+      "kind": "setup",
+      "elapsedMs": 12.094,
+      "notThresholded": true
+    },
+    {
+      "name": "setup: resolve controlled fixture window",
+      "kind": "setup",
+      "elapsedMs": 2.977,
+      "ok": true,
+      "notThresholded": true,
+      "note": null
+    },
+    {
+      "name": "setup: verify native 1280x720 capture geometry",
+      "kind": "setup",
+      "elapsedMs": 74.983,
+      "ok": true,
+      "notThresholded": true,
+      "note": null
+    },
+    {
+      "name": "warm samples",
+      "kind": "warmup",
+      "attempts": 10,
+      "failures": 0,
+      "notThresholded": true
+    },
+    {
+      "name": "measured controlled 1280x720 window capture at native resolution",
+      "kind": "measured",
+      "attempts": 100,
+      "failures": 0,
+      "targetP95Ms": 500,
+      "p50Ms": 205.038,
+      "p95Ms": 219.628,
+      "maxMs": 236.235
+    }
+  ],
+  "process": {
+    "exited": {
+      "code": 0,
+      "signal": null,
+      "atMs": 24084.5485
+    },
+    "requestsCompleted": 114,
+    "protocolViolations": {
+      "count": 0,
+      "samples": []
+    },
+    "unsolicitedFrames": 0,
+    "notifications": 0,
+    "stderr": {
+      "bytes": 0,
+      "truncated": false,
+      "tail": ""
+    }
+  },
+  "verdict": {
+    "status": "pass",
+    "targetP95Ms": 500,
+    "failures": 0,
+    "reasons": [],
+    "releaseBlocked": true,
+    "releaseIdentity": {
+      "claimed": "release",
+      "verified": false,
+      "basis": "embedded-build-metadata",
+      "embedded": {
+        "sha": "16ffc42fc00a7f9f274a3d61cacfc11e5c96e99f",
+        "dirty": false,
+        "profile": "release"
+      },
+      "reason": "the binary embeds commit 16ffc42fc00a7f9f274a3d61cacfc11e5c96e99f and profile \"release\"; a self-report is not an attestation, so compare.mjs re-checks it against a recorded --release build receipt and artifact hash"
+    },
+    "releaseIdentityUnverified": true,
+    "warnings": [
+      "release identity is unverified (embedded-build-metadata): the binary embeds commit 16ffc42fc00a7f9f274a3d61cacfc11e5c96e99f and profile \"release\"; a self-report is not an attestation, so compare.mjs re-checks it against a recorded --release build receipt and artifact hash"
+    ]
+  }
+}
