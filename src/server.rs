@@ -111,14 +111,7 @@ fn server_info() -> Value {
         "platform": platform_name(),
         "engines": {
             "browser": browser_engine::engine_info(),
-            "desktop": {
-                "engine": "puppet",
-                "sourcePin": "0f790be",
-                "version": "8.0.0",
-                "available": true,
-                "backend": "uia+win32",
-                "toolCount": catalog::DESKTOP_TOOLS.len(),
-            }
+            "desktop": desktop_engine::provenance(),
         },
         "count": catalog::BROWSER_TOOLS.len() + catalog::DESKTOP_TOOLS.len(),
         "isolatedContexts": browser_engine::contexts::capability_info()["isolatedContexts"].clone(),
@@ -669,8 +662,10 @@ pub async fn serve() -> Result<(), String> {
     install_payload_free_panic_hook();
     catalog::validate()?;
     eprintln!(
-        "[hand] engine hand {} (gladius 59c6d77, puppet 0f790be) platform {}",
+        "[hand] engine hand {} (gladius {}, puppet {}) platform {}",
         env!("CARGO_PKG_VERSION"),
+        browser_engine::UPSTREAM_PIN,
+        desktop_engine::UPSTREAM_PIN,
         platform_name()
     );
     let state = Arc::new(State::new());
@@ -1117,6 +1112,24 @@ fn adapt_desktop_frame(mut frame: Value, modern: bool) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The handshake's engine blocks are the crates' provenance, not local
+    /// copies. A stale literal in `server_info` can no longer disagree with
+    /// the vendored source the binary actually carries.
+    #[test]
+    fn server_info_engines_match_crate_provenance() {
+        let info = server_info();
+        let browser = browser_engine::provenance();
+        let desktop = desktop_engine::provenance();
+        for (key, value) in browser.as_object().expect("browser provenance is an object") {
+            assert_eq!(
+                &info["engines"]["browser"][key.as_str()],
+                value,
+                "browser provenance key {key} drifted"
+            );
+        }
+        assert_eq!(info["engines"]["desktop"], desktop);
+    }
 
     /// D4 (the accumulation half): one finished `JoinHandle` per call used to
     /// be kept for the life of the process. Tracking must drop finished

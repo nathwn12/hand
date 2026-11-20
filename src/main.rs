@@ -129,26 +129,26 @@ fn doctor_report() -> serde_json::Value {
         .iter()
         .filter(|name| name.starts_with(catalog::DESKTOP_PREFIX))
         .count();
+    let mut browser = browser_engine::provenance();
+    if let Some(obj) = browser.as_object_mut() {
+        // Doctor reports the tools hand serves, including `browser_context`,
+        // and the full backend info the diagnostics have always carried.
+        obj.insert("chromium".to_string(), chromium);
+        obj.insert("toolCount".to_string(), serde_json::json!(browser_tools));
+        obj.insert("backend".to_string(), browser_engine::backend_info());
+    }
+    let mut desktop = desktop_engine::provenance();
+    if let Some(obj) = desktop.as_object_mut() {
+        obj.insert("toolCount".to_string(), serde_json::json!(desktop_tools));
+    }
     let report = serde_json::json!({
         "name": "hand",
         "executable": "hand",
         "version": env!("CARGO_PKG_VERSION"),
         "platform": std::env::consts::OS,
         "arch": std::env::consts::ARCH,
-        "browser": {
-            "engine": "gladius",
-            "sourcePin": "59c6d77",
-            "version": "0.8.0",
-            "backend": browser_engine::backend_info(),
-            "toolCount": browser_tools,
-            "chromium": chromium,
-        },
-        "desktop": {
-            "engine": "puppet",
-            "sourcePin": "0f790be",
-            "version": "8.0.0",
-            "toolCount": desktop_tools,
-        },
+        "browser": browser,
+        "desktop": desktop,
         "catalog": match catalog::validate() {
             Ok(()) => serde_json::json!({"valid": true, "count": names.len()}),
             Err(e) => serde_json::json!({"valid": false, "error": e}),
@@ -169,6 +169,29 @@ fn doctor() -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Doctor's engine pin and version come from the engine crates, so a stale
+    /// literal in the report cannot disagree with the vendored source.
+    #[test]
+    fn doctor_engine_pins_match_the_crate_constants() {
+        let report = doctor_report();
+        assert_eq!(
+            report["browser"]["sourcePin"],
+            serde_json::json!(browser_engine::UPSTREAM_PIN)
+        );
+        assert_eq!(
+            report["browser"]["version"],
+            serde_json::json!(browser_engine::UPSTREAM_VERSION)
+        );
+        assert_eq!(
+            report["desktop"]["sourcePin"],
+            serde_json::json!(desktop_engine::UPSTREAM_PIN)
+        );
+        assert_eq!(
+            report["desktop"]["version"],
+            serde_json::json!(desktop_engine::UPSTREAM_VERSION)
+        );
+    }
 
     /// The published identity must be the compiled-in build, not a guess from
     /// where the file happens to live. `unknown` is only acceptable for a
