@@ -389,3 +389,71 @@ fn b5_download_writes_file_with_sha256_mime_and_cleans_up() {
     let _ = std::fs::remove_dir_all(&dir);
     let _ = std::fs::remove_dir_all(&cancel_dir);
 }
+
+#[test]
+fn b2_assert_reports_expected_observed_verdict_for_dom_text_url() {
+    let _g = serial();
+    let fx = Fixture::start();
+    let mut s = Session::spawn();
+
+    let names = s.list_tools();
+    assert!(names.iter().any(|t| t["name"] == "browser_assert"),
+            "catalog must publish browser_assert");
+
+    let page = s.call("browser_navigate", json!({"url": format!("{}/next", fx.base)}));
+    assert!(!is_error(&page), "{}", text_of(&page));
+
+    let dom = s.call("browser_assert", json!({
+        "kind": "dom", "target": "h1",
+        "expected": {"exists": true, "text": "next"}
+    }));
+    assert!(!is_error(&dom), "dom assert failed: {}", text_of(&dom));
+    let d = structured(&dom);
+    assert_eq!(d["verdict"].as_bool(), Some(true), "dom verdict: {d:?}");
+    assert_eq!(d["expected"], json!({"exists": true, "text": "next"}));
+    assert_eq!(d["observed"]["exists"].as_bool(), Some(true));
+    assert!(d["evidence"].is_object() && d["evidence"].get("polls").is_some());
+    assert!(d["elapsedMs"].as_u64().unwrap_or(u64::MAX) < 5000);
+
+    // An @eN ref from a real snapshot resolves as a dom target too.
+    let snap = s.call("browser_snapshot", json!({}));
+    assert!(!is_error(&snap), "{}", text_of(&snap));
+    let nodes = structured(&snap)["nodes"].as_array().cloned().unwrap_or_default();
+    let refs: Vec<String> = nodes.iter()
+        .filter_map(|n| n["ref"].as_str().map(str::to_string)).collect();
+    assert!(!refs.is_empty(), "snapshot must mint refs");
+    let by_ref = s.call("browser_assert", json!({
+        "kind": "dom", "target": refs[0], "expected": {"exists": true}
+    }));
+    assert!(!is_error(&by_ref), "ref assert failed: {}", text_of(&by_ref));
+    assert_eq!(structured(&by_ref)["verdict"].as_bool(), Some(true));
+
+    let text = s.call("browser_assert", json!({
+        "kind": "text", "expected": {"contains": "next"}
+    }));
+    assert!(!is_error(&text), "text assert failed: {}", text_of(&text));
+    assert_eq!(structured(&text)["verdict"].as_bool(), Some(true));
+
+    let url = s.call("browser_assert", json!({
+        "kind": "url", "expected": {"matches": "^http://.*/next$"}
+    }));
+    assert!(!is_error(&url), "url assert failed: {}", text_of(&url));
+    assert_eq!(structured(&url)["verdict"].as_bool(), Some(true));
+
+    // A still-false check is a normal verdict, not a timeout error: it carries
+    // the LAST observed value and stops at the poll budget.
+    let fail = s.call("browser_assert", json!({
+        "kind": "text", "expected": {"contains": "NOT-ON-PAGE"},
+        "timeoutMs": 300, "pollMs": 50
+    }));
+    assert!(!is_error(&fail), "a false verdict must not be an error: {}", text_of(&fail));
+    let f = structured(&fail);
+    assert_eq!(f["verdict"].as_bool(), Some(false), "false verdict: {f:?}");
+    assert!(f["observed"]["text"].as_str().unwrap_or("").contains("next"),
+            "last observed text: {f:?}");
+
+    // ax and network stay honestly unimplemented rather than faked.
+    let ax = s.call("browser_assert", json!({"kind": "ax", "expected": {}}));
+    assert!(is_error(&ax), "ax must be a typed not_implemented");
+    assert_eq!(structured(&ax)["code"].as_str().unwrap_or(""), "not_implemented");
+}
