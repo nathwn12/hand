@@ -15,6 +15,9 @@ source and does not change the baseline.
 | `validate.mjs` | Structure checks, SHA256 verification and headless browser self-test. |
 | `SHA256SUMS` | SHA256 of the served payload files. |
 | `.gitattributes` | Disables line-ending conversion so the hashed bytes survive checkout. |
+| `tasks/` | Pages for the 30-task browser sequence: main, frame, next, viewport, network, download, upload. |
+| `tasks.json` | The 30 tasks as data: ordered calls, expected evidence, cleanup. |
+| `run-tasks.mjs` | One-command runner over the copied hand binary and the loopback fixture. |
 
 The server serves `/`, `/index.html`, `/actions.html` and `/manifest.json`.
 Every other path returns HTTP 404 with the body `404 not found\n`. This includes
@@ -65,6 +68,20 @@ this exact case.
 
 Selectors use stable ids, visible labels and `data-testid` attributes. Nothing
 is randomized between loads.
+
+## Browser 30 tasks
+
+`node fixtures/run-tasks.mjs` copies the hand binary to a temp directory,
+starts the loopback fixture and the existing two-origin interaction fixture,
+then runs all 30 cells from `tasks.json` through one MCP session. It prints one
+line per task and a `pass/pending/fail` summary. `--only <id>`, `--json`,
+`--repeat <n>` and `--bin <path>` are supported. A `pending` cell names the
+tool or capability it waits for; it is never reported as a pass. See
+`docs/BROWSER-TASKS.md`.
+
+The task pages are served from `/tasks/*`. They are outside the frozen
+benchmark payload: `SHA256SUMS` and the 100-control contract in `index.html`
+are unchanged.
 
 ## Run locally
 
