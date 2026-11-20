@@ -1249,7 +1249,7 @@ pub fn finalize(
                 return Err("error: bad_region: max_px must be a positive int or null".to_string());
             }
             if m > 8192 {
-                return Err(format!("error: bad_region: max_px absurd (>8192): {m}"));
+                return Err(format!("error: too_large: max_px absurd (>8192): {m}"));
             }
             Some(m)
         }
@@ -1308,8 +1308,8 @@ mod tests {
 
     #[test]
     fn finalize_rejects_absurd_max_px() {
-        let r = finalize(tiny(), Some(1_000_000_000_000), "jpeg", Some(80), false);
-        assert!(r.is_err(), "absurd max_px must be rejected, got Ok");
+        let err = finalize(tiny(), Some(1_000_000_000_000), "jpeg", Some(80), false).expect_err("absurd max_px must be rejected");
+        assert!(err.contains("too_large"), "absurd max_px must be typed too_large, got: {err}");
     }
 
     #[test]

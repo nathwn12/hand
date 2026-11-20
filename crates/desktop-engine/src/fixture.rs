@@ -173,7 +173,7 @@ const READY_TIMEOUT: Duration = Duration::from_secs(5);
 ///
 /// * **First composited frame.** A window that has not processed its first
 ///   `WM_PAINT` reads back all-black, and `shot::capture_window` refuses an
-///   all-black frame with `capture_unavailable`. The window is invalidated and
+///   all-black frame with `blank_frame`. The window is invalidated and
 ///   then captured until a frame is accepted; that frame is the one the test
 ///   measures, so no test has to retry its own first capture.
 /// * **UIA tree.** The provider serves a window's children asynchronously

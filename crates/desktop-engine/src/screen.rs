@@ -64,6 +64,15 @@ pub fn shot_err_list(items: Vec<String>) -> String {
     tool_err_blocks(&[text_block(&serde_json::to_string(&items).unwrap())])
 }
 
+/// No-steal evidence check. The mechanism proof is the running executable's
+/// import table: a linked pointer/foreground writer, or an unreadable table,
+/// means the no-steal invariant cannot be asserted. A capture that reaches this
+/// state fails closed: no pixels are returned.
+fn no_steal_violated() -> bool {
+    let audit = crate::no_steal::banned_imports();
+    !audit.ok || !audit.banned.is_empty()
+}
+
 /// AMENDMENT-01 A2: a request the server altered announces itself, in one
 /// channel reserved for that ÔÇö `quality` outside 1..100 (`quality_clamped`,
 /// with the applied value) and `quality` sent with a format that cannot use
@@ -227,6 +236,12 @@ pub fn screenshot_window(a: &ShotArgs) -> String {
         }
     };
     let evidence = crate::no_steal::Evidence::begin(fg_before, cur_before);
+    if no_steal_violated() {
+        return shot_err_list(vec![
+            "error: no_steal_violation: the no-steal evidence check failed (banned pointer/foreground import or unreadable import table); refusing to return pixels"
+                .to_string(),
+        ]);
+    }
     let spec_v: Option<Value> = match (a.target.as_ref(), a.window.as_ref()) {
         (Some(v), _) => Some(v.clone()),
         (None, Some(sel)) => Some(Value::String(sel.clone())),
@@ -397,6 +412,12 @@ pub fn screenshot_window(a: &ShotArgs) -> String {
     capt.insert("detector".to_string(), Value::from(cap.detector));
     capt.insert("blank_check".to_string(), Value::from(cap.blank_check));
     capt.insert("stale".to_string(), Value::from(cap.stale));
+    // A confirmed-stale frame still returns its pixels: verify and diff need
+    // an unchanged frame to report `effect: unchanged` / `identical: true`.
+    // Emit the typed code on the capture block instead of refusing the frame.
+    if cap.stale {
+        capt.insert("code".to_string(), Value::from("stale_frame"));
+    }
     capt.insert(
         "moved_during_capture".to_string(),
         Value::from(cap.moved_during_capture),
@@ -526,6 +547,12 @@ pub fn screenshot_desktop(a: &ShotArgs) -> String {
         }
     };
     let evidence = crate::no_steal::Evidence::begin(fg_before, cur_before);
+    if no_steal_violated() {
+        return shot_err_list(vec![
+            "error: no_steal_violation: the no-steal evidence check failed (banned pointer/foreground import or unreadable import table); refusing to return pixels"
+                .to_string(),
+        ]);
+    }
     let (vx, vy, vr, vb) = virtual_rect();
     let mons = display_monitors();
     let n_mon = mons.len() as i64;
@@ -616,7 +643,7 @@ pub fn screenshot_desktop(a: &ShotArgs) -> String {
     } else {
         if gw > MAX_GRAB_EDGE || gh > MAX_GRAB_EDGE {
             return shot_err_list(vec![format!(
-                "error: capture_failed: request edges absurd (>8192, got {gw}x{gh})"
+                "error: too_large: request edges absurd (>8192, got {gw}x{gh})"
             )]);
         }
         if force_gdi {

@@ -201,7 +201,7 @@ unsafe fn capture_window_inner(hwnd: HWND, allow_crop_fallback: bool) -> Result<
         let verdict = detector_verdict(&im);
         if verdict.rejected {
             return Err(format!(
-                "error: capture_unavailable: {}: {} frame rejected (blank/black frame)",
+                "error: blank_frame: {}: {} frame rejected (blank/black frame)",
                 detector_tag(&verdict),
                 verdict.reason.clone().unwrap()
             ));
@@ -219,7 +219,7 @@ unsafe fn capture_window_inner(hwnd: HWND, allow_crop_fallback: bool) -> Result<
                         let v2 = detector_verdict(&im2);
                         if v2.rejected {
                             return Err(format!(
-                                "error: capture_unavailable: {}: {} frame rejected (blank/black frame)",
+                                "error: blank_frame: {}: {} frame rejected (blank/black frame)",
                                 detector_tag(&v2),
                                 v2.reason.clone().unwrap()
                             ));
@@ -324,7 +324,7 @@ unsafe fn capture_window_inner(hwnd: HWND, allow_crop_fallback: bool) -> Result<
                 let verdict = detector_verdict(&crop);
                 if verdict.rejected {
                     return Err(format!(
-                        "error: capture_unavailable: {}: {} frame rejected (blank/black frame)",
+                        "error: blank_frame: {}: {} frame rejected (blank/black frame)",
                         detector_tag(&verdict),
                         verdict.reason.clone().unwrap()
                     ));

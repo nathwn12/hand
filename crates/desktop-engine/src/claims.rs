@@ -54,6 +54,7 @@ pub const ERROR_CODES: &[&str] = &[
     "bad_region",
     "bad_target",
     "bad_window",
+    "blank_frame",
     "burst_budget_exceeded",
     "capture_failed",
     "capture_timeout",
@@ -63,11 +64,16 @@ pub const ERROR_CODES: &[&str] = &[
     "no_clipboard_policy",
     "no_cursor_policy",
     "no_foreground_policy",
+    "no_steal_violation",
+    "occluded_unavailable",
     "offscreen_element",
+    "secure_desktop",
     "size_mismatch",
+    "stale_frame",
     "stale_ref",
     "target_gone",
     "target_required",
+    "too_large",
     "uia_timeout",
     "uipi_blocked",
     "window_minimized",
@@ -265,4 +271,35 @@ pub fn instructions() -> String {
          posts nothing.",
     );
     s
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The six codes from the D10 row must be registered, published in the
+    /// instructions, and unique. Without them this test is red.
+    #[test]
+    fn d10_codes_are_registered_and_published() {
+        let required = [
+            "occluded_unavailable",
+            "secure_desktop",
+            "blank_frame",
+            "stale_frame",
+            "too_large",
+            "no_steal_violation",
+        ];
+        let published = instructions();
+        for code in required {
+            assert!(ERROR_CODES.contains(&code), "{code} missing from ERROR_CODES");
+            assert!(
+                published.contains(code),
+                "{code} missing from published instructions"
+            );
+        }
+        let mut seen = std::collections::HashSet::new();
+        for code in ERROR_CODES {
+            assert!(seen.insert(*code), "duplicate error code {code}");
+        }
+    }
 }
