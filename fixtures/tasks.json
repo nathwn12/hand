@@ -1,0 +1,528 @@
+{
+  "manifestVersion": 2,
+  "fixture": "hand-mcp-browser-tasks",
+  "version": "1.0.0",
+  "taskCount": 30,
+  "pages": {
+    "main": "/tasks/main.html",
+    "frame": "/tasks/frame.html",
+    "next": "/tasks/next.html",
+    "viewport": "/tasks/viewport.html",
+    "network": "/tasks/network.json",
+    "download": "/tasks/payload.txt",
+    "upload": "/tasks/upload.txt"
+  },
+  "tokens": {
+    "{{origin}}": "loopback fixture origin",
+    "{{originB}}": "second-site loopback origin that serves the OOPIF child",
+    "{{tempDir}}": "per-run temporary directory owned by the runner",
+    "{{uploadFile}}": "absolute path of the upload fixture file",
+    "{{<binding name>}}": "value bound from an earlier call result by the task's bind array"
+  },
+  "status": {
+    "pass": "every assertion in expect held against live tool results",
+    "pending": "a named tool or tool capability in requires is absent from this build",
+    "fail": "the tools exist and at least one assertion in expect did not hold"
+  },
+  "tasks": [
+    {
+      "id": "t01-navigate-title",
+      "title": "Navigate and read title",
+      "requires": [{ "tool": "browser_navigate" }],
+      "calls": [
+        { "tool": "browser_navigate", "args": { "url": "{{origin}}/tasks/main.html" } }
+      ],
+      "expect": { "all": [
+        { "call": 0, "path": "payload.title", "op": "eq", "value": "Hand Tasks Main" },
+        { "call": 0, "path": "payload.url", "op": "contains", "value": "/tasks/main.html" }
+      ] },
+      "cleanup": []
+    },
+    {
+      "id": "t02-snapshot-click-ref",
+      "title": "Snapshot and click by @eN",
+      "requires": [{ "tool": "browser_snapshot" }, { "tool": "browser_click" }, { "tool": "browser_evaluate" }],
+      "calls": [
+        { "tool": "browser_navigate", "args": { "url": "{{origin}}/tasks/main.html" } },
+        { "tool": "browser_snapshot", "args": {} },
+        { "tool": "browser_click", "args": { "element": "{{actRef}}" } },
+        { "tool": "browser_evaluate", "args": { "expression": "document.getElementById('out').textContent" } }
+      ],
+      "bind": [
+        { "name": "actRef", "call": 1, "path": "payload.nodes", "where": { "role": "button", "name": "Act" }, "pick": "ref", "prefix": "@" }
+      ],
+      "expect": { "all": [
+        { "call": 2, "path": "payload.ok", "op": "eq", "value": true },
+        { "call": 3, "path": "payload.value", "op": "eq", "value": "clicked" }
+      ] },
+      "cleanup": []
+    },
+    {
+      "id": "t03-type-readback",
+      "title": "Type and read back",
+      "requires": [{ "tool": "browser_type" }, { "tool": "browser_evaluate" }],
+      "calls": [
+        { "tool": "browser_navigate", "args": { "url": "{{origin}}/tasks/main.html" } },
+        { "tool": "browser_type", "args": { "element": "#name", "text": "hand typed" } },
+        { "tool": "browser_evaluate", "args": { "expression": "document.getElementById('name').value" } }
+      ],
+      "expect": { "all": [
+        { "call": 1, "path": "payload.ok", "op": "eq", "value": true },
+        { "call": 2, "path": "payload.value", "op": "eq", "value": "hand typed" }
+      ] },
+      "cleanup": []
+    },
+    {
+      "id": "t04-stale-ref",
+      "title": "Stale ref after navigation",
+      "requires": [{ "tool": "browser_snapshot" }, { "tool": "browser_click" }, { "tool": "browser_navigate" }],
+      "calls": [
+        { "tool": "browser_navigate", "args": { "url": "{{origin}}/tasks/main.html" } },
+        { "tool": "browser_snapshot", "args": {} },
+        { "tool": "browser_navigate", "args": { "url": "{{origin}}/tasks/next.html" } },
+        { "tool": "browser_click", "args": { "element": "{{actRef}}" } },
+        { "tool": "browser_evaluate", "args": { "expression": "document.title" } }
+      ],
+      "bind": [
+        { "name": "actRef", "call": 1, "path": "payload.nodes", "where": { "role": "button", "name": "Act" }, "pick": "ref", "prefix": "@" }
+      ],
+      "expect": { "all": [
+        { "call": 3, "path": "isError", "op": "eq", "value": true },
+        { "call": 3, "path": "payload.code", "op": "codeIn", "value": ["stale_ref", "invalid_target", "target_changed"] },
+        { "call": 4, "path": "payload.value", "op": "eq", "value": "Hand Tasks Next" }
+      ] },
+      "cleanup": []
+    },
+    {
+      "id": "t05-same-process-frame",
+      "title": "Same-process iframe click",
+      "requires": [{ "tool": "browser_targets" }, { "tool": "browser_click" }, { "tool": "browser_evaluate" }],
+      "calls": [
+        { "tool": "browser_navigate", "args": { "url": "{{origin}}/tasks/main.html" } },
+        { "tool": "browser_targets", "args": { "action": "list" } },
+        { "tool": "browser_click", "args": { "element": "#frame-btn", "frame": "{{frameId}}" } },
+        { "tool": "browser_evaluate", "args": { "expression": "document.getElementById('frame-out').textContent", "frame": "{{frameId}}" } }
+      ],
+      "bind": [
+        { "name": "frameId", "call": 1, "path": "payload.frames", "whereContains": { "url": "/tasks/frame.html" }, "pick": "frameId" }
+      ],
+      "expect": { "all": [
+        { "call": 2, "path": "payload.ok", "op": "eq", "value": true },
+        { "call": 3, "path": "payload.value", "op": "eq", "value": "frame clicked" }
+      ] },
+      "cleanup": []
+    },
+    {
+      "id": "t06-oopif",
+      "title": "OOPIF snapshot and click",
+      "requires": [{ "tool": "browser_targets" }, { "tool": "browser_snapshot" }, { "tool": "browser_click" }, { "tool": "browser_evaluate" }],
+      "calls": [
+        { "tool": "browser_navigate", "args": { "url": "{{originB}}/oopif-parent.html" } },
+        { "tool": "browser_targets", "args": { "action": "list" } },
+        { "tool": "browser_snapshot", "args": { "frame": "{{oopifFrame}}" } },
+        { "tool": "browser_click", "args": { "element": "#child-btn", "frame": "{{oopifFrame}}" } },
+        { "tool": "browser_evaluate", "args": { "expression": "document.getElementById('child-out').textContent", "frame": "{{oopifFrame}}" } }
+      ],
+      "bind": [
+        { "name": "oopifFrame", "call": 1, "path": "payload.frames", "where": { "oopif": true }, "pick": "frameId" }
+      ],
+      "expect": { "all": [
+        { "call": 2, "path": "payload.nodes", "op": "contains", "value": { "role": "button", "name": "Child action" } },
+        { "call": 4, "path": "payload.value", "op": "eq", "value": "clicked" }
+      ] },
+      "cleanup": []
+    },
+    {
+      "id": "t07-shadow-dom",
+      "title": "Shadow DOM snapshot and click",
+      "requires": [{ "tool": "browser_snapshot" }, { "tool": "browser_click" }, { "tool": "browser_evaluate" }],
+      "calls": [
+        { "tool": "browser_navigate", "args": { "url": "{{origin}}/tasks/main.html" } },
+        { "tool": "browser_snapshot", "args": {} },
+        { "tool": "browser_click", "args": { "element": "{{shadowRef}}" } },
+        { "tool": "browser_evaluate", "args": { "expression": "document.getElementById('shadow-out').textContent" } }
+      ],
+      "bind": [
+        { "name": "shadowRef", "call": 1, "path": "payload.nodes", "where": { "role": "button", "name": "Shadow action" }, "pick": "ref", "prefix": "@" }
+      ],
+      "expect": { "all": [
+        { "call": 3, "path": "payload.value", "op": "eq", "value": "shadow clicked" }
+      ] },
+      "cleanup": []
+    },
+    {
+      "id": "t08-role-name",
+      "title": "Select by role and name",
+      "requires": [{ "tool": "browser_click" }, { "tool": "browser_evaluate" }],
+      "calls": [
+        { "tool": "browser_navigate", "args": { "url": "{{origin}}/tasks/main.html" } },
+        { "tool": "browser_click", "args": { "element": "role=button[name=\"Act\"]" } },
+        { "tool": "browser_evaluate", "args": { "expression": "document.getElementById('out').textContent" } }
+      ],
+      "expect": { "all": [
+        { "call": 1, "path": "payload.ok", "op": "eq", "value": true },
+        { "call": 2, "path": "payload.value", "op": "eq", "value": "clicked" }
+      ] },
+      "cleanup": []
+    },
+    {
+      "id": "t09-label-selector",
+      "title": "Select by label",
+      "requires": [{ "tool": "browser_type" }, { "tool": "browser_evaluate" }],
+      "calls": [
+        { "tool": "browser_navigate", "args": { "url": "{{origin}}/tasks/main.html" } },
+        { "tool": "browser_type", "args": { "element": "label=\"Name\"", "text": "labelled" } },
+        { "tool": "browser_evaluate", "args": { "expression": "document.getElementById('name').value" } }
+      ],
+      "expect": { "all": [
+        { "call": 2, "path": "payload.value", "op": "eq", "value": "labelled" }
+      ] },
+      "cleanup": []
+    },
+    {
+      "id": "t10-right-click-menu",
+      "title": "Right click and menu snapshot",
+      "requires": [{ "tool": "browser_click" }, { "tool": "browser_snapshot" }],
+      "calls": [
+        { "tool": "browser_navigate", "args": { "url": "{{origin}}/tasks/main.html" } },
+        { "tool": "browser_click", "args": { "element": "#rc", "button": "right" } },
+        { "tool": "browser_snapshot", "args": {} }
+      ],
+      "expect": { "all": [
+        { "call": 1, "path": "payload.ok", "op": "eq", "value": true },
+        { "call": 2, "path": "payload.nodes", "op": "contains", "value": { "role": "menu" } },
+        { "call": 2, "path": "payload.nodes", "op": "contains", "value": { "role": "menuitem" } }
+      ] },
+      "cleanup": []
+    },
+    {
+      "id": "t11-double-click",
+      "title": "Double click count",
+      "requires": [{ "tool": "browser_click" }, { "tool": "browser_evaluate" }],
+      "calls": [
+        { "tool": "browser_navigate", "args": { "url": "{{origin}}/tasks/main.html" } },
+        { "tool": "browser_click", "args": { "element": "#dbl" } },
+        { "tool": "browser_evaluate", "args": { "expression": "document.getElementById('dbl-out').textContent" } },
+        { "tool": "browser_click", "args": { "element": "#dbl", "clickCount": 2 } },
+        { "tool": "browser_evaluate", "args": { "expression": "document.getElementById('dbl-out').textContent" } }
+      ],
+      "expect": { "all": [
+        { "call": 2, "path": "payload.value", "op": "eq", "value": "dbl: 0" },
+        { "call": 4, "path": "payload.value", "op": "eq", "value": "dbl: 1" }
+      ] },
+      "cleanup": []
+    },
+    {
+      "id": "t12-wheel-readback",
+      "title": "Wheel and read-back",
+      "requires": [{ "tool": "browser_wheel" }, { "tool": "browser_evaluate" }],
+      "calls": [
+        { "tool": "browser_navigate", "args": { "url": "{{origin}}/tasks/main.html" } },
+        { "tool": "browser_wheel", "args": { "deltaY": 400 } },
+        { "tool": "browser_evaluate", "args": { "expression": "window.scrollY" } }
+      ],
+      "expect": { "all": [
+        { "call": 1, "path": "payload.moved", "op": "eq", "value": true },
+        { "call": 1, "path": "payload.scroll.y", "op": "gte", "value": 300 },
+        { "call": 2, "path": "payload.value", "op": "gte", "value": 300 }
+      ] },
+      "cleanup": []
+    },
+    {
+      "id": "t13-native-drag",
+      "title": "Native drag and drop",
+      "requires": [
+        { "tool": "browser_drag", "field": "dataTransfer" }
+      ],
+      "calls": [
+        { "tool": "browser_navigate", "args": { "url": "{{origin}}/tasks/main.html" } },
+        { "tool": "browser_drag", "args": { "from": "#dnd1", "to": "#dnd3", "steps": 8 } },
+        { "tool": "browser_evaluate", "args": { "expression": "window.__drag" } }
+      ],
+      "expect": { "all": [
+        { "call": 2, "path": "payload.value.dragstart", "op": "eq", "value": true },
+        { "call": 2, "path": "payload.value.drop", "op": "eq", "value": true }
+      ] },
+      "cleanup": []
+    },
+    {
+      "id": "t14-upload",
+      "title": "File upload and read-back",
+      "requires": [{ "tool": "browser_upload" }, { "tool": "browser_evaluate" }],
+      "calls": [
+        { "tool": "browser_navigate", "args": { "url": "{{origin}}/tasks/main.html" } },
+        { "tool": "browser_upload", "args": { "element": "#file", "paths": ["{{uploadFile}}"] } },
+        { "tool": "browser_evaluate", "args": { "expression": "document.getElementById('file').files[0].name" } }
+      ],
+      "expect": { "all": [
+        { "call": 1, "path": "payload.ok", "op": "eq", "value": true },
+        { "call": 2, "path": "payload.value", "op": "eq", "value": "upload.txt" }
+      ] },
+      "cleanup": []
+    },
+    {
+      "id": "t15-download",
+      "title": "Download to a caller directory",
+      "requires": [{ "tool": "browser_download" }],
+      "calls": [
+        { "tool": "browser_navigate", "args": { "url": "{{origin}}/tasks/main.html" } },
+        { "tool": "browser_download", "args": { "dir": "{{tempDir}}/download", "accept": ["text/plain"], "timeoutMs": 15000, "maxBytes": 1024, "filename": "hand-task.txt" } }
+      ],
+      "expect": { "all": [
+        { "call": 1, "path": "payload.filename", "op": "eq", "value": "hand-task.txt" },
+        { "call": 1, "path": "payload.bytes", "op": "gte", "value": 1 },
+        { "call": 1, "path": "payload.sha256", "op": "match", "value": "^[0-9a-f]{64}$" }
+      ] },
+      "cleanup": []
+    },
+    {
+      "id": "t16-form-batch",
+      "title": "Ordered form batch with one bad field",
+      "requires": [{ "tool": "browser_form" }],
+      "calls": [
+        { "tool": "browser_navigate", "args": { "url": "{{origin}}/tasks/main.html" } },
+        { "tool": "browser_form", "args": { "fields": [
+          { "element": "#name", "text": "Ada" },
+          { "element": "#mode", "value": "beta" },
+          { "element": "#required-field", "text": "x" }
+        ], "submit": "#form-submit", "timeoutMs": 10000 } }
+      ],
+      "expect": { "all": [
+        { "call": 1, "path": "payload.steps.length", "op": "eq", "value": 3 },
+        { "call": 1, "path": "payload.verdict", "op": "eq", "value": "partial" }
+      ] },
+      "cleanup": []
+    },
+    {
+      "id": "t17-network-mock",
+      "title": "Network mock",
+      "requires": [{ "tool": "browser_network", "field": "action", "value": "mock" }],
+      "calls": [
+        { "tool": "browser_navigate", "args": { "url": "{{origin}}/tasks/main.html" } },
+        { "tool": "browser_network", "args": { "action": "mock", "url": "*/tasks/network.json", "body": { "ok": true, "value": "mocked" } } },
+        { "tool": "browser_click", "args": { "element": "#net-fetch" } },
+        { "tool": "browser_evaluate", "args": { "expression": "document.getElementById('net-out').textContent" } }
+      ],
+      "expect": { "all": [
+        { "call": 3, "path": "payload.value", "op": "eq", "value": "value:mocked" }
+      ] },
+      "cleanup": [
+        { "tool": "browser_network", "args": { "action": "restore" } }
+      ]
+    },
+    {
+      "id": "t18-offline-restore",
+      "title": "Offline mode and restore",
+      "requires": [{ "tool": "browser_network", "field": "action", "value": "offline" }],
+      "calls": [
+        { "tool": "browser_navigate", "args": { "url": "{{origin}}/tasks/main.html" } },
+        { "tool": "browser_network", "args": { "action": "offline" } },
+        { "tool": "browser_click", "args": { "element": "#net-fetch" } },
+        { "tool": "browser_evaluate", "args": { "expression": "document.getElementById('net-out').textContent" } },
+        { "tool": "browser_network", "args": { "action": "restore" } }
+      ],
+      "expect": { "all": [
+        { "call": 3, "path": "payload.value", "op": "contains", "value": "error:" },
+        { "call": 4, "path": "isError", "op": "eq", "value": false }
+      ] },
+      "cleanup": [
+        { "tool": "browser_network", "args": { "action": "restore" } }
+      ]
+    },
+    {
+      "id": "t19-failure-injection",
+      "title": "Failure injection and restore",
+      "requires": [{ "tool": "browser_network", "field": "action", "value": "abort" }],
+      "calls": [
+        { "tool": "browser_navigate", "args": { "url": "{{origin}}/tasks/main.html" } },
+        { "tool": "browser_network", "args": { "action": "abort", "url": "*/tasks/network.json" } },
+        { "tool": "browser_click", "args": { "element": "#net-fetch" } },
+        { "tool": "browser_evaluate", "args": { "expression": "document.getElementById('net-out').textContent" } },
+        { "tool": "browser_network", "args": { "action": "restore" } }
+      ],
+      "expect": { "all": [
+        { "call": 3, "path": "payload.value", "op": "contains", "value": "error:" },
+        { "call": 4, "path": "isError", "op": "eq", "value": false }
+      ] },
+      "cleanup": [
+        { "tool": "browser_network", "args": { "action": "restore" } }
+      ]
+    },
+    {
+      "id": "t20-deterministic-clock",
+      "title": "Deterministic clock",
+      "requires": [{ "tool": "browser_context", "field": "clock" }],
+      "calls": [
+        { "tool": "browser_navigate", "args": { "url": "{{origin}}/tasks/main.html" } },
+        { "tool": "browser_context", "args": { "action": "clock", "iso": "2026-01-02T03:04:05.000Z" } },
+        { "tool": "browser_evaluate", "args": { "expression": "document.getElementById('clock').textContent" } }
+      ],
+      "expect": { "all": [
+        { "call": 2, "path": "payload.value", "op": "eq", "value": "clock: 1767323045000" }
+      ] },
+      "cleanup": []
+    },
+    {
+      "id": "t21-locale-timezone",
+      "title": "Locale and timezone",
+      "requires": [{ "tool": "browser_context", "field": "locale" }],
+      "calls": [
+        { "tool": "browser_navigate", "args": { "url": "{{origin}}/tasks/main.html" } },
+        { "tool": "browser_context", "args": { "action": "locale", "locale": "fr-FR", "timezone": "Europe/Paris" } },
+        { "tool": "browser_evaluate", "args": { "expression": "Intl.DateTimeFormat().resolvedOptions().locale + '|' + Intl.DateTimeFormat().resolvedOptions().timeZone" } }
+      ],
+      "expect": { "all": [
+        { "call": 2, "path": "payload.value", "op": "eq", "value": "fr-FR|Europe/Paris" }
+      ] },
+      "cleanup": []
+    },
+    {
+      "id": "t22-context-isolation",
+      "title": "Context isolation with two jars",
+      "requires": [{ "tool": "browser_context" }],
+      "calls": [
+        { "tool": "browser_context", "args": { "action": "create", "name": "jar-a", "url": "{{origin}}/tasks/main.html" } },
+        { "tool": "browser_context", "args": { "action": "create", "name": "jar-b", "url": "{{origin}}/tasks/main.html" } },
+        { "tool": "browser_context", "args": { "action": "eval", "name": "jar-a", "expression": "localStorage.setItem('owner','a'); 'ok'" } },
+        { "tool": "browser_context", "args": { "action": "eval", "name": "jar-b", "expression": "localStorage.getItem('owner')" } },
+        { "tool": "browser_context", "args": { "action": "eval", "name": "jar-a", "expression": "localStorage.getItem('owner')" } }
+      ],
+      "expect": { "all": [
+        { "call": 2, "path": "payload.value", "op": "eq", "value": "ok" },
+        { "call": 3, "path": "payload.value", "op": "eq", "value": null },
+        { "call": 4, "path": "payload.value", "op": "eq", "value": "a" }
+      ] },
+      "cleanup": [
+        { "tool": "browser_context", "args": { "action": "destroy_all" } }
+      ]
+    },
+    {
+      "id": "t23-per-context-permission",
+      "title": "Per-context permission",
+      "requires": [{ "tool": "browser_context", "field": "permissions" }],
+      "calls": [
+        { "tool": "browser_context", "args": { "action": "create", "name": "perm-a", "url": "{{origin}}/tasks/main.html" } },
+        { "tool": "browser_context", "args": { "action": "permissions", "name": "perm-a", "grant": ["geolocation"] } },
+        { "tool": "browser_context", "args": { "action": "eval", "name": "perm-a", "expression": "navigator.permissions.query({name:'geolocation'}).then(p => p.state)" } }
+      ],
+      "expect": { "all": [
+        { "call": 2, "path": "payload.value", "op": "eq", "value": "granted" }
+      ] },
+      "cleanup": [
+        { "tool": "browser_context", "args": { "action": "destroy_all" } }
+      ]
+    },
+    {
+      "id": "t24-frame-layout-assert",
+      "title": "Frame-scoped layout and assert",
+      "requires": [
+        { "tool": "browser_layout", "field": "frame" },
+        { "tool": "browser_assert_layout", "field": "frame" }
+      ],
+      "calls": [
+        { "tool": "browser_navigate", "args": { "url": "{{origin}}/tasks/main.html" } },
+        { "tool": "browser_targets", "args": { "action": "list" } },
+        { "tool": "browser_layout", "args": { "selector": "#frame-btn", "frame": "{{frameId}}" } },
+        { "tool": "browser_assert_layout", "args": { "selector": "#frame-btn", "frame": "{{frameId}}", "checks": { "visible": true } } }
+      ],
+      "bind": [
+        { "name": "frameId", "call": 1, "path": "payload.frames", "whereContains": { "url": "/tasks/frame.html" }, "pick": "frameId" }
+      ],
+      "expect": { "all": [
+        { "call": 2, "path": "payload.count", "op": "gte", "value": 1 },
+        { "call": 3, "path": "payload.pass", "op": "eq", "value": true }
+      ] },
+      "cleanup": []
+    },
+    {
+      "id": "t25-frame-visual",
+      "title": "Frame-scoped visual diff",
+      "requires": [{ "tool": "browser_visual", "field": "frame" }],
+      "calls": [
+        { "tool": "browser_navigate", "args": { "url": "{{origin}}/tasks/main.html" } },
+        { "tool": "browser_targets", "args": { "action": "list" } },
+        { "tool": "browser_visual", "args": { "action": "save", "name": "frame-baseline", "frame": "{{frameId}}" } },
+        { "tool": "browser_visual", "args": { "action": "compare", "name": "frame-baseline", "frame": "{{frameId}}" } }
+      ],
+      "bind": [
+        { "name": "frameId", "call": 1, "path": "payload.frames", "whereContains": { "url": "/tasks/frame.html" }, "pick": "frameId" }
+      ],
+      "expect": { "all": [
+        { "call": 3, "path": "payload.pass", "op": "eq", "value": true }
+      ] },
+      "cleanup": [
+        { "tool": "browser_visual", "args": { "action": "delete", "name": "frame-baseline" } }
+      ]
+    },
+    {
+      "id": "t26-dom-assertion",
+      "title": "DOM assertion",
+      "requires": [{ "tool": "browser_assert" }],
+      "calls": [
+        { "tool": "browser_navigate", "args": { "url": "{{origin}}/tasks/main.html" } },
+        { "tool": "browser_assert", "args": { "kind": "dom", "target": "#out", "expected": "idle", "timeoutMs": 3000 } }
+      ],
+      "expect": { "all": [
+        { "call": 1, "path": "payload.verdict", "op": "eq", "value": "pass" }
+      ] },
+      "cleanup": []
+    },
+    {
+      "id": "t27-ax-assertion",
+      "title": "Accessibility assertion",
+      "requires": [{ "tool": "browser_assert" }],
+      "calls": [
+        { "tool": "browser_navigate", "args": { "url": "{{origin}}/tasks/main.html" } },
+        { "tool": "browser_assert", "args": { "kind": "ax", "target": "role=button[name=\"Act\"]", "expected": { "role": "button", "name": "Act" } } }
+      ],
+      "expect": { "all": [
+        { "call": 1, "path": "payload.verdict", "op": "eq", "value": "pass" }
+      ] },
+      "cleanup": []
+    },
+    {
+      "id": "t28-text-url-assertion",
+      "title": "Text and URL assertion",
+      "requires": [{ "tool": "browser_assert" }],
+      "calls": [
+        { "tool": "browser_navigate", "args": { "url": "{{origin}}/tasks/main.html" } },
+        { "tool": "browser_assert", "args": { "kind": "text", "target": "h1", "expected": "Hand Tasks Main" } },
+        { "tool": "browser_assert", "args": { "kind": "url", "expected": "{{origin}}/tasks/main.html" } }
+      ],
+      "expect": { "all": [
+        { "call": 1, "path": "payload.verdict", "op": "eq", "value": "pass" },
+        { "call": 2, "path": "payload.verdict", "op": "eq", "value": "pass" }
+      ] },
+      "cleanup": []
+    },
+    {
+      "id": "t29-viewport-audit",
+      "title": "Viewport audit, contrast and focus",
+      "requires": [{ "tool": "browser_audit" }],
+      "calls": [
+        { "tool": "browser_navigate", "args": { "url": "{{origin}}/tasks/viewport.html" } },
+        { "tool": "browser_audit", "args": { "viewports": [360, 390, 768, 1024, 1440, 2560], "checks": ["overflow", "contrast", "focus", "targetSize"] } }
+      ],
+      "expect": { "all": [
+        { "call": 1, "path": "payload.viewports.length", "op": "eq", "value": 6 },
+        { "call": 1, "path": "payload.verdict", "op": "eq", "value": "pass" }
+      ] },
+      "cleanup": []
+    },
+    {
+      "id": "t30-trace-har",
+      "title": "Trace, HAR and cancel cleanup",
+      "requires": [{ "tool": "browser_trace" }],
+      "calls": [
+        { "tool": "browser_navigate", "args": { "url": "{{origin}}/tasks/main.html" } },
+        { "tool": "browser_trace", "args": { "dir": "{{tempDir}}/trace", "screenshots": true, "har": true, "redact": ["Authorization"] } },
+        { "tool": "browser_trace", "args": { "action": "cancel" } }
+      ],
+      "expect": { "all": [
+        { "call": 1, "path": "payload.files.length", "op": "gte", "value": 1 },
+        { "call": 2, "path": "payload.ok", "op": "eq", "value": true }
+      ] },
+      "cleanup": []
+    }
+  ]
+}

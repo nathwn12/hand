@@ -9,6 +9,14 @@ const ALLOWED = new Map([
   ['/index.html', { file: 'index.html', type: 'text/html; charset=utf-8' }],
   ['/actions.html', { file: 'actions.html', type: 'text/html; charset=utf-8' }],
   ['/manifest.json', { file: 'manifest.json', type: 'application/json; charset=utf-8' }],
+  ['/tasks.json', { file: 'tasks.json', type: 'application/json; charset=utf-8' }],
+  ['/tasks/main.html', { file: 'tasks/main.html', type: 'text/html; charset=utf-8' }],
+  ['/tasks/frame.html', { file: 'tasks/frame.html', type: 'text/html; charset=utf-8' }],
+  ['/tasks/next.html', { file: 'tasks/next.html', type: 'text/html; charset=utf-8' }],
+  ['/tasks/viewport.html', { file: 'tasks/viewport.html', type: 'text/html; charset=utf-8' }],
+  ['/tasks/network.json', { file: 'tasks/network.json', type: 'application/json; charset=utf-8' }],
+  ['/tasks/payload.txt', { file: 'tasks/payload.txt', type: 'text/plain; charset=utf-8' }],
+  ['/tasks/upload.txt', { file: 'tasks/upload.txt', type: 'text/plain; charset=utf-8' }],
 ]);
 
 const NOT_FOUND = Buffer.from('404 not found\n', 'utf8');
@@ -24,7 +32,7 @@ function send(res, status, type, body, headOnly) {
   res.end(headOnly ? undefined : body);
 }
 
-async function handle(req, res) {
+async function handle(req, res, substitutions) {
   const headOnly = req.method === 'HEAD';
   if (req.method !== 'GET' && !headOnly) {
     send(res, 405, 'text/plain; charset=utf-8', METHOD_NOT_ALLOWED, false);
@@ -52,12 +60,20 @@ async function handle(req, res) {
     send(res, 500, 'text/plain; charset=utf-8', Buffer.from('500 fixture unreadable\n', 'utf8'), headOnly);
     return;
   }
+  if (Object.keys(substitutions).length > 0) {
+    let text = body.toString('utf8');
+    for (const [token, value] of Object.entries(substitutions)) {
+      const replacement = typeof value === 'function' ? value() : value;
+      text = text.split(token).join(replacement ?? '');
+    }
+    body = Buffer.from(text, 'utf8');
+  }
   send(res, 200, entry.type, body, headOnly);
 }
 
-export function startFixtureServer({ port = 0, host = '127.0.0.1' } = {}) {
+export function startFixtureServer({ port = 0, host = '127.0.0.1', substitutions = {} } = {}) {
   const server = createServer((req, res) => {
-    handle(req, res).catch(() => {
+    handle(req, res, substitutions).catch(() => {
       if (!res.headersSent) {
         send(res, 500, 'text/plain; charset=utf-8', Buffer.from('500 fixture error\n', 'utf8'), false);
       } else {
@@ -101,7 +117,12 @@ function parsePort(argv) {
 if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {
   try {
     const port = parsePort(process.argv.slice(2));
-    const { origin, server } = await startFixtureServer({ port });
+    const state = { origin: '' };
+    const { origin, server } = await startFixtureServer({
+      port,
+      substitutions: { __CROSS_ORIGIN__: () => state.origin },
+    });
+    state.origin = origin;
     console.log(`hand-mcp fixtures listening on ${origin}/`);
     const stop = () => server.close(() => process.exit(0));
     process.once('SIGINT', stop);
