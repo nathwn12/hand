@@ -238,6 +238,13 @@ struct Shared {
     /// Armed around one `Page.navigate`; the reader stamps the main Document
     /// response, redirect chain and timings here for the `observed` result.
     nav_obs: AsyncMutex<NavObs>,
+    /// Download events captured by the reader while
+    /// `Browser.setDownloadBehavior({eventsEnabled:true})` is armed. Keyed by
+    /// the CDP `guid`; the `browser_download` tool clears this before arming
+    /// and waits on `download_notify`, so one call never sees an older
+    /// download's events.
+    downloads: AsyncMutex<HashMap<String, Value>>,
+    download_notify: Arc<tokio::sync::Notify>,
     /// Dialog policy applied by the reader when a JS dialog opens
     /// (auto-accept is the default, matching the pre-policy behavior).
     dialog_policy: AsyncMutex<DialogPolicy>,
@@ -426,6 +433,8 @@ fn new_shared(sink: WsSink, excluded_contexts: Arc<Mutex<HashMap<String, String>
         viewport: AsyncMutex::new(None),
         net_log: AsyncMutex::new(VecDeque::new()),
         nav_obs: AsyncMutex::new(NavObs::default()),
+        downloads: AsyncMutex::new(HashMap::new()),
+        download_notify: Arc::new(tokio::sync::Notify::new()),
         dialog_policy: AsyncMutex::new(DialogPolicy::default()),
         extra_sessions: AsyncMutex::new(HashMap::new()),
         capture: Arc::new(AsyncMutex::new(())),
@@ -2151,6 +2160,97 @@ impl Browser {
         }
     }
 
+    /// Forget download events from earlier calls. Call immediately before
+    /// arming `Browser.setDownloadBehavior` for one `browser_download` call.
+    pub async fn download_reset(&self) {
+        let guard = self.state.lock().await;
+        if let Some(inner) = guard.as_ref() {
+            inner.shared.downloads.lock().await.clear();
+        }
+    }
+
+    /// Wait up to `cap` for the armed download to reach a terminal state.
+    /// Returns the final event record (`state` is `completed`, `canceled`,
+    /// `interrupted`, `aborted` or `timeout`). When `max_bytes` is set, an
+    /// in-progress download that passes it is aborted with
+    /// `Browser.cancelDownload`. The record carries `guid`, `url`, `filename`,
+    /// `mimeType`, `contentDisposition`, `totalBytes`, `receivedBytes`,
+    /// `filePath` and `state`, so the caller can clean up partial files.
+    pub async fn download_wait(
+        &self,
+        cap: Duration,
+        max_bytes: Option<u64>,
+    ) -> Result<Value, String> {
+        let shared = self.shared().await?;
+        let deadline = Instant::now() + cap;
+        let notify = shared.download_notify.clone();
+        let blank = || -> Value {
+            json!({"guid": "", "url": "", "filename": "", "mimeType": "",
+                   "contentDisposition": "", "totalBytes": 0, "receivedBytes": 0,
+                   "filePath": "", "state": "timeout"})
+        };
+        loop {
+            let mut aborted: Option<String> = None;
+            let mut latest = blank();
+            let mut seen = false;
+            {
+                let map = shared.downloads.lock().await;
+                for rec in map.values() {
+                    seen = true;
+                    let received = rec.get("receivedBytes").and_then(|v| v.as_u64()).unwrap_or(0);
+                    let prev = latest.get("receivedBytes").and_then(|v| v.as_u64()).unwrap_or(0);
+                    if received >= prev {
+                        latest = rec.clone();
+                    }
+                    let state = rec.get("state").and_then(|v| v.as_str()).unwrap_or("");
+                    if matches!(state, "completed" | "canceled" | "interrupted") {
+                        return Ok(rec.clone());
+                    }
+                    if let Some(max) = max_bytes {
+                        if state == "inProgress" && received > max {
+                            aborted = rec.get("guid").and_then(|v| v.as_str()).map(str::to_string);
+                        }
+                    }
+                }
+            }
+            if let Some(guid) = aborted {
+                let _ = send_raw(
+                    &shared,
+                    "Browser.cancelDownload",
+                    json!({"guid": guid}),
+                    None,
+                )
+                .await;
+                let mut map = shared.downloads.lock().await;
+                if let Some(rec) = map.get_mut(&guid) {
+                    if let Some(obj) = rec.as_object_mut() {
+                        obj.insert("state".to_string(), json!("aborted"));
+                    }
+                    return Ok(rec.clone());
+                }
+                let mut rec = blank();
+                if let Some(obj) = rec.as_object_mut() {
+                    obj.insert("guid".to_string(), json!(guid));
+                    obj.insert("state".to_string(), json!("aborted"));
+                }
+                return Ok(rec);
+            }
+            if Instant::now() >= deadline {
+                if seen {
+                    if let Some(obj) = latest.as_object_mut() {
+                        obj.insert("state".to_string(), json!("timeout"));
+                    }
+                }
+                return Ok(latest);
+            }
+            let remain = deadline.saturating_duration_since(Instant::now());
+            tokio::select! {
+                _ = notify.notified() => {}
+                _ = tokio::time::sleep(remain.min(Duration::from_millis(50))) => {}
+            }
+        }
+    }
+
     pub async fn ensure_network(&self) -> Result<(), String> {
         let shared = self.shared().await?;
         if let Some(s) = shared.session.lock().await.clone() {
@@ -3763,6 +3863,54 @@ async fn reader_loop(mut stream: WsReader, shared: Arc<Shared>) {
                 }
             }
             shared.net_notify.notify_waiters();
+            continue;
+        }
+        if v.get("method").and_then(|m| m.as_str()) == Some("Browser.downloadWillBegin") {
+            if let Some(p) = v.get("params") {
+                if let Some(guid) = p.get("guid").and_then(|g| g.as_str()) {
+                    let rec = json!({
+                        "guid": guid,
+                        "url": p.get("url").and_then(|u| u.as_str()).unwrap_or(""),
+                        "filename": p.get("suggestedFilename").and_then(|f| f.as_str()).unwrap_or(""),
+                        "mimeType": p.get("mimeType").and_then(|m| m.as_str()).unwrap_or(""),
+                        "contentDisposition": p.get("contentDisposition").and_then(|d| d.as_str()).unwrap_or(""),
+                        "totalBytes": p.get("totalBytes").and_then(|b| b.as_u64()).unwrap_or(0),
+                        "state": "inProgress",
+                        "receivedBytes": 0,
+                        "filePath": ""
+                    });
+                    shared.downloads.lock().await.insert(guid.to_string(), rec);
+                    shared.download_notify.notify_waiters();
+                }
+            }
+            continue;
+        }
+        if v.get("method").and_then(|m| m.as_str()) == Some("Browser.downloadProgress") {
+            if let Some(p) = v.get("params") {
+                if let Some(guid) = p.get("guid").and_then(|g| g.as_str()) {
+                    let mut map = shared.downloads.lock().await;
+                    let entry = map.entry(guid.to_string()).or_insert_with(|| json!({
+                        "guid": guid, "url": "", "filename": "", "mimeType": "",
+                        "contentDisposition": "", "totalBytes": 0,
+                        "state": "inProgress", "receivedBytes": 0, "filePath": ""
+                    }));
+                    if let Some(obj) = entry.as_object_mut() {
+                        if let Some(s) = p.get("state").and_then(|s| s.as_str()) {
+                            obj.insert("state".to_string(), json!(s));
+                        }
+                        if let Some(n) = p.get("receivedBytes").and_then(|n| n.as_u64()) {
+                            obj.insert("receivedBytes".to_string(), json!(n));
+                        }
+                        if let Some(n) = p.get("totalBytes").and_then(|n| n.as_u64()) {
+                            obj.insert("totalBytes".to_string(), json!(n));
+                        }
+                        if let Some(fp) = p.get("filePath").and_then(|fp| fp.as_str()) {
+                            obj.insert("filePath".to_string(), json!(fp));
+                        }
+                    }
+                }
+            }
+            shared.download_notify.notify_waiters();
             continue;
         }
         if v.get("method").and_then(|m| m.as_str()) == Some("Target.attachedToTarget") {

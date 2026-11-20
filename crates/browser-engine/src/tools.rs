@@ -402,6 +402,7 @@ pub fn list() -> Value {
              "required": ["ok", "moved", "scroll", "at"], "additionalProperties": false},
           "annotations": {"readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": false}}));
     }
+    listed["tools"].as_array_mut().expect("tools").push(crate::download::schema());
     listed["tools"].as_array_mut().expect("tools").push(json!({
         "name": "form", "title": "Form",
         "description": "Ordered form batches. fields[] runs in order, each {field, action, value?}: field is a CSS selector, action is type (text in value), select (option value in value), check (click a checkbox) or click. Every step records {field, status: ok|error, error?}; a failing step does NOT stop the batch, so partial failure is reported rather than hidden. Optional submit is a CSS selector clicked after the fields and submitted reports whether that click succeeded. timeoutMs bounds each step. verdict is pass only when every step is ok and a requested submit succeeded, else fail. Every step rides the same trusted CDP path the type/select/click tools use.",
@@ -1584,6 +1585,9 @@ pub async fn call(name: &str, args: &Value, browser: &Browser) -> Value {
                 .map(|s| s.to_string());
             tool_cdp(browser, &method, params, session).await
         }
+        "assert" => crate::assert::handle(browser, args).await,
+        "audit" => crate::audit::handle(browser, args).await,
+        "download" => crate::download::handle(browser, args).await,
         other => {
             return ToolErr::typed(
                 format!("unknown tool: {other}"),

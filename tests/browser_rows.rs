@@ -55,6 +55,11 @@ const FORM: &str = r#"<!doctype html><html><head><title>Form</title></head><body
 <input id="ok" type="checkbox">
 <button id="go" type="button" onclick="window.submitted = (window.submitted || 0) + 1">Go</button>
 </form></body></html>"#;
+const DL_PAGE: &str = r#"<!doctype html><html><head><title>Download Page</title></head>
+<body><a id="dl" href="/payload.txt" download="hand-task.txt">download fixture</a></body></html>"#;
+/// Exact bytes the loopback fixture delivers, and their SHA-256.
+const DOWNLOAD_BYTES: &[u8] = b"hand row B5 download payload\n";
+const DOWNLOAD_SHA256: &str = "20e1664389c59576710eca014871d3f63479d4afe7087fdd182a736e5515800d";
 
 struct Fixture {
     base: String,
@@ -110,7 +115,17 @@ fn serve(mut stream: TcpStream) -> std::io::Result<()> {
         .and_then(|line| line.split_whitespace().nth(1))
         .unwrap_or("/")
         .to_string();
+    if path == "/payload.txt" {
+        let head = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\
+                    Content-Disposition: attachment; filename=\"hand-task.txt\"\r\n\
+                    Cache-Control: no-store\r\nConnection: close\r\n\r\n";
+        stream.write_all(head.as_bytes())?;
+        stream.write_all(DOWNLOAD_BYTES)?;
+        stream.flush()?;
+        return Ok(());
+    }
     let (status, body): (&str, String) = match path.as_str() {
+        "/dl" => ("200 OK", DL_PAGE.to_string()),
         "/" => ("200 OK", NAV.to_string()),
         "/next" => ("200 OK", NEXT.to_string()),
         "/frames" => ("200 OK", FRAMES.to_string()),
@@ -319,4 +334,58 @@ fn b12_navigate_reports_observed_status_redirects_timings() {
         o2["note"].as_str().unwrap_or("").to_ascii_lowercase().contains("null"),
         "null status must say so: {o2:?}"
     );
+}
+
+fn download_dir(tag: &str) -> std::path::PathBuf {
+    std::env::temp_dir().join(format!("hand-b5-{tag}-{}", std::process::id()))
+}
+
+#[test]
+fn b5_download_writes_file_with_sha256_mime_and_cleans_up() {
+    let _g = serial();
+    let fx = Fixture::start();
+    let mut s = Session::spawn();
+
+    let names = s.list_tools();
+    assert!(names.iter().any(|t| t["name"] == "browser_download"),
+            "catalog must publish browser_download");
+
+    let dir = download_dir("ok");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("create caller dir");
+
+    let page = s.call("browser_navigate", json!({"url": format!("{}/dl", fx.base)}));
+    assert!(!is_error(&page), "{}", text_of(&page));
+
+    let r = s.call("browser_download", json!({
+        "dir": dir.to_string_lossy(), "accept": ["text/plain"],
+        "timeoutMs": 15000, "maxBytes": 1024, "filename": "hand-task.txt"
+    }));
+    assert!(!is_error(&r), "download failed: {}", text_of(&r));
+    let sc = structured(&r).clone();
+    assert_eq!(sc["bytes"].as_u64(), Some(DOWNLOAD_BYTES.len() as u64), "delivered bytes: {sc:?}");
+    assert_eq!(sc["sha256"].as_str().unwrap_or(""), DOWNLOAD_SHA256, "real SHA-256: {sc:?}");
+    assert_eq!(sc["mimeType"].as_str().unwrap_or(""), "text/plain", "mime: {sc:?}");
+    assert_eq!(sc["filename"].as_str().unwrap_or(""), "hand-task.txt", "filename: {sc:?}");
+    assert!(sc["headers"].is_object(), "headers: {sc:?}");
+    assert!(sc["durationMs"].as_u64().unwrap_or(u64::MAX) < 15000, "duration: {sc:?}");
+    let path = std::path::PathBuf::from(sc["path"].as_str().expect("path"));
+    assert!(path.is_absolute(), "path must be absolute: {path:?}");
+    assert_eq!(std::fs::read(&path).expect("delivered file").as_slice(), DOWNLOAD_BYTES);
+
+    // Over-maxBytes is a cancel: it fails typed and leaves no partial file.
+    let cancel_dir = download_dir("cancel");
+    let _ = std::fs::remove_dir_all(&cancel_dir);
+    std::fs::create_dir_all(&cancel_dir).expect("create cancel dir");
+    let r2 = s.call("browser_download", json!({
+        "dir": cancel_dir.to_string_lossy(), "maxBytes": 0, "timeoutMs": 15000
+    }));
+    assert!(is_error(&r2), "over-maxBytes must fail typed: {}", text_of(&r2));
+    let leftovers: Vec<_> = std::fs::read_dir(&cancel_dir).expect("read cancel dir")
+        .filter_map(Result::ok).collect();
+    assert!(leftovers.is_empty(), "no partial file may remain: {:?}",
+        leftovers.iter().map(|e| e.file_name()).collect::<Vec<_>>());
+
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_dir_all(&cancel_dir);
 }
