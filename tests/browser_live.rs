@@ -1,4 +1,4 @@
-//! Slice 2: representative browser inspect -> act -> verify over the real
+//! Representative browser inspect -> act -> verify over the real
 //! MCP endpoint, against a local deterministic fixture and the owned pinned
 //! `chrome-headless-shell`.
 //!

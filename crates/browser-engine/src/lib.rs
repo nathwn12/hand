@@ -29,6 +29,30 @@
 
 #![recursion_limit = "256"]
 
+/// Informational engine logs are opt-in: `HAND_DEBUG=1` or `HAND_VERBOSE=1`.
+pub fn verbose_logs() -> bool {
+    static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| {
+        ["HAND_DEBUG", "HAND_VERBOSE"]
+            .iter()
+            .any(|k| std::env::var(k).is_ok_and(|v| v == "1" || v == "true"))
+    });
+    *ON
+}
+
+#[macro_export]
+macro_rules! debug_eprintln {
+    ($($arg:tt)*) => {
+        if $crate::verbose_logs() { eprintln!($($arg)*); }
+    };
+}
+
+#[macro_export]
+macro_rules! err_eprintln {
+    ($code:literal, $($arg:tt)*) => {
+        eprintln!("[hand] {}: {}", $code, format!($($arg)*));
+    };
+}
+
 mod browser;
 mod capture;
 pub mod contexts;
@@ -54,16 +78,39 @@ pub fn typed_error(prose: &str, structured: serde_json::Value) -> serde_json::Va
     tools::typed_envelope(prose, structured)
 }
 
-/// One-line engine provenance for the initialization response.
-pub fn engine_info() -> serde_json::Value {
-    let info = backend_info();
+/// Upstream identity of the vendored browser engine. Single source for pins and versions.
+pub const UPSTREAM_PIN: &str = "59c6d77";
+pub const UPSTREAM_VERSION: &str = "0.8.0";
+
+fn provenance_from(info: &serde_json::Value) -> serde_json::Value {
     serde_json::json!({
         "engine": "gladius",
-        "sourcePin": "59c6d77",
-        "version": "0.8.0",
+        "sourcePin": UPSTREAM_PIN,
+        "version": UPSTREAM_VERSION,
+        "available": true,
         "backend": info.get("backend").cloned().unwrap_or(serde_json::Value::Null),
-        "caps": info.get("caps").cloned().unwrap_or(serde_json::Value::Null),
-        "cdpUrl": info.get("cdpUrl").cloned().unwrap_or(serde_json::Value::Null),
         "toolCount": list().get("tools").and_then(|t| t.as_array()).map(|a| a.len()).unwrap_or(0),
     })
+}
+
+/// Provenance hand publishes for this engine.
+pub fn provenance() -> serde_json::Value {
+    provenance_from(&backend_info())
+}
+
+/// Initialization provenance, with the pinned `caps` and `cdpUrl` fields.
+pub fn engine_info() -> serde_json::Value {
+    let backend = backend_info();
+    let mut info = provenance_from(&backend);
+    if let Some(obj) = info.as_object_mut() {
+        obj.insert(
+            "caps".to_string(),
+            backend.get("caps").cloned().unwrap_or(serde_json::Value::Null),
+        );
+        obj.insert(
+            "cdpUrl".to_string(),
+            backend.get("cdpUrl").cloned().unwrap_or(serde_json::Value::Null),
+        );
+    }
+    info
 }

@@ -59,7 +59,7 @@ type WindowResolve = (
 );
 
 /// Screenshot domain error: the aggregated text block is unchanged for
-/// legacy clients; P2a reports it as a real tool failure (`isError: true`).
+/// legacy clients; it is a real tool failure (`isError: true`).
 pub fn shot_err_list(items: Vec<String>) -> String {
     tool_err_blocks(&[text_block(&serde_json::to_string(&items).unwrap())])
 }
@@ -659,7 +659,7 @@ pub fn screenshot_desktop(a: &ShotArgs) -> String {
                 Ok((ai, oi)) => match dxgi_grab(ai, oi, gw as i32, gh as i32) {
                     Ok(im) => (im, "dxgi".to_string()),
                     Err(fb) => {
-                        eprintln!("puppet: dxgi unavailable ({fb}), using gdi");
+                        debug_eprintln!("puppet: dxgi unavailable ({fb}), using gdi");
                         match bitblt_grab(gl as i32, gt as i32, gw as i32, gh as i32) {
                             Ok(im) => (im, "gdi".to_string()),
                             Err(e) => {

@@ -187,7 +187,7 @@ fn age_out_diffs() {
     diffs.sort_by(|a, b| a.0.cmp(&b.0));
     let excess = diffs.len() as i64 - cap + 1;
     for (_, path) in diffs.into_iter().take(excess.max(0) as usize) {
-        eprintln!(
+        debug_eprintln!(
             "[gladius] visual: aging out diff by-product {}",
             path.display()
         );
@@ -1228,7 +1228,7 @@ pub async fn png_diff(
         .cdp_raw("Target.closeTarget", json!({"targetId": tid}), None)
         .await
     {
-        eprintln!("[gladius] warn: visual: could not close the scratch diff target {tid}: {e}");
+        err_eprintln!("EWARN", "[gladius] warn: visual: could not close the scratch diff target {tid}: {e}");
     }
     let v = value.ok_or_else(|| {
         ToolErr::fallback(format!(

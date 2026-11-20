@@ -1,10 +1,32 @@
-//! hand: one Rust MCP server for browser testing and Windows desktop
-//! computer use, integrating the Gladius and Puppet engines in one process.
+//! hand: one Rust MCP server for headless browser testing and Windows desktop
+//! computer use.
 //!
 //! `hand` with no arguments serves MCP over stdio. Diagnostics go to
 //! stderr; stdout carries protocol frames only.
 
 #![windows_subsystem = "windows"]
+
+/// Informational logs are opt-in: `HAND_DEBUG=1` or `HAND_VERBOSE=1`.
+fn verbose_logs() -> bool {
+    static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| {
+        ["HAND_DEBUG", "HAND_VERBOSE"]
+            .iter()
+            .any(|k| std::env::var(k).is_ok_and(|v| v == "1" || v == "true"))
+    });
+    *ON
+}
+
+macro_rules! debug_eprintln {
+    ($($arg:tt)*) => {
+        if crate::verbose_logs() { eprintln!($($arg)*); }
+    };
+}
+
+macro_rules! err_eprintln {
+    ($code:literal, $($arg:tt)*) => {
+        eprintln!("[hand] {}: {}", $code, format!($($arg)*));
+    };
+}
 
 mod catalog;
 mod server;
@@ -19,7 +41,7 @@ fn main() {
         }
         Some("doctor") => doctor(),
         Some(other) => {
-            eprintln!("usage: hand [mcp|doctor|--version]; unknown subcommand: {other}");
+            err_eprintln!("EUSAGE", "Unknown subcommand '{other}'; use hand with mcp, doctor or --version.");
             2
         }
     };
@@ -62,7 +84,7 @@ fn run_server() -> i32 {
             {
                 Ok(rt) => rt,
                 Err(e) => {
-                    eprintln!("[hand] failed to start the async runtime: {e}");
+                    err_eprintln!("ERUNTIME", "[hand] failed to start the async runtime: {e}");
                     return 1;
                 }
             };
@@ -72,11 +94,11 @@ fn run_server() -> i32 {
             let code = match result {
                 Ok(Ok(())) => 0,
                 Ok(Err(e)) => {
-                    eprintln!("[hand] {e}");
+                    err_eprintln!("ESERVE", "[hand] {e}");
                     1
                 }
                 Err(_) => {
-                    eprintln!(
+                    err_eprintln!("EPANIC", 
                         "[hand] server loop panicked; its normal shutdown did not run, so an \
                          attached browser was NOT detached and any page state it changed is \
                          UNVERIFIED; in-flight desktop actions' outcomes are UNKNOWN"
@@ -90,13 +112,13 @@ fn run_server() -> i32 {
                 let outstanding =
                     server::ACTIVE_DESKTOP_JOBS.load(std::sync::atomic::Ordering::SeqCst);
                 if outstanding > 0 {
-                    eprintln!(
+                    err_eprintln!("ESHUTDOWN", 
                         "[hand] shutdown: runtime teardown reached its {RUNTIME_EXIT_BOUND:?} \
                          bound; {outstanding} blocking desktop job(s) were still running and were \
                          NOT stopped, so their outcome is UNKNOWN (the process exits now)"
                     );
                 } else {
-                    eprintln!(
+                    debug_eprintln!(
                         "[hand] shutdown: runtime teardown reached its {RUNTIME_EXIT_BOUND:?} \
                          bound before teardown completed; the process exits now"
                     );
@@ -107,7 +129,7 @@ fn run_server() -> i32 {
     match handle {
         Ok(h) => h.join().unwrap_or(1),
         Err(e) => {
-            eprintln!("[hand] failed to start the server thread: {e}");
+            err_eprintln!("ETHREAD", "[hand] failed to start the server thread: {e}");
             1
         }
     }
@@ -129,26 +151,25 @@ fn doctor_report() -> serde_json::Value {
         .iter()
         .filter(|name| name.starts_with(catalog::DESKTOP_PREFIX))
         .count();
+    let mut browser = browser_engine::provenance();
+    if let Some(obj) = browser.as_object_mut() {
+        // Doctor reports served tools, including hand's `browser_context`.
+        obj.insert("chromium".to_string(), chromium);
+        obj.insert("toolCount".to_string(), serde_json::json!(browser_tools));
+        obj.insert("backend".to_string(), browser_engine::backend_info());
+    }
+    let mut desktop = desktop_engine::provenance();
+    if let Some(obj) = desktop.as_object_mut() {
+        obj.insert("toolCount".to_string(), serde_json::json!(desktop_tools));
+    }
     let report = serde_json::json!({
         "name": "hand",
         "executable": "hand",
         "version": env!("CARGO_PKG_VERSION"),
         "platform": std::env::consts::OS,
         "arch": std::env::consts::ARCH,
-        "browser": {
-            "engine": "gladius",
-            "sourcePin": "59c6d77",
-            "version": "0.8.0",
-            "backend": browser_engine::backend_info(),
-            "toolCount": browser_tools,
-            "chromium": chromium,
-        },
-        "desktop": {
-            "engine": "puppet",
-            "sourcePin": "0f790be",
-            "version": "8.0.0",
-            "toolCount": desktop_tools,
-        },
+        "browser": browser,
+        "desktop": desktop,
         "catalog": match catalog::validate() {
             Ok(()) => serde_json::json!({"valid": true, "count": names.len()}),
             Err(e) => serde_json::json!({"valid": false, "error": e}),
@@ -169,6 +190,28 @@ fn doctor() -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Doctor's pins and versions come from the engine crates.
+    #[test]
+    fn doctor_engine_pins_match_the_crate_constants() {
+        let report = doctor_report();
+        assert_eq!(
+            report["browser"]["sourcePin"],
+            serde_json::json!(browser_engine::UPSTREAM_PIN)
+        );
+        assert_eq!(
+            report["browser"]["version"],
+            serde_json::json!(browser_engine::UPSTREAM_VERSION)
+        );
+        assert_eq!(
+            report["desktop"]["sourcePin"],
+            serde_json::json!(desktop_engine::UPSTREAM_PIN)
+        );
+        assert_eq!(
+            report["desktop"]["version"],
+            serde_json::json!(desktop_engine::UPSTREAM_VERSION)
+        );
+    }
 
     /// The published identity must be the compiled-in build, not a guess from
     /// where the file happens to live. `unknown` is only acceptable for a

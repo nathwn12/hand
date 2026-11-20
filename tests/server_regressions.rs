@@ -116,6 +116,7 @@ impl RawSession {
         use std::io::{BufRead, BufReader};
         use std::process::{Command, Stdio};
         let mut cmd = Command::new(env!("CARGO_BIN_EXE_hand"));
+        cmd.env("HAND_DEBUG", "1");
         cmd.env("HAND_TOOL_BUDGET_MS", "90000");
         cmd.env("GLADIUS_TOOL_BUDGET_MS", "90000");
         cmd.env("GLADIUS_BACKEND_CAPS", "render");
@@ -271,7 +272,7 @@ impl Drop for RawSession {
     }
 }
 
-/// D1: a budget expiry settles the ANSWER, never the engine future. A dropped
+/// A budget expiry settles the ANSWER, never the engine future. A dropped
 /// deterministic capture never runs its restore, leaving the page frozen with
 /// its viewport/media emulation pinned - the reproduced defect.
 #[test]
@@ -362,7 +363,7 @@ fn budget_timeout_does_not_drop_a_capture_restore() {
     assert_eq!(structured(&healthy)["value"], json!(5));
 }
 
-/// D2 + D5: a cancel answers the request immediately, with the modern marker,
+/// A cancel answers the request immediately, with the modern marker,
 /// and states the truth - the result is discarded while the engine call keeps
 /// its slot to finish its own cleanup.
 #[test]
@@ -507,7 +508,7 @@ fn a_cancelled_call_can_still_deliver_its_side_effect() {
     );
 }
 
-/// D5: a capacity refusal is a typed tool result, not a protocol error, so a
+/// A capacity refusal is a typed tool result, not a protocol error, so a
 /// client can tell "retry later" from a broken request.
 #[test]
 fn a_full_browser_pool_answers_a_typed_busy_tool_result() {
@@ -566,7 +567,7 @@ fn a_full_browser_pool_answers_a_typed_busy_tool_result() {
     }
 }
 
-/// D3: an id already in flight is refused. Without this, the second call
+/// An id already in flight is refused. Without this, the second call
 /// silently rides the first call's cancellation token and its answer is
 /// swallowed (Puppet's silence contract applies to cancellation only).
 #[test]
@@ -608,7 +609,7 @@ fn a_desktop_id_in_flight_is_refused_instead_of_riding_a_cancelled_token() {
     assert!(fresh.get("result").is_some(), "new id answers: {fresh}");
 }
 
-/// D4: EOF accepts no new work, lets an in-flight call finish before closing
+/// EOF accepts no new work, lets an in-flight call finish before closing
 /// the engine, and still exits cleanly instead of deadlocking on the drain.
 #[test]
 fn eof_with_a_running_call_exits_cleanly_and_bounded() {

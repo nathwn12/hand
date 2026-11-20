@@ -111,14 +111,7 @@ fn server_info() -> Value {
         "platform": platform_name(),
         "engines": {
             "browser": browser_engine::engine_info(),
-            "desktop": {
-                "engine": "puppet",
-                "sourcePin": "0f790be",
-                "version": "8.0.0",
-                "available": true,
-                "backend": "uia+win32",
-                "toolCount": catalog::DESKTOP_TOOLS.len(),
-            }
+            "desktop": desktop_engine::provenance(),
         },
         "count": catalog::BROWSER_TOOLS.len() + catalog::DESKTOP_TOOLS.len(),
         "isolatedContexts": browser_engine::contexts::capability_info()["isolatedContexts"].clone(),
@@ -126,7 +119,7 @@ fn server_info() -> Value {
 }
 
 fn instructions() -> &'static str {
-    "hand exposes two prefixed catalogs on one connection: browser_* is the Gladius headless browser (owned chrome-headless-shell over CDP; GLADIUS_CDP_URL attaches an explicit external engine instead), desktop_* is the Puppet Windows desktop engine (UIA inspection, background-safe window messages, capture). Browser: start with browser_snapshot for stable @eN refs, then act; snapshot refs are invalidated by navigation and stale refs fail typed. Desktop: list or identify exactly one window first; hand never falls back to the foreground window, never moves the physical pointer, never activates a window and never writes the clipboard. Both domains report typed errors as tool results (structuredContent code/reason), not protocol errors. Verification is separate from delivery: an accepted click is not proof the application reacted. Cancellation and budget expiry settle the answer, never the work: browser calls answer typed cancelled/timeout results with stopped:false, outcome:unknown and retry:unsafe (an action already sent may still land and a retry can duplicate it), and discard their late result; desktop calls stay silent and drop the result (a cancelled desktop id is outcome-unknown too), per Puppet's contract. No telemetry and no upload by default."
+    "hand is a standalone MCP server. browser_*: navigate, snapshot, screenshot, click, type, evaluate, wait_for, targets, dialog, history, network, console, storage, tabs, viewport, select, hover, key, upload, layout, assert_layout, visual, cdp, close, fetch_text, context, wheel, drag. desktop_*: screenshot, diff, list_windows, window, do, cursor, elements. Browser: start with browser_snapshot for @eN refs; refs die on navigation and stale refs fail typed. Desktop: select one named window; never the foreground window, activation, pointer or clipboard. Errors are typed tool results, not protocol errors. Cancel or budget expiry: outcome:unknown, retry:unsafe. Verification is separate from delivery. No telemetry or upload."
 }
 
 /// One `initialize`/`server/discover` result.
@@ -272,8 +265,8 @@ fn desktop_no_response_envelope(tool: &str) -> Value {
 fn unknown_tool_envelope(name: &str) -> Value {
     browser_engine::typed_error(
         &format!(
-            "hand: unknown tool '{name}'; tools are namespaced browser_<gladius name> or \
-             desktop_<puppet name>"
+            "hand: unknown tool '{name}'; tools are namespaced browser_<name> or \
+             desktop_<name>"
         ),
         json!({"code": "invalid_args", "reason": "unknown_tool", "name": name}),
     )
@@ -572,7 +565,7 @@ impl State {
             .filter(|w| w.kind == WorkerKind::Browser)
             .count();
         let desktop = abandoned.len() - browser;
-        eprintln!("{}", kind.abandonment(grace, browser, desktop));
+        err_eprintln!("EABANDON", "{}", kind.abandonment(grace, browser, desktop));
         for worker in abandoned.iter_mut() {
             worker.handle.abort();
         }
@@ -592,7 +585,7 @@ impl State {
             }
         }
         if unsettled > 0 {
-            eprintln!(
+            err_eprintln!("EABORT", 
                 "[hand] shutdown ({}): {unsettled} aborted wrapper(s) did not settle within \
                  {ABORT_SETTLE:?}; closing anyway (their cleanup is UNVERIFIED)",
                 kind.label()
@@ -641,7 +634,7 @@ async fn writer_loop(mut rx: mpsc::UnboundedReceiver<Value>) {
                 s
             }
             Err(e) => {
-                eprintln!("[hand] response serialization failed: {e}");
+                err_eprintln!("EWRITE", "[hand] response serialization failed: {e}");
                 continue;
             }
         };
@@ -661,16 +654,18 @@ fn install_payload_free_panic_hook() {
             .location()
             .map(|l| format!("{}:{}", l.file(), l.line()))
             .unwrap_or_else(|| "unknown location".to_string());
-        eprintln!("[hand] panic at {at} (payload suppressed: it can contain user content)");
+        err_eprintln!("EPANIC", "[hand] panic at {at} (payload suppressed: it can contain user content)");
     }));
 }
 
 pub async fn serve() -> Result<(), String> {
     install_payload_free_panic_hook();
     catalog::validate()?;
-    eprintln!(
-        "[hand] engine hand {} (gladius 59c6d77, puppet 0f790be) platform {}",
+    debug_eprintln!(
+        "[hand] engine hand {} (gladius {}, puppet {}) platform {}",
         env!("CARGO_PKG_VERSION"),
+        browser_engine::UPSTREAM_PIN,
+        desktop_engine::UPSTREAM_PIN,
         platform_name()
     );
     let state = Arc::new(State::new());
@@ -731,7 +726,7 @@ async fn shutdown(state: &Arc<State>) {
         .await
         .is_err()
     {
-        eprintln!(
+        err_eprintln!("ECONTEXT", 
             "[hand] shutdown ({}): context disposal did not finish within {CONTEXT_CLOSE_GRACE:?}; \
              what the registry still tracks is reported by a later `browser_context list`, and any \
              context it had already removed from tracking is not claimed as disposed",
@@ -742,7 +737,7 @@ async fn shutdown(state: &Arc<State>) {
         .await
         .is_err()
     {
-        eprintln!(
+        err_eprintln!("ECLOSE", 
             "[hand] shutdown ({}): {} did not finish within {BROWSER_CLOSE_GRACE:?}; continuing",
             kind.label(),
             if kind == EngineKind::Attached {
@@ -953,7 +948,7 @@ async fn dispatch_call(
                 let body = match outcome {
                     Ok(Ok(value)) => Some(value),
                     Ok(Err(join)) => {
-                        eprintln!(
+                        err_eprintln!("EENGINE", 
                             "[hand] browser call '{legacy}': engine task failed ({})",
                             if join.is_panic() { "panic" } else { "aborted" }
                         );
@@ -993,7 +988,7 @@ async fn dispatch_call(
                 {
                     worker.abort();
                     let _ = (&mut worker.0).await;
-                    eprintln!(
+                    err_eprintln!("ECLEANUP", 
                         "[hand] browser call '{legacy}': engine cleanup did not finish \
                          within {ENGINE_CLEANUP_GRACE:?} after the budget answer; aborted \
                          (its started restore is UNVERIFIED)"
@@ -1056,7 +1051,7 @@ async fn dispatch_call(
                 let result = tokio::task::spawn_blocking(move || {
                     let _active = ActiveDesktopJob::enter();
                     if let Some(ms) = stuck_ms {
-                        eprintln!(
+                        debug_eprintln!(
                             "[hand] TEST HOOK (debug build, HAND_TEST_HOOKS=1): blocking desktop \
                              job started for {ms} ms; no window is touched; TEST ONLY"
                         );
@@ -1118,7 +1113,48 @@ fn adapt_desktop_frame(mut frame: Value, modern: bool) -> Value {
 mod tests {
     use super::*;
 
-    /// D4 (the accumulation half): one finished `JoinHandle` per call used to
+    #[test]
+    fn instructions_index_every_tool_and_keep_the_rules() {
+        let text = instructions();
+        assert!(
+            text.starts_with("hand is a standalone MCP server"),
+            "instructions must open with hand's identity: {text}"
+        );
+        assert!(text.len() <= 1200, "instructions grew to {} bytes", text.len());
+        for name in catalog::BROWSER_TOOLS.iter().chain(catalog::DESKTOP_TOOLS.iter()) {
+            assert!(text.contains(*name), "instructions omit {name:?}: {text}");
+        }
+        for needle in [
+            "browser_snapshot for @eN refs",
+            "refs die on navigation and stale refs fail typed",
+            "select one named window",
+            "never the foreground window, activation, pointer or clipboard",
+            "typed tool results, not protocol errors",
+            "outcome:unknown, retry:unsafe",
+            "Verification is separate from delivery",
+            "No telemetry or upload",
+        ] {
+            assert!(text.contains(needle), "instructions lost {needle:?}: {text}");
+        }
+    }
+
+    /// The handshake publishes the crates' provenance.
+    #[test]
+    fn server_info_engines_match_crate_provenance() {
+        let info = server_info();
+        let browser = browser_engine::provenance();
+        let desktop = desktop_engine::provenance();
+        for (key, value) in browser.as_object().expect("browser provenance is an object") {
+            assert_eq!(
+                &info["engines"]["browser"][key.as_str()],
+                value,
+                "browser provenance key {key} drifted"
+            );
+        }
+        assert_eq!(info["engines"]["desktop"], desktop);
+    }
+
+    /// One finished `JoinHandle` per call accumulates
     /// be kept for the life of the process. Tracking must drop finished
     /// handles and keep running ones.
     #[tokio::test]
@@ -1147,7 +1183,7 @@ mod tests {
         }
     }
 
-    /// D6: a panicking engine task is observed and mapped to a typed tool
+    /// A panicking engine task is observed and mapped to a typed tool
     /// error, so the request id is answered instead of left pending.
     #[tokio::test]
     async fn a_panicking_engine_task_maps_to_a_typed_answer() {
@@ -1240,7 +1276,7 @@ mod tests {
         assert!(mixed.contains("closed next"), "{mixed}");
     }
 
-    /// D3: the entry of a cancelled desktop call stays published until its
+    /// The entry of a cancelled desktop call stays published until its
     /// worker ends, so a reused id is refused instead of silently riding the
     /// already-flipped token (which would be answered with nothing).
     #[tokio::test]

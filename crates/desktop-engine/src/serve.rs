@@ -20,15 +20,15 @@ use std::sync::{
 };
 use std::time::{Duration, Instant};
 
-/// P1b worker pool: four workers drain `tools/call` jobs so one long call
+/// Worker pool: four workers drain `tools/call` jobs so one long call
 /// (a 60s `wait`, a 300s `wait_for`, a 60s settle) never blocks `ping`,
 /// `initialize`, `tools/list`, or a `notifications/cancelled`.
 const WORKER_COUNT: usize = 4;
-/// P1b queue cap: more than 8 tool calls in flight gets -32603
+/// Queue cap: more than 8 tool calls in flight gets -32603
 /// ("Server busy") instead of unbounded thread growth.
 const MAX_IN_FLIGHT: usize = 8;
 
-/// P1b input serialization: only mutating desktop tools (`do`, `window`)
+/// Input serialization: only mutating desktop tools (`do`, `window`)
 /// hold this. Read-only `screenshot`, `list_windows`, `cursor`, `elements`
 /// never take it, so a screenshot can run while a `do wait` sleeps. A waiter
 /// polls with `try_lock` + 20ms sleeps so a cancel wakes it instead of

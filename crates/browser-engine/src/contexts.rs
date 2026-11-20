@@ -220,7 +220,7 @@ async fn hook_slow(phase: &str) {
         .and_then(|v| v.trim().parse::<u64>().ok())
         .unwrap_or(0);
     if ms > 0 {
-        eprintln!("[hand] test hook: slowing create/open at {phase} for {ms} ms");
+        debug_eprintln!("[hand] test hook: slowing create/open at {phase} for {ms} ms");
         tokio::time::sleep(Duration::from_millis(ms)).await;
     }
 }

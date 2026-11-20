@@ -15,6 +15,30 @@
 //! `serve::run()` (Puppet's own stdio pump) is deliberately not used: one
 //! executable owns one MCP connection, and that loop belongs to hand.
 
+/// Informational engine logs are opt-in: `HAND_DEBUG=1` or `HAND_VERBOSE=1`.
+pub fn verbose_logs() -> bool {
+    static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| {
+        ["HAND_DEBUG", "HAND_VERBOSE"]
+            .iter()
+            .any(|k| std::env::var(k).is_ok_and(|v| v == "1" || v == "true"))
+    });
+    *ON
+}
+
+#[macro_export]
+macro_rules! debug_eprintln {
+    ($($arg:tt)*) => {
+        if $crate::verbose_logs() { eprintln!($($arg)*); }
+    };
+}
+
+#[macro_export]
+macro_rules! err_eprintln {
+    ($code:literal, $($arg:tt)*) => {
+        eprintln!("[hand] {}: {}", $code, format!($($arg)*));
+    };
+}
+
 pub mod schemas;
 
 use std::collections::HashMap;
@@ -722,7 +746,7 @@ fn image_block(b64: &str, mime: &str) -> String {
     )
 }
 
-/// P2a envelope: `structuredContent` carries the real machine-readable value
+/// `structuredContent` carries the real machine-readable value
 /// parsed from the tool's JSON text (never a double-encoded string), while
 /// the text block stays byte-identical for legacy clients. A top-level
 /// array (only `list_windows`) is namespaced as `{"windows": [...]}`; any
@@ -795,13 +819,13 @@ fn err_result_text(s: &str) -> String {
     format!("{{\"content\":[{}],\"isError\":true}}", text_block(s))
 }
 
-/// P3a hidden-desktop capture: the `do` text envelope plus the hidden
+/// Hidden-desktop capture: the `do` text envelope plus the hidden
 /// PrintWindow PNG as a real MCP `image` content block alongside the JSON
 /// text (not only base64 inside it). `structuredContent` and `isError`
 /// follow the same rule as `wrapped_text` (a `do` burst is a tool error only
 /// when nothing succeeded). Only the hidden path with a
 /// successful capture uses this; every other `do` call keeps the exact
-/// P2a text-only envelope.
+/// Text-only envelope.
 pub(crate) fn wrapped_text_with_image(s: &str, png_b64: &str, mime: &str) -> String {
     let Some(sc) = structured_of_text(s) else {
         return tool_err_blocks(&[text_block(
@@ -818,7 +842,7 @@ pub(crate) fn wrapped_text_with_image(s: &str, png_b64: &str, mime: &str) -> Str
     )
 }
 
-/// P2a screenshot success: text/image blocks byte-identical, plus the
+/// Screenshot success: text/image blocks byte-identical, plus the
 /// coordinate-map object as `structuredContent` (no base64 duplication;
 /// the optional third elements block stays text-only).
 pub fn screenshot_ok(blocks: &[String], cmap: &Value) -> String {
@@ -829,7 +853,7 @@ pub fn screenshot_ok(blocks: &[String], cmap: &Value) -> String {
     )
 }
 
-/// P2a tool-level failure with pre-rendered content blocks (screenshot
+/// Tool-level failure with pre-rendered content blocks (screenshot
 /// domain errors): text blocks byte-identical, `isError: true`.
 pub fn tool_err_blocks(blocks: &[String]) -> String {
     format!("{{\"content\":[{}],\"isError\":true}}", blocks.join(","))
@@ -1500,9 +1524,29 @@ pub fn cancel_call(id_key: &str) {
     cancel::cancel(id_key);
 }
 
-/// The engine's compile-time version string used by its catalog.
+/// Upstream identity of the vendored desktop engine. Single source for pins and versions.
+pub const UPSTREAM_PIN: &str = "0f790be";
+pub const UPSTREAM_VERSION: &str = "8.0.0";
+
+/// Provenance hand publishes for this engine.
+pub fn provenance() -> Value {
+    serde_json::json!({
+        "engine": "puppet",
+        "sourcePin": UPSTREAM_PIN,
+        "version": UPSTREAM_VERSION,
+        "available": true,
+        "backend": "uia+win32",
+        "toolCount": tools_list()
+            .get("tools")
+            .and_then(|t| t.as_array())
+            .map(|a| a.len())
+            .unwrap_or(0),
+    })
+}
+
+/// The vendored engine's version, not this crate's packaging version.
 pub fn engine_version() -> &'static str {
-    env!("CARGO_PKG_VERSION")
+    UPSTREAM_VERSION
 }
 
 #[cfg(test)]
@@ -1604,5 +1648,19 @@ mod tests {
             v.get("structuredContent").is_none(),
             "error envelope carries no string-result structuredContent, got: {v}"
         );
+    }
+
+    /// The engine version is the upstream version, not this crate's version.
+    #[test]
+    fn engine_version_is_the_upstream_version() {
+        assert_eq!(engine_version(), UPSTREAM_VERSION);
+        assert_eq!(engine_version(), "8.0.0");
+        let info = provenance();
+        assert_eq!(info["engine"], json!("puppet"));
+        assert_eq!(info["sourcePin"], json!(UPSTREAM_PIN));
+        assert_eq!(info["version"], json!(UPSTREAM_VERSION));
+        assert_eq!(info["available"], json!(true));
+        assert_eq!(info["backend"], json!("uia+win32"));
+        assert_eq!(info["toolCount"], json!(7));
     }
 }

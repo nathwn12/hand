@@ -22,6 +22,7 @@ const clone = (value) => JSON.parse(JSON.stringify(value));
 
 const ALLOWANCE_KEYS = ["inputSchema", "outputSchema"];
 const DECLARED_DESCRIPTIONS = [
+  "browser_assert_layout",
   "browser_click",
   "browser_hover",
   "browser_screenshot",
@@ -29,6 +30,11 @@ const DECLARED_DESCRIPTIONS = [
   "browser_snapshot",
   "browser_type",
   "browser_upload",
+  "browser_visual",
+  "desktop_diff",
+  "desktop_do",
+  "desktop_elements",
+  "desktop_screenshot",
 ];
 
 function setPath(root, dotted, value) {
@@ -114,7 +120,7 @@ test("the allowance file is versioned, dotted and read by the comparator itself"
   assert.deepEqual(
     [...rawFile.metadata.description].sort(),
     DECLARED_DESCRIPTIONS,
-    "exactly the seven rewritten descriptions are declared, nothing more and nothing less",
+    "exactly the thirteen rewritten descriptions are declared, nothing more and nothing less",
   );
   for (const name of rawFile.metadata.description) {
     assert.ok(floorNames.has(name), `metadata.description.${name} is not a floor tool`);
@@ -271,7 +277,7 @@ test("the green candidate is green through the real CLI, exit 0", () => {
   assert.doesNotMatch(cli.stdout, /--strict-metadata/, "the reported policy is not stated as a flag");
   assert.match(cli.stdout, /screenshot inputSchema \+= properties\.clip, properties\.element, properties\.format, properties\.quality/);
   assert.match(cli.stdout, /browser_click metadata\.description \+= description/);
-  assert.match(cli.stdout, /declared {3}17 addition group\(s\)/);
+  assert.match(cli.stdout, /declared {3}23 addition group\(s\)/);
 });
 
 test("the legacy profile is never allowed to grow: a declared path does not soften a recapture", () => {

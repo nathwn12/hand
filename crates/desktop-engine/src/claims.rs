@@ -1,4 +1,4 @@
-//! The claims source (D1).
+//! The claims source.
 //!
 //! Every load-bearing claim an agent can act on is written here exactly once:
 //! the tool lines, the coordinate rule, the refusal table, the authoritative

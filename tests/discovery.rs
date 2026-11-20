@@ -1,4 +1,4 @@
-//! Slice 1: one MCP server, both engine catalogs, honest availability.
+//! One MCP server, both engine catalogs, honest availability.
 //!
 //! These tests use the real executable over stdio and compare every published
 //! floor tool body against the committed baseline (`baseline/hand-catalog.json`).
@@ -100,8 +100,9 @@ fn initialize_identifies_version_platform_and_both_engines() {
     for needle in [
         "browser_snapshot",
         "desktop_",
-        "never moves the physical pointer",
-        "typed",
+        "never the foreground window",
+        "outcome:unknown, retry:unsafe",
+        "typed tool results",
     ] {
         assert!(
             instructions.contains(needle),

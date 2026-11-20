@@ -1,4 +1,4 @@
-//! Slice 3 (read-only half): discover and inspect a real Windows window
+//! Read-only half: discover and inspect a real Windows window
 //! through the desktop engine, without taking the foreground or moving the
 //! physical pointer.
 //!

@@ -455,14 +455,14 @@ async fn attach(
     excluded_contexts: Arc<Mutex<HashMap<String, String>>>,
 ) -> Result<Inner, String> {
     let ws_url = resolve_ws_url(raw).await?;
-    eprintln!("[gladius] backend: external-cdp {ws_url} (attach; engine not owned)");
+    debug_eprintln!("[gladius] backend: external-cdp {ws_url} (attach; engine not owned)");
     let (ws, _) = connect_async_with_config(&ws_url, Some(cdp_ws_config()), false)
         .await
         .map_err(|e| format!("ws connect {ws_url}: {e}"))?;
     let (sink, stream) = ws.split();
     let shared = new_shared(sink, excluded_contexts);
     let reader = tokio::spawn(reader_loop(stream, shared.clone()));
-    eprintln!("[gladius] browser ready attached external-cdp");
+    debug_eprintln!("[gladius] browser ready attached external-cdp");
     Ok(Inner {
         engine: Engine::Attached { cdp_url: ws_url },
         shared,
@@ -836,7 +836,7 @@ impl Browser {
                          retry (the next call launches a fresh engine)",
                     ));
                 }
-                eprintln!("[gladius] recovery: relaunching the owned engine (once per death)");
+                debug_eprintln!("[gladius] recovery: relaunching the owned engine (once per death)");
                 let inner = match launch(self.excluded_contexts.clone()).await {
                     Ok(inner) => inner,
                     Err(e) => {
@@ -1834,7 +1834,7 @@ impl Browser {
                     if !exited || !job_cover {
                         #[cfg(windows)]
                         if !job_cover {
-                            eprintln!(
+                            debug_eprintln!(
                                 "[gladius] close: no job cover (assignment failed at launch); forcing kill_tree fallback for pid {pid}"
                             );
                         }
@@ -1844,7 +1844,7 @@ impl Browser {
                     #[cfg(windows)]
                     drop(job);
                     if let Err(e) = sweep_profile_dir(profile.path()).await {
-                        eprintln!("[gladius] close: profile sweep failed: {e}");
+                        err_eprintln!("ESWEEP", "[gladius] close: profile sweep failed: {e}");
                         return Err(e);
                     }
                 }
@@ -1866,7 +1866,7 @@ impl Browser {
                     })
                     .await;
                     reader.abort();
-                    eprintln!(
+                    debug_eprintln!(
                         "[gladius] detach: external engine left running (not owned) {cdp_url}"
                     );
                 }
@@ -3984,11 +3984,11 @@ async fn launch_owned_chromium_once(
         drop(listener);
         port
     };
-    eprintln!(
+    debug_eprintln!(
         "[gladius] backend: chromium {} (port {port})",
         chromium.display()
     );
-    eprintln!("[gladius] profile: {}", profile.path().display());
+    debug_eprintln!("[gladius] profile: {}", profile.path().display());
     let mut std_cmd = std::process::Command::new(&chromium);
     std_cmd.args(chromium_argv(port, profile.path()));
     std_cmd
@@ -4012,7 +4012,7 @@ async fn launch_owned_chromium_once(
     }
     #[cfg(windows)]
     let job = if test_no_job() {
-        eprintln!("[gladius] job: assignment skipped by GLADIUS_TEST_NO_JOB (test-only)");
+        debug_eprintln!("[gladius] job: assignment skipped by GLADIUS_TEST_NO_JOB (test-only)");
         None
     } else {
         job::arm(guard.child.as_ref().expect("guard holds child"))
@@ -4084,7 +4084,7 @@ async fn launch_owned_chromium_once(
     let shared = new_shared(sink, excluded_contexts);
     shared.owned.store(true, Ordering::SeqCst);
     let reader = tokio::spawn(reader_loop(stream, shared.clone()));
-    eprintln!("[gladius] browser ready pid={pid} (chromium)");
+    debug_eprintln!("[gladius] browser ready pid={pid} (chromium)");
     let child = guard.child.take().expect("guard holds child");
     drop(guard); // disarmed: child moved out, Drop is a no-op
     Ok(Inner {
@@ -4141,7 +4141,7 @@ impl Drop for ProfileDir {
             }
             if let Err(e) = std::fs::remove_dir_all(&self.path) {
                 if attempt == 4 {
-                    eprintln!(
+                    debug_eprintln!(
                         "[gladius] profile drop: remove {} failed: {e}",
                         self.path.display()
                     );
@@ -4153,7 +4153,7 @@ impl Drop for ProfileDir {
             std::thread::sleep(Duration::from_millis(100));
         }
         if std::fs::symlink_metadata(&self.path).is_ok() {
-            eprintln!(
+            debug_eprintln!(
                 "[gladius] profile drop: {} still present after bounded retries",
                 self.path.display()
             );
@@ -4382,12 +4382,12 @@ async fn sweep_stale_records() {
         if !ours {
             continue;
         }
-        eprintln!(
+        debug_eprintln!(
             "[gladius] sweep: terminating job-less orphan pid {ep} recorded by dead server {owner}"
         );
         kill_tree_bounded(ep).await;
         if let Err(err) = sweep_profile_dir(&profile).await {
-            eprintln!("[gladius] sweep: {err}");
+            debug_eprintln!("[gladius] sweep: {err}");
             continue;
         }
         let _ = std::fs::remove_file(e.path());
@@ -4515,7 +4515,7 @@ fn sweep_stale_profiles() {
         if owner_alive(pid) {
             continue;
         }
-        eprintln!(
+        debug_eprintln!(
             "[gladius] sweep: removing stale profile {}",
             e.path().display()
         );
@@ -4548,7 +4548,7 @@ fn kill_tree(pid: u32) {
     let mut child = match cmd.spawn() {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("[gladius] kill_tree: spawn taskkill for pid {pid} failed: {e}");
+            err_eprintln!("EKILL", "[gladius] kill_tree: spawn taskkill for pid {pid} failed: {e}");
             return;
         }
     };
@@ -4557,13 +4557,13 @@ fn kill_tree(pid: u32) {
         match child.try_wait() {
             Ok(Some(status)) => {
                 if !status.success() {
-                    eprintln!("[gladius] kill_tree: taskkill for pid {pid} exited: {status}");
+                    debug_eprintln!("[gladius] kill_tree: taskkill for pid {pid} exited: {status}");
                 }
                 return;
             }
             Ok(None) => {
                 if start.elapsed() >= Duration::from_secs(5) {
-                    eprintln!(
+                    err_eprintln!("EKILL", 
                         "[gladius] kill_tree: taskkill for pid {pid} timed out after 5s (bounded); giving up"
                     );
                     let _ = child.kill();
@@ -4572,7 +4572,7 @@ fn kill_tree(pid: u32) {
                 std::thread::sleep(Duration::from_millis(50));
             }
             Err(e) => {
-                eprintln!("[gladius] kill_tree: try_wait for pid {pid} failed: {e}");
+                err_eprintln!("EKILL", "[gladius] kill_tree: try_wait for pid {pid} failed: {e}");
                 return;
             }
         }
@@ -4594,21 +4594,21 @@ async fn kill_tree_bounded(pid: u32) {
     let mut child = match cmd.spawn() {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("[gladius] kill_tree: spawn taskkill for pid {pid} failed: {e}");
+            err_eprintln!("EKILL", "[gladius] kill_tree: spawn taskkill for pid {pid} failed: {e}");
             return;
         }
     };
     match tokio::time::timeout(Duration::from_secs(5), child.wait()).await {
         Ok(Ok(status)) => {
             if !status.success() {
-                eprintln!("[gladius] kill_tree: taskkill for pid {pid} exited: {status}");
+                debug_eprintln!("[gladius] kill_tree: taskkill for pid {pid} exited: {status}");
             }
         }
         Ok(Err(e)) => {
-            eprintln!("[gladius] kill_tree: wait for pid {pid} failed: {e}");
+            err_eprintln!("EKILL", "[gladius] kill_tree: wait for pid {pid} failed: {e}");
         }
         Err(_) => {
-            eprintln!(
+            err_eprintln!("EKILL", 
                 "[gladius] kill_tree: taskkill for pid {pid} timed out after 5s (bounded); giving up"
             );
             let _ = child.start_kill();
@@ -4697,7 +4697,7 @@ mod job {
         unsafe {
             let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
             if job.is_null() {
-                eprintln!("[gladius] job: CreateJobObjectW failed, no hard-kill cover");
+                debug_eprintln!("[gladius] job: CreateJobObjectW failed, no hard-kill cover");
                 return None;
             }
             let mut info = ExtendedLimits::default();
@@ -4710,23 +4710,23 @@ mod job {
             );
             if ok == 0 {
                 CloseHandle(job);
-                eprintln!("[gladius] job: SetInformationJobObject failed, no hard-kill cover");
+                debug_eprintln!("[gladius] job: SetInformationJobObject failed, no hard-kill cover");
                 return None;
             }
             let proc = match child.raw_handle() {
                 Some(h) => h as RawHandle,
                 None => {
                     CloseHandle(job);
-                    eprintln!("[gladius] job: child has no handle, no hard-kill cover");
+                    debug_eprintln!("[gladius] job: child has no handle, no hard-kill cover");
                     return None;
                 }
             };
             if AssignProcessToJobObject(job, proc) == 0 {
                 CloseHandle(job);
-                eprintln!("[gladius] job: AssignProcessToJobObject failed, no hard-kill cover");
+                debug_eprintln!("[gladius] job: AssignProcessToJobObject failed, no hard-kill cover");
                 return None;
             }
-            eprintln!("[gladius] job: browser armed with KILL_ON_JOB_CLOSE");
+            debug_eprintln!("[gladius] job: browser armed with KILL_ON_JOB_CLOSE");
             Some(OwnedHandle::from_raw_handle(job))
         }
     }
@@ -5624,7 +5624,7 @@ mod tests {
         rig.shutdown().await;
     }
 
-    /// P2 regression: `wait_for` honors its OWN budget while the lazy
+    /// `wait_for` honors its OWN budget while the lazy
     /// `Network.enable` enable is still outstanding. The peer answers the
     /// attach flow (so the CDP session is established) and then holds the
     /// `Network.enable` response forever: pre-fix the unwrapped await paid
@@ -6470,10 +6470,10 @@ mod tests {
     fn owned_ws_request_rejects_query_fragment_host_smuggle() {
         let q = "ws://192.0.2.1:9000?@127.0.0.1:5555/";
         let q_err = owned_ws_request(5555, q).expect_err("query smuggle must be rejected");
-        eprintln!("owned confinement rejects query-smuggle url {q}: {q_err}");
+        debug_eprintln!("owned confinement rejects query-smuggle url {q}: {q_err}");
         let f = "ws://192.0.2.1:9000#@127.0.0.1:5555/";
         let f_err = owned_ws_request(5555, f).expect_err("fragment smuggle must be rejected");
-        eprintln!("owned confinement rejects fragment-smuggle url {f}: {f_err}");
+        debug_eprintln!("owned confinement rejects fragment-smuggle url {f}: {f_err}");
     }
 
     /// Budget helper through the SAME `startup_remaining` production uses: a
@@ -6535,7 +6535,7 @@ mod tests {
                 .expect("smuggle shape resolves");
             assert_eq!(got_c, crafted, "resolve must pass the URL through");
             let err = owned_ws_request(owned, &got_c).expect_err("smuggle shape must be confined");
-            eprintln!("owned resolve+confine rejects squatter url {got_c}: {err}");
+            debug_eprintln!("owned resolve+confine rejects squatter url {got_c}: {err}");
             http_c.abort();
         }
     }

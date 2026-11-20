@@ -1,4 +1,4 @@
-//! Cancellation registry for in-flight `tools/call` requests (P1b).
+//! Cancellation registry for in-flight `tools/call` requests.
 //!
 //! The stdio reader owns no blocking work: each `tools/call` is dispatched
 //! to a worker with a canonical request-id key
