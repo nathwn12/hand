@@ -540,6 +540,36 @@ pub struct SnapshotCache {
     pub start: usize,
 }
 
+/// Restores CDP drag interception whenever it goes out of scope. `disable`
+/// arms the normal path; a dropped guard (error or cancelled tool call) sends
+/// the restore on a detached task so it cannot be skipped by unwinding.
+pub(crate) struct DragInterceptGuard {
+    shared: Arc<Shared>,
+    done: bool,
+}
+
+impl DragInterceptGuard {
+    pub(crate) async fn disable(mut self) -> Result<(), String> {
+        self.done = true;
+        send_session(&self.shared, "Input.setInterceptDrags", json!({"enabled": false}))
+            .await
+            .map(|_| ())
+    }
+}
+
+impl Drop for DragInterceptGuard {
+    fn drop(&mut self) {
+        if self.done {
+            return;
+        }
+        let shared = self.shared.clone();
+        tokio::spawn(async move {
+            let _ =
+                send_session(&shared, "Input.setInterceptDrags", json!({"enabled": false})).await;
+        });
+    }
+}
+
 pub struct Browser {
     state: AsyncMutex<Option<Inner>>,
     pid: Mutex<Option<u32>>,
@@ -1228,6 +1258,83 @@ impl Browser {
         )
         .await?;
         Ok(sent + 1)
+    }
+
+    /// Enable native drag interception and return a guard that restores it.
+    /// The guard covers the error and cancellation paths, not just success.
+    pub(crate) async fn set_drag_intercept(
+        &self,
+        enabled: bool,
+    ) -> Result<DragInterceptGuard, String> {
+        let shared = self.shared().await?;
+        send_session(&shared, "Input.setInterceptDrags", json!({"enabled": enabled})).await?;
+        Ok(DragInterceptGuard {
+            shared,
+            done: false,
+        })
+    }
+
+    /// Trusted drag carrying a caller-supplied `DragData`. The real press and
+    /// move path fires the page's own `dragstart` (trusted); with interception
+    /// on, the drop is delivered by CDP `Input.dispatchDragEvent` with `data`,
+    /// so the page's `drop` handler sees both a trusted event and the payload.
+    /// Returns `(pointer events, drag events)` dispatched.
+    pub async fn mouse_drag_with_data(
+        &self,
+        from: (f64, f64),
+        to: (f64, f64),
+        steps: usize,
+        data: Value,
+    ) -> Result<(usize, usize), String> {
+        let steps = steps.clamp(2, 64);
+        let (x0, y0) = from;
+        let (x1, y1) = to;
+        self.command(
+            "Input.dispatchMouseEvent",
+            json!({"type": "mouseMoved", "x": x0, "y": y0}),
+            true,
+        )
+        .await?;
+        self.command(
+            "Input.dispatchMouseEvent",
+            json!({"type": "mousePressed", "x": x0, "y": y0,
+                   "button": "left", "buttons": 1, "clickCount": 1}),
+            true,
+        )
+        .await?;
+        let mut sent = 2usize;
+        for i in 0..steps {
+            let t = i as f64 / (steps - 1) as f64;
+            let x = x0 + (x1 - x0) * t;
+            let y = y0 + (y1 - y0) * t;
+            self.command(
+                "Input.dispatchMouseEvent",
+                json!({"type": "mouseMoved", "x": x, "y": y,
+                       "button": "left", "buttons": 1}),
+                true,
+            )
+            .await?;
+            sent += 1;
+        }
+        let mut drag = 0usize;
+        for typ in ["dragEnter", "dragOver", "drop"] {
+            self.command(
+                "Input.dispatchDragEvent",
+                json!({"type": typ, "x": x1, "y": y1,
+                       "data": data.clone(), "modifiers": 0}),
+                true,
+            )
+            .await?;
+            drag += 1;
+        }
+        self.command(
+            "Input.dispatchMouseEvent",
+            json!({"type": "mouseReleased", "x": x1, "y": y1,
+                   "button": "left", "buttons": 0, "clickCount": 1}),
+            true,
+        )
+        .await?;
+        Ok((sent + 1, drag))
     }
 
     /// Trusted main-frame left click at main-frame viewport CSS px: by default

@@ -371,19 +371,22 @@ pub fn list() -> Value {
              "required": ["ok", "action"], "additionalProperties": false},
           "annotations": {"readOnlyHint": false, "destructiveHint": true, "idempotentHint": false, "openWorldHint": false}}));
         tools.insert(at + 3, json!({"name": "drag", "title": "Drag",
-          "description": "Drag from one element (or point) to another with real trusted input: one positioning Input.dispatchMouseEvent mouseMoved at the source, one mousePressed there, `steps` interpolated mouseMoved events with buttons:1, then mouseReleased at the target. The opening move is what routes pointer input to the renderer that owns the source (a cross-process frame receives nothing without it - measured), and the move at the source is also what starts a drag. from/to are a CSS selector (first match), an @eN ref from snapshot, or an AX selector (role=/name=/text=/label=); fromPoint/toPoint {x,y} in viewport CSS px stand in for an element on either side, so a drag between bare coordinates needs no DOM at all. Both endpoints run the same visibility/occlusion preflight click uses: a hidden or occluded endpoint is a typed not_actionable refusal and NOTHING is dispatched. Every event is trusted, so the engine's own HTML5 drag-and-drop machinery and the page's pointer handlers both fire - no synthetic DragEvent, no DataTransfer construction, no .value writes. steps (default 8, 2-64) splits the path into that many move events. Reply: the two points, the events dispatched and the step count. frame=<CDP frameId> resolves from/to inside that iframe (CSS or AX selectors; refs are main-frame only) and the dispatch point is mapped to main-viewport coordinates.",
+          "description": "Drag from one element (or point) to another with real trusted input: one positioning Input.dispatchMouseEvent mouseMoved at the source, one mousePressed there, `steps` interpolated mouseMoved events with buttons:1, then mouseReleased at the target. The opening move is what routes pointer input to the renderer that owns the source (a cross-process frame receives nothing without it - measured), and the move at the source is also what starts a drag. from/to are a CSS selector (first match), an @eN ref from snapshot, or an AX selector (role=/name=/text=/label=); fromPoint/toPoint {x,y} in viewport CSS px stand in for an element on either side, so a drag between bare coordinates needs no DOM at all. Both endpoints run the same visibility/occlusion preflight click uses: a hidden or occluded endpoint is a typed not_actionable refusal and NOTHING is dispatched. Every event is trusted, so the engine's own HTML5 drag-and-drop machinery and the page's pointer handlers both fire - no synthetic DragEvent, no DataTransfer construction, no .value writes. steps (default 8, 2-64) splits the path into that many move events. Reply: the two points, the events dispatched and the step count. frame=<CDP frameId> resolves from/to inside that iframe (CSS or AX selectors; refs are main-frame only) and the dispatch point is mapped to main-viewport coordinates. Optional dataTransfer is an object of mime type to string data: with it, the drag runs through CDP drag interception (Input.setInterceptDrags / Input.dispatchDragEvent, always restored on success, error and cancel) so the page's own trusted dragstart and drop handlers see those items; reply adds dragEvents and echoes dataTransfer.",
           "inputSchema": {"type": "object", "properties": {
               "from": {"type": "string"}, "to": {"type": "string"},
               "fromPoint": {"type": "object", "properties": {"x": {"type": "number"}, "y": {"type": "number"}}, "required": ["x", "y"], "additionalProperties": false},
               "toPoint": {"type": "object", "properties": {"x": {"type": "number"}, "y": {"type": "number"}}, "required": ["x", "y"], "additionalProperties": false},
               "steps": {"type": "integer", "minimum": 2, "maximum": 64, "default": 8},
+               "dataTransfer": {"type": "object", "description": "mime type -> string data"},
               "frame": {"type": "string"}},
               "additionalProperties": false},
           "outputSchema": {"type": "object",
              "properties": {"ok": {"type": "boolean"},
                  "from": {"type": "object"}, "to": {"type": "object"},
                  "events": {"type": "integer", "minimum": 0},
-                 "steps": {"type": "integer", "minimum": 0}},
+                 "steps": {"type": "integer", "minimum": 0},
+                  "dragEvents": {"type": "integer", "minimum": 0},
+                  "dataTransfer": {"type": "object"}},
              "required": ["ok", "from", "to", "events", "steps"], "additionalProperties": false},
           "annotations": {"readOnlyHint": false, "destructiveHint": true, "idempotentHint": false, "openWorldHint": true}}));
         tools.insert(at + 4, json!({"name": "wheel", "title": "Wheel",
@@ -1109,7 +1112,7 @@ pub async fn call(name: &str, args: &Value, browser: &Browser) -> Value {
             if let Err(e) = check_unknown(
                 "drag",
                 args,
-                &["from", "to", "fromPoint", "toPoint", "steps", "frame"],
+                &["from", "to", "fromPoint", "toPoint", "steps", "frame", "dataTransfer"],
             ) {
                 return e.envelope();
             }
@@ -1152,6 +1155,17 @@ pub async fn call(name: &str, args: &Value, browser: &Browser) -> Value {
             let from = args.get("from").and_then(|v| v.as_str());
             let to = args.get("to").and_then(|v| v.as_str());
             let frame = args.get("frame").and_then(|v| v.as_str());
+            let data_transfer = match args.get("dataTransfer") {
+                None => None,
+                Some(v @ Value::Object(_)) => Some(v.clone()),
+                Some(_) => {
+                    return ToolErr::typed(
+                        "drag: 'dataTransfer' must be an object of mime type -> string".to_string(),
+                        json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "drag", "arg": "dataTransfer"}),
+                    )
+                    .envelope()
+                }
+            };
             let endpoint = |name: &str, el: Option<&str>, pt: Option<(f64, f64)>| {
                 match (el, pt) {
                     (Some(_), Some(_)) => Err(ToolErr::typed(
@@ -1171,7 +1185,17 @@ pub async fn call(name: &str, args: &Value, browser: &Browser) -> Value {
             if let Err(e) = endpoint("to", to, to_point) {
                 return e.envelope();
             }
-            tool_drag(browser, from, to, from_point, to_point, steps, frame).await
+            tool_drag(
+                browser,
+                from,
+                to,
+                from_point,
+                to_point,
+                steps,
+                frame,
+                data_transfer.as_ref(),
+            )
+            .await
         }
         "type" => {
             if let Err(e) = check_unknown("type", args, &["element", "text", "submit", "frame"]) {
@@ -4964,9 +4988,10 @@ async fn tool_wheel(
 }
 
 /// Drag: resolve both endpoints (with the click preflight's occlusion guard),
-/// then dispatch the trusted press/move/release sequence. Every event is
-/// `Input.dispatchMouseEvent`; no DOM event is synthesised and no `.value` or
-/// `DataTransfer` is touched.
+/// then dispatch the trusted press/move/release sequence. Without a payload
+/// every event is `Input.dispatchMouseEvent` and no `DataTransfer` is touched.
+/// With one, CDP drag interception carries the mime items into a trusted
+/// `drop`; interception is restored on success, error and cancellation.
 async fn tool_drag(
     browser: &Browser,
     from: Option<&str>,
@@ -4975,6 +5000,7 @@ async fn tool_drag(
     to_point: Option<(f64, f64)>,
     steps: usize,
     frame: Option<&str>,
+    data_transfer: Option<&Value>,
 ) -> Result<Value, ToolErr> {
     let fid = frame_id_ok("drag", frame)?;
     let from_pt = match from_point {
@@ -4991,21 +5017,63 @@ async fn tool_drag(
         }
         None => drag_point(browser, "drag", to.unwrap_or(""), fid.as_deref()).await?,
     };
-    let events = browser
-        .mouse_drag(from_pt, to_pt, steps)
-        .await
-        .map_err(ToolErr::from)?;
+    let (events, drag_events, echo) = match data_transfer {
+        Some(dt) => {
+            let obj = dt.as_object().ok_or_else(|| {
+                ToolErr::typed(
+                    "drag: 'dataTransfer' must be an object of mime type -> string".to_string(),
+                    json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "drag", "arg": "dataTransfer"}),
+                )
+            })?;
+            let mut items = Vec::new();
+            for (k, v) in obj {
+                let s = match v {
+                    Value::String(s) => s.clone(),
+                    Value::Number(n) => n.to_string(),
+                    _ => {
+                        return Err(ToolErr::typed(
+                            format!("drag: dataTransfer['{k}'] must be a string"),
+                            json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "drag", "arg": "dataTransfer"}),
+                        ))
+                    }
+                };
+                items.push(json!({"mimeType": k, "data": s, "title": "", "baseURL": ""}));
+            }
+            let drag_data = json!({"items": items, "files": [], "dragOperationsMask": 1});
+            let guard = browser
+                .set_drag_intercept(true)
+                .await
+                .map_err(ToolErr::from)?;
+            let dispatched = browser
+                .mouse_drag_with_data(from_pt, to_pt, steps, drag_data)
+                .await;
+            let restore = guard.disable().await;
+            let (e, d) = dispatched.map_err(ToolErr::from)?;
+            restore.map_err(ToolErr::from)?;
+            (e, d, dt.clone())
+        }
+        None => (
+            browser
+                .mouse_drag(from_pt, to_pt, steps)
+                .await
+                .map_err(ToolErr::from)?,
+            0,
+            Value::Null,
+        ),
+    };
     tokio::time::sleep(std::time::Duration::from_millis(80)).await;
-    Ok(ok_text(
-        json!({
-            "ok": true,
-            "from": {"x": from_pt.0, "y": from_pt.1},
-            "to": {"x": to_pt.0, "y": to_pt.1},
-            "events": events,
-            "steps": steps,
-        })
-        .to_string(),
-    ))
+    let mut out = json!({
+        "ok": true,
+        "from": {"x": from_pt.0, "y": from_pt.1},
+        "to": {"x": to_pt.0, "y": to_pt.1},
+        "events": events,
+        "steps": steps,
+        "dragEvents": drag_events,
+    });
+    if !echo.is_null() {
+        out["dataTransfer"] = echo;
+    }
+    Ok(ok_text(out.to_string()))
 }
 
 /// Click a ref that a frame-scoped snapshot minted, inside that frame. The

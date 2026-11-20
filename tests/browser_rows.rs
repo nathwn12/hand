@@ -30,6 +30,24 @@ const FRAMES: &str = r#"<!doctype html><html><head><title>Frames</title></head>
 <body><iframe id="f" src="/frame" style="width:300px;height:200px;border:0"></iframe></body></html>"#;
 const FRAME: &str = r#"<!doctype html><html><head><title>Frame</title></head>
 <body><div id="in-frame" style="width:120px;height:40px">Inside</div></body></html>"#;
+const DRAG: &str = r#"<!doctype html><html><head><title>Drag</title></head><body>
+<div id="src" draggable="true" style="width:120px;height:40px;background:#ccc">drag me</div>
+<div id="dst" style="width:180px;height:90px;margin-top:20px;background:#eee">drop here</div>
+<script>
+window.dragLog = [];
+document.getElementById('src').addEventListener('dragstart', function (e) {
+  window.dragLog.push({type:'dragstart', trusted:e.isTrusted});
+  e.dataTransfer.setData('text/plain', 'from-page');
+});
+var dst = document.getElementById('dst');
+dst.addEventListener('dragover', function (e) { e.preventDefault(); });
+dst.addEventListener('drop', function (e) {
+  e.preventDefault();
+  window.dragLog.push({type:'drop', trusted:e.isTrusted,
+    text:e.dataTransfer.getData('text/plain'),
+    extra:e.dataTransfer.getData('application/x-hand')});
+});
+</script></body></html>"#;
 
 struct Fixture {
     base: String,
@@ -90,6 +108,7 @@ fn serve(mut stream: TcpStream) -> std::io::Result<()> {
         "/next" => ("200 OK", NEXT.to_string()),
         "/frames" => ("200 OK", FRAMES.to_string()),
         "/frame" => ("200 OK", FRAME.to_string()),
+        "/drag" => ("200 OK", DRAG.to_string()),
         "/redirect" => {
             let head = "HTTP/1.1 302 Found\r\nLocation: /next\r\nContent-Length: 0\r\n\
                         Cache-Control: no-store\r\nConnection: close\r\n\r\n";
@@ -109,6 +128,12 @@ fn serve(mut stream: TcpStream) -> std::io::Result<()> {
     stream.flush()
 }
 
+fn evaluate(s: &mut Session, expr: &str) -> Value {
+    let r = s.call("browser_evaluate", json!({"expression": expr}));
+    assert!(!is_error(&r), "evaluate failed: {}", text_of(&r));
+    structured(&r)["value"].clone()
+}
+
 fn child_frame(s: &mut Session) -> String {
     let targets = s.call("browser_targets", json!({"action": "list"}));
     assert!(!is_error(&targets), "{}", text_of(&targets));
@@ -120,6 +145,32 @@ fn child_frame(s: &mut Session) -> String {
         .and_then(|f| f.get("frameId").and_then(|v| v.as_str()))
         .map(str::to_string)
         .unwrap_or_else(|| panic!("no child frame in fixture: {}", text_of(&targets)))
+}
+
+#[test]
+fn b10_native_datatransfer_drag_is_trusted() {
+    let _g = serial();
+    let fx = Fixture::start();
+    let mut s = Session::spawn();
+    let r = s.call("browser_navigate", json!({"url": format!("{}/drag", fx.base)}));
+    assert!(!is_error(&r), "{}", text_of(&r));
+
+    let r = s.call("browser_drag", json!({
+        "from": "#src", "to": "#dst", "steps": 8,
+        "dataTransfer": {"text/plain": "payload-42", "application/x-hand": "row-7"}
+    }));
+    assert!(!is_error(&r), "drag failed: {}", text_of(&r));
+    let sc = structured(&r);
+    assert!(sc["dragEvents"].as_i64().unwrap_or(0) >= 3, "drag events: {sc:?}");
+
+    let log = evaluate(&mut s, "window.dragLog");
+    let arr = log.as_array().expect("dragLog array");
+    let start = arr.iter().find(|e| e["type"] == "dragstart").expect("dragstart");
+    assert_eq!(start["trusted"].as_bool(), Some(true), "dragstart trusted: {start:?}");
+    let drop = arr.iter().find(|e| e["type"] == "drop").expect("drop");
+    assert_eq!(drop["trusted"].as_bool(), Some(true), "drop trusted: {drop:?}");
+    assert_eq!(drop["text"].as_str().unwrap_or(""), "payload-42", "drop data: {drop:?}");
+    assert_eq!(drop["extra"].as_str().unwrap_or(""), "row-7", "second mime item: {drop:?}");
 }
 
 #[test]
