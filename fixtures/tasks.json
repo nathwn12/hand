@@ -236,12 +236,13 @@
       ],
       "calls": [
         { "tool": "browser_navigate", "args": { "url": "{{origin}}/tasks/main.html" } },
+        { "tool": "browser_evaluate", "args": { "expression": "document.getElementById('dnd1').scrollIntoView({block:'center'})" } },
         { "tool": "browser_drag", "args": { "from": "#dnd1", "to": "#dnd3", "steps": 8 } },
         { "tool": "browser_evaluate", "args": { "expression": "window.__drag" } }
       ],
       "expect": { "all": [
-        { "call": 2, "path": "payload.value.dragstart", "op": "eq", "value": true },
-        { "call": 2, "path": "payload.value.drop", "op": "eq", "value": true }
+        { "call": 3, "path": "payload.value.dragstart", "op": "eq", "value": true },
+        { "call": 3, "path": "payload.value.drop", "op": "eq", "value": true }
       ] },
       "cleanup": []
     },
@@ -282,14 +283,14 @@
       "calls": [
         { "tool": "browser_navigate", "args": { "url": "{{origin}}/tasks/main.html" } },
         { "tool": "browser_form", "args": { "fields": [
-          { "element": "#name", "text": "Ada" },
-          { "element": "#mode", "value": "beta" },
-          { "element": "#required-field", "text": "x" }
+          { "field": "#name", "action": "type", "value": "Ada" },
+          { "field": "#mode", "action": "select", "value": "beta" },
+          { "field": "#missing", "action": "type", "value": "x" }
         ], "submit": "#form-submit", "timeoutMs": 10000 } }
       ],
       "expect": { "all": [
         { "call": 1, "path": "payload.steps.length", "op": "eq", "value": 3 },
-        { "call": 1, "path": "payload.verdict", "op": "eq", "value": "partial" }
+        { "call": 1, "path": "payload.verdict", "op": "eq", "value": "fail" }
       ] },
       "cleanup": []
     },
@@ -460,10 +461,10 @@
       "requires": [{ "tool": "browser_assert" }],
       "calls": [
         { "tool": "browser_navigate", "args": { "url": "{{origin}}/tasks/main.html" } },
-        { "tool": "browser_assert", "args": { "kind": "dom", "target": "#out", "expected": "idle", "timeoutMs": 3000 } }
+        { "tool": "browser_assert", "args": { "kind": "dom", "target": "#out", "expected": { "exists": true, "text": "idle" }, "timeoutMs": 3000 } }
       ],
       "expect": { "all": [
-        { "call": 1, "path": "payload.verdict", "op": "eq", "value": "pass" }
+        { "call": 1, "path": "payload.verdict", "op": "eq", "value": true }
       ] },
       "cleanup": []
     },
@@ -490,8 +491,8 @@
         { "tool": "browser_assert", "args": { "kind": "url", "expected": "{{origin}}/tasks/main.html" } }
       ],
       "expect": { "all": [
-        { "call": 1, "path": "payload.verdict", "op": "eq", "value": "pass" },
-        { "call": 2, "path": "payload.verdict", "op": "eq", "value": "pass" }
+        { "call": 1, "path": "payload.verdict", "op": "eq", "value": true },
+        { "call": 2, "path": "payload.verdict", "op": "eq", "value": true }
       ] },
       "cleanup": []
     },
