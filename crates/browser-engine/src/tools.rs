@@ -556,6 +556,8 @@ pub(crate) enum ToolCode {
     BaselineEnvironmentUnknown,
     /// A baseline was captured before it settled.
     BaselineEnvironmentUnsettled,
+    /// A requested http(s) page never loaded: the document stayed blank.
+    BlankLoad,
     /// The residue: a failure that genuinely knows nothing.
     Error,
 }
@@ -581,6 +583,7 @@ impl ToolCode {
             Self::ScratchBackgroundUnsupported => "scratch_background_unsupported",
             Self::BaselineEnvironmentUnknown => "baseline_environment_unknown",
             Self::BaselineEnvironmentUnsettled => "baseline_environment_unsettled",
+            Self::BlankLoad => "blank_load",
             Self::Error => "error",
         }
     }
@@ -611,6 +614,7 @@ impl ToolCode {
         Self::ScratchBackgroundUnsupported,
         Self::BaselineEnvironmentUnknown,
         Self::BaselineEnvironmentUnsettled,
+        Self::BlankLoad,
         Self::Error,
     ];
 
@@ -1539,13 +1543,29 @@ pub async fn call(name: &str, args: &Value, browser: &Browser) -> Value {
     }
 }
 
+/// A requested http(s) page that never loaded is a typed failure, never an
+/// `ok:true` with a warning an agent can ignore. Explicit `about:blank`,
+/// `data:` and `file:` targets are not requested pages and keep working.
+fn blank_load_err(url: &str, detail: &str) -> ToolErr {
+    ToolErr::typed(
+        format!("navigate: {detail}"),
+        json!({"code": ToolCode::BlankLoad.as_str(),
+               "reason": ToolReason::Navigated.as_str(), "url": url}),
+    )
+}
+
 async fn tool_navigate(browser: &Browser, url: &str) -> Result<Value, ToolErr> {
+    let lower = url.trim().to_ascii_lowercase();
+    let requested_page = lower.starts_with("http://") || lower.starts_with("https://");
     browser.command("Page.enable", json!({}), true).await?;
     let nav = browser
         .command("Page.navigate", json!({"url": url}), true)
         .await?;
     if let Some(err) = nav.get("errorText").and_then(|v| v.as_str()) {
         if !err.is_empty() {
+            if requested_page {
+                return Err(blank_load_err(url, &format!("net error loading {url}: {err}")));
+            }
             return Err(ToolErr::fallback(format!("navigate: {err}")));
         }
     }
@@ -1564,6 +1584,12 @@ async fn tool_navigate(browser: &Browser, url: &str) -> Result<Value, ToolErr> {
         .as_str()
         .unwrap_or(url)
         .to_string();
+    if requested_page && cur == "about:blank" {
+        return Err(blank_load_err(
+            url,
+            &format!("requested {url} but the document stayed on about:blank"),
+        ));
+    }
     if !title.is_empty() || cur.is_empty() || cur == "about:blank" {
         return Ok(ok_text(json!({"url": cur, "title": title}).to_string()));
     }
@@ -1574,6 +1600,12 @@ async fn tool_navigate(browser: &Browser, url: &str) -> Result<Value, ToolErr> {
         .and_then(|v| v.as_f64())
         .unwrap_or(-1.0);
     if body_len == 0.0 {
+        if requested_page {
+            return Err(blank_load_err(
+                url,
+                &format!("requested {url} but the document is empty"),
+            ));
+        }
         Ok(ok_text(
             json!({"url": cur, "title": title,
                    "warning": "possible blank-load race: committed URL with empty document (empty title and empty body text); re-navigate to confirm"})

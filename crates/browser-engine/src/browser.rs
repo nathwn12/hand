@@ -4517,30 +4517,55 @@ fn profile_arg(v: &str) -> String {
         .to_string()
 }
 
-/// Delete `gladius-<pid>-*` profile dirs whose owner gladius pid is dead.
-/// Runs at every owned launch: the recovery path for hard-killed servers
-/// whose graceful cleanup never ran. Conservative: our prefix only, never
-/// our own pid, and only provably-dead owners (any doubt keeps the dir, so
-/// a live server's profile is never swept).
+/// Owner pids a `gladius-` profile name can carry. The owned naming puts the
+/// pid first (`gladius-<pid>-<millis>-<n>`); diagnostic and tagged names carry
+/// it later (`gladius-aa-<pid>-<millis>`, `gladius-fix-a-<tag>-<pid>`). Only
+/// pure decimal tokens in u32 range count: a millisecond timestamp overflows
+/// and a tag like `aa` is not numeric. The owned naming keeps its exact
+/// single-pid behaviour; tagged names need every candidate dead to sweep.
+fn profile_owner_pids(name: &str) -> Vec<u32> {
+    let rest = match name.strip_prefix("gladius-") {
+        Some(r) => r,
+        None => return Vec::new(),
+    };
+    if let Some(pid) = rest
+        .split('-')
+        .next()
+        .and_then(|p| p.parse::<u32>().ok())
+        .filter(|p| *p > 0)
+    {
+        return vec![pid];
+    }
+    let mut pids: Vec<u32> = rest
+        .split('-')
+        .filter_map(|p| p.parse::<u32>().ok())
+        .filter(|p| *p > 0)
+        .collect();
+    pids.sort_unstable();
+    pids.dedup();
+    pids
+}
+
+/// Delete `gladius-*` profile dirs whose owner pid is dead. Runs at every
+/// owned launch: the recovery path for hard-killed servers whose graceful
+/// cleanup never ran. Conservative: our prefix in the temp root only, never
+/// our own pid, never a symlink, and only provably-dead owners (any doubt
+/// keeps the dir, so a live server's profile is never swept).
 fn sweep_stale_profiles() {
     let rd = match std::fs::read_dir(std::env::temp_dir()) {
         Ok(r) => r,
         Err(_) => return,
     };
     for e in rd.flatten() {
-        let name = e.file_name().to_string_lossy().into_owned();
-        let pid: u32 = match name
-            .strip_prefix("gladius-")
-            .and_then(|r| r.split('-').next())
-            .and_then(|p| p.parse().ok())
-        {
-            Some(p) => p,
-            None => continue,
-        };
-        if pid == std::process::id() {
+        if e.file_type().map(|t| t.is_symlink()).unwrap_or(true) {
             continue;
         }
-        if owner_alive(pid) {
+        let name = e.file_name().to_string_lossy().into_owned();
+        let pids = profile_owner_pids(&name);
+        if pids.is_empty()
+            || pids.contains(&std::process::id())
+            || pids.iter().any(|&p| owner_alive(p))
+        {
             continue;
         }
         debug_eprintln!(
@@ -5027,6 +5052,19 @@ mod tests {
                 t.abort();
             }
         }
+    }
+
+    /// The sweep must find owners in tagged names, not only in the owned
+    /// `gladius-<pid>-<millis>-<n>` shape. Millisecond timestamps overflow
+    /// u32 and a tag like `aa` is not a pid; neither may hide a real owner.
+    #[test]
+    fn profile_owner_pids_covers_owned_and_tagged_names() {
+        assert_eq!(profile_owner_pids("gladius-1234-1794985464252-0"), vec![1234]);
+        assert_eq!(profile_owner_pids("gladius-aa-12096-1794985464252"), vec![12096]);
+        assert_eq!(profile_owner_pids("gladius-ext-attach-14328-1794989418116"), vec![14328]);
+        assert_eq!(profile_owner_pids("gladius-fix-a-arg-match-10372"), vec![10372]);
+        assert!(profile_owner_pids("gladius-repro-0.8.0").is_empty());
+        assert!(profile_owner_pids("not-gladius-12096").is_empty());
     }
 
     /// The click contract at the CDP FRAME level: a default click is exactly
