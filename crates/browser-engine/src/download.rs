@@ -191,10 +191,14 @@ fn invalid(prose: String, reason: ToolReason, arg: &str) -> ToolErr {
     )
 }
 
-fn cancelled(prose: String, code: ToolCode, reason: ToolReason) -> ToolErr {
+fn cancelled(prose: String, code: ToolCode, reason: ToolReason, record: &Value) -> ToolErr {
     ToolErr::typed(
         prose,
-        json!({"code": code.as_str(), "reason": reason.as_str(), "tool": "browser_download"}),
+        json!({"code": code.as_str(), "reason": reason.as_str(), "tool": "browser_download",
+               "state": record.get("state").cloned().unwrap_or(Value::Null),
+               "filename": record.get("filename").cloned().unwrap_or(Value::Null),
+               "filePath": record.get("filePath").cloned().unwrap_or(Value::Null),
+               "receivedBytes": record.get("receivedBytes").cloned().unwrap_or(Value::Null)}),
     )
 }
 
@@ -264,9 +268,17 @@ pub async fn handle(browser: &Browser, args: &Value) -> Result<Value, ToolErr> {
     };
 
     browser.download_reset().await;
+    // Windows paths from callers often mix separators (`C:\temp/download`).
+    // CDP hands downloadPath to Chrome's native path layer, which rejects a
+    // mixed path as a cancelled download, so normalise before sending it.
+    let cdp_download_path = if cfg!(windows) {
+        dir_str.replace('/', "\\")
+    } else {
+        dir_str.to_string()
+    };
     let params = json!({
         "behavior": "allow",
-        "downloadPath": dir_str,
+        "downloadPath": cdp_download_path,
         "eventsEnabled": true
     });
     browser
@@ -325,7 +337,7 @@ pub async fn handle(browser: &Browser, args: &Value) -> Result<Value, ToolErr> {
             "canceled" | "interrupted" => (ToolCode::Cancelled, ToolReason::ClientCancelled),
             _ => (ToolCode::Timeout, ToolReason::BudgetExceeded),
         };
-        return Err(cancelled(prose, code, reason));
+        return Err(cancelled(prose, code, reason, &record));
     }
 
     let delivered = if !file_path.is_empty() {
@@ -360,6 +372,7 @@ pub async fn handle(browser: &Browser, args: &Value) -> Result<Value, ToolErr> {
                 format!("browser_download: delivered file is {} bytes, over maxBytes {max}", bytes.len()),
                 ToolCode::Cancelled,
                 ToolReason::BudgetExceeded,
+                &record,
             ));
         }
     }
