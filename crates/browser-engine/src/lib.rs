@@ -53,11 +53,15 @@ macro_rules! err_eprintln {
     };
 }
 
+mod assert;
+mod audit;
 mod browser;
 mod capture;
 pub mod contexts;
+mod download;
 mod fetch;
 mod layout;
+mod net;
 mod tools;
 mod visual;
 
