@@ -12,7 +12,7 @@ mod common;
 use common::{text_of, tool, Session};
 use serde_json::{json, Value};
 
-const BROWSER_TOOLS: [&str; 29] = [
+const BROWSER_TOOLS: [&str; 31] = [
     "navigate",
     "snapshot",
     "screenshot",
@@ -42,6 +42,8 @@ const BROWSER_TOOLS: [&str; 29] = [
     "wheel",
     "drag",
     "form",
+    "download",
+    "assert",
 ];
 
 const DESKTOP_TOOLS: [&str; 7] = [
