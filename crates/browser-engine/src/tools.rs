@@ -402,6 +402,26 @@ pub fn list() -> Value {
              "required": ["ok", "moved", "scroll", "at"], "additionalProperties": false},
           "annotations": {"readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": false}}));
     }
+    listed["tools"].as_array_mut().expect("tools").push(json!({
+        "name": "form", "title": "Form",
+        "description": "Ordered form batches. fields[] runs in order, each {field, action, value?}: field is a CSS selector, action is type (text in value), select (option value in value), check (click a checkbox) or click. Every step records {field, status: ok|error, error?}; a failing step does NOT stop the batch, so partial failure is reported rather than hidden. Optional submit is a CSS selector clicked after the fields and submitted reports whether that click succeeded. timeoutMs bounds each step. verdict is pass only when every step is ok and a requested submit succeeded, else fail. Every step rides the same trusted CDP path the type/select/click tools use.",
+        "inputSchema": {"type": "object", "properties": {
+            "fields": {"type": "array", "minItems": 1, "items": {"type": "object", "properties": {
+                "field": {"type": "string"},
+                "action": {"type": "string", "enum": ["type", "select", "check", "click"]},
+                "value": {"type": "string"}},
+                "required": ["field", "action"], "additionalProperties": false}},
+            "submit": {"type": "string"}, "timeoutMs": {"type": "integer", "minimum": 1}},
+            "required": ["fields"], "additionalProperties": false},
+        "outputSchema": {"type": "object", "properties": {
+            "steps": {"type": "array", "items": {"type": "object", "properties": {
+                "field": {"type": "string"}, "status": {"type": "string"},
+                "error": {"type": "string"}},
+                "required": ["field", "status"], "additionalProperties": false}},
+            "submitted": {"type": "boolean"}, "verdict": {"type": "string"}},
+            "required": ["steps", "submitted", "verdict"], "additionalProperties": false},
+        "annotations": {"readOnlyHint": false, "destructiveHint": true, "idempotentHint": false, "openWorldHint": true}
+    }));
     listed
 }
 
@@ -1197,6 +1217,7 @@ pub async fn call(name: &str, args: &Value, browser: &Browser) -> Value {
             )
             .await
         }
+        "form" => Box::pin(tool_form(browser, args)).await,
         "type" => {
             if let Err(e) = check_unknown("type", args, &["element", "text", "submit", "frame"]) {
                 return e.envelope();
@@ -4984,6 +5005,87 @@ async fn tool_wheel(
             "deltaY": dy,
         })
         .to_string(),
+    ))
+}
+
+/// Ordered form batch. Each field becomes one call to the same trusted
+/// type/select/click tool a human agent would use; a failed or timed-out step
+/// is recorded with an error and the batch continues. The top-level verdict is
+/// pass only when every step is ok and a requested submit also succeeded.
+async fn tool_form(browser: &Browser, args: &Value) -> Result<Value, ToolErr> {
+    check_unknown("form", args, &["fields", "submit", "timeoutMs"])?;
+    let fields = match args.get("fields").and_then(|v| v.as_array()) {
+        Some(a) if !a.is_empty() => a,
+        _ => {
+            return Err(ToolErr::typed(
+                "form: 'fields' must be a non-empty array".to_string(),
+                json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::MissingArg.as_str(), "tool": "form", "arg": "fields"}),
+            ))
+        }
+    };
+    let timeout = args
+        .get("timeoutMs")
+        .and_then(|v| v.as_u64())
+        .map(std::time::Duration::from_millis);
+
+    let mut steps: Vec<Value> = Vec::new();
+    let mut all_ok = true;
+    for f in fields {
+        let label = f.get("field").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let action = f.get("action").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let value = f.get("value").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let (tool_name, call_args) = match action.as_str() {
+            "type" => ("type", json!({"element": label, "text": value})),
+            "select" => ("select", json!({"element": label, "value": value})),
+            "check" | "click" => ("click", json!({"element": label})),
+            other => {
+                steps.push(json!({"field": label, "status": "error",
+                                  "error": format!("unknown action '{other}'")}));
+                all_ok = false;
+                continue;
+            }
+        };
+        let fut = call(tool_name, &call_args, browser);
+        let resp = match timeout {
+            Some(d) => match tokio::time::timeout(d, fut).await {
+                Ok(r) => r,
+                Err(_) => {
+                    steps.push(json!({"field": label, "status": "error",
+                                      "error": format!("timeout after {}ms", d.as_millis())}));
+                    all_ok = false;
+                    continue;
+                }
+            },
+            None => fut.await,
+        };
+        if resp.get("isError").and_then(|v| v.as_bool()) == Some(true) {
+            let err = resp
+                .get("content")
+                .and_then(|c| c.as_array())
+                .and_then(|a| a.first())
+                .and_then(|b| b.get("text"))
+                .and_then(|t| t.as_str())
+                .unwrap_or("action failed")
+                .to_string();
+            steps.push(json!({"field": label, "status": "error", "error": err}));
+            all_ok = false;
+        } else {
+            steps.push(json!({"field": label, "status": "ok"}));
+        }
+    }
+
+    let mut submitted = false;
+    if let Some(sel) = args.get("submit").and_then(|v| v.as_str()) {
+        let resp = call("click", &json!({"element": sel}), browser).await;
+        submitted = resp.get("isError").and_then(|v| v.as_bool()) != Some(true);
+    }
+    let verdict = if all_ok && (args.get("submit").is_none() || submitted) {
+        "pass"
+    } else {
+        "fail"
+    };
+    Ok(ok_text(
+        json!({"steps": steps, "submitted": submitted, "verdict": verdict}).to_string(),
     ))
 }
 

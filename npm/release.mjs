@@ -87,15 +87,36 @@ const handshake = await new Promise((resolvePromise, rejectPromise) => {
     clearTimeout(timer);
     const init = seen.find((m) => m.id === 1);
     const list = seen.find((m) => m.id === 2);
-    resolvePromise({ code, protocol: init?.result?.protocolVersion, tools: list?.result?.tools?.length });
+    resolvePromise({
+      code,
+      protocol: init?.result?.protocolVersion,
+      tools: list?.result?.tools?.length,
+      names: (list?.result?.tools ?? []).map((t) => t.name),
+    });
   });
   child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'release-check', version: '0.0.1' } } }) + '\n');
   setTimeout(() => child.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n'), 200);
   setTimeout(() => child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }) + '\n'), 400);
   setTimeout(() => child.stdin.end(), 1600);
 });
+// The 35-name compatibility floor, in catalog order. Additions raise the
+// count; nothing in this list may be dropped. Not an equality: new tools land
+// additively (browser_form raised the published count to 36).
+const BASELINE_TOOLS = [
+  'browser_navigate', 'browser_snapshot', 'browser_screenshot', 'browser_click',
+  'browser_type', 'browser_evaluate', 'browser_wait_for', 'browser_targets',
+  'browser_dialog', 'browser_history', 'browser_network', 'browser_console',
+  'browser_storage', 'browser_tabs', 'browser_viewport', 'browser_select',
+  'browser_hover', 'browser_key', 'browser_upload', 'browser_layout',
+  'browser_assert_layout', 'browser_visual', 'browser_cdp', 'browser_close',
+  'browser_fetch_text', 'browser_context', 'browser_wheel', 'browser_drag',
+  'desktop_screenshot', 'desktop_diff', 'desktop_list_windows', 'desktop_window',
+  'desktop_do', 'desktop_cursor', 'desktop_elements',
+];
 if (handshake.code !== 0) fail('handshake', `exit ${handshake.code}`);
-if (handshake.tools !== 35) fail('handshake', `expected 35 tools, got ${handshake.tools}`);
+if (handshake.tools < BASELINE_TOOLS.length) fail('handshake', `expected at least ${BASELINE_TOOLS.length} tools, got ${handshake.tools}`);
+const missing = BASELINE_TOOLS.filter((name) => !handshake.names.includes(name));
+if (missing.length) fail('handshake', `baseline tools missing: ${missing.join(', ')}`);
 
 console.log(`check: ${tarballName} ${pkg.version} ${head.slice(0, 8)} tools=${handshake.tools} protocol=${handshake.protocol} exit=${handshake.code}`);
 

@@ -48,6 +48,13 @@ dst.addEventListener('drop', function (e) {
     extra:e.dataTransfer.getData('application/x-hand')});
 });
 </script></body></html>"#;
+const FORM: &str = r#"<!doctype html><html><head><title>Form</title></head><body>
+<form id="f">
+<input id="name" name="name">
+<select id="color" name="color"><option value="red">Red</option><option value="blue">Blue</option></select>
+<input id="ok" type="checkbox">
+<button id="go" type="button" onclick="window.submitted = (window.submitted || 0) + 1">Go</button>
+</form></body></html>"#;
 
 struct Fixture {
     base: String,
@@ -109,6 +116,7 @@ fn serve(mut stream: TcpStream) -> std::io::Result<()> {
         "/frames" => ("200 OK", FRAMES.to_string()),
         "/frame" => ("200 OK", FRAME.to_string()),
         "/drag" => ("200 OK", DRAG.to_string()),
+        "/form" => ("200 OK", FORM.to_string()),
         "/redirect" => {
             let head = "HTTP/1.1 302 Found\r\nLocation: /next\r\nContent-Length: 0\r\n\
                         Cache-Control: no-store\r\nConnection: close\r\n\r\n";
@@ -145,6 +153,60 @@ fn child_frame(s: &mut Session) -> String {
         .and_then(|f| f.get("frameId").and_then(|v| v.as_str()))
         .map(str::to_string)
         .unwrap_or_else(|| panic!("no child frame in fixture: {}", text_of(&targets)))
+}
+
+#[test]
+fn b11_browser_form_runs_ordered_steps_with_partial_failure() {
+    let _g = serial();
+    let fx = Fixture::start();
+    let mut s = Session::spawn();
+
+    let names = s.list_tools();
+    assert!(names.iter().any(|t| t["name"] == "browser_form"),
+            "catalog must publish browser_form");
+
+    let r = s.call("browser_navigate", json!({"url": format!("{}/form", fx.base)}));
+    assert!(!is_error(&r), "{}", text_of(&r));
+
+    // A missing field fails its step but the batch continues and submits.
+    let r = s.call("browser_form", json!({
+        "fields": [
+            {"field": "#name", "action": "type", "value": "Ada"},
+            {"field": "#missing", "action": "type", "value": "x"},
+            {"field": "#color", "action": "select", "value": "blue"},
+            {"field": "#ok", "action": "check"}
+        ],
+        "submit": "#go"
+    }));
+    assert!(!is_error(&r), "form batch failed: {}", text_of(&r));
+    let sc = structured(&r);
+    let steps = sc["steps"].as_array().expect("steps");
+    assert_eq!(steps.len(), 4, "one step per field: {sc:?}");
+    assert_eq!(steps[0]["field"].as_str().unwrap_or(""), "#name");
+    assert_eq!(steps[0]["status"].as_str().unwrap_or(""), "ok");
+    assert_eq!(steps[1]["status"].as_str().unwrap_or(""), "error", "partial failure: {sc:?}");
+    assert!(steps[1]["error"].as_str().unwrap_or("").len() > 0, "error detail: {sc:?}");
+    assert_eq!(steps[2]["status"].as_str().unwrap_or(""), "ok");
+    assert_eq!(steps[3]["status"].as_str().unwrap_or(""), "ok");
+    assert_eq!(sc["submitted"].as_bool(), Some(true), "submitted even after a step error");
+    assert_eq!(sc["verdict"].as_str().unwrap_or(""), "fail");
+
+    let state = evaluate(&mut s, "JSON.stringify({n:document.getElementById('name').value, c:document.getElementById('color').value, k:document.getElementById('ok').checked, sub:window.submitted})");
+    let state: Value = serde_json::from_str(state.as_str().expect("json string")).expect("parse state");
+    assert_eq!(state["n"].as_str().unwrap_or(""), "Ada");
+    assert_eq!(state["c"].as_str().unwrap_or(""), "blue");
+    assert_eq!(state["k"].as_bool(), Some(true));
+    assert_eq!(state["sub"].as_i64(), Some(1), "one submit per batch: {state:?}");
+
+    // An all-good batch yields a pass verdict.
+    let r = s.call("browser_form", json!({
+        "fields": [{"field": "#name", "action": "type", "value": "Grace"}],
+        "submit": "#go"
+    }));
+    assert!(!is_error(&r), "{}", text_of(&r));
+    let sc = structured(&r);
+    assert_eq!(sc["verdict"].as_str().unwrap_or(""), "pass");
+    assert_eq!(sc["submitted"].as_bool(), Some(true));
 }
 
 #[test]
