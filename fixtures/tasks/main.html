@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Hand Tasks Main</title>
+<style>
+  body { font: 16px/1.4 system-ui, sans-serif; margin: 16px; }
+  button, input, select { font: inherit; }
+  .box { border: 1px solid #bbb; padding: 8px; margin: 8px 0; }
+  iframe { border: 1px solid #888; }
+  #spacer { height: 1800px; }
+  #menu { position: fixed; top: 8px; left: 420px; margin: 0; padding: 4px 0; list-style: none;
+          width: 160px; background: #fff; border: 1px solid #888; }
+  #menu li { padding: 4px 12px; }
+  #dnd-list { list-style: none; padding: 0; width: 260px; }
+  #dnd-list li { border: 1px solid #aaa; padding: 8px; margin: 4px 0; background: #f4f4f4; }
+</style>
+</head>
+<body>
+<h1>Hand Tasks Main</h1>
+
+<div class="box">
+  <button id="act" type="button">Act</button>
+  <p id="out">idle</p>
+  <button id="dbl" type="button">Double click</button>
+  <p id="dbl-out">dbl: 0</p>
+  <button id="rc" type="button">Right click</button>
+  <ul id="menu" role="menu" hidden>
+    <li role="menuitem" tabindex="-1">Menu Copy</li>
+    <li role="menuitem" tabindex="-1">Menu Paste</li>
+  </ul>
+</div>
+
+<div class="box">
+  <label for="name">Name</label>
+  <input id="name" type="text" autocomplete="off">
+  <label for="mode">Mode</label>
+  <select id="mode">
+    <option value="alpha">Alpha</option>
+    <option value="beta">Beta</option>
+  </select>
+  <label for="flag">Flag</label>
+  <input id="flag" type="checkbox">
+  <form id="labelled-form">
+    <label for="required-field">Required field</label>
+    <input id="required-field" type="text" required pattern="[A-Z]{3}">
+    <button id="form-submit" type="submit">Submit form</button>
+  </form>
+  <p id="form-out">form idle</p>
+  <input id="file" type="file">
+  <p id="file-out">file idle</p>
+</div>
+
+<div class="box">
+  <iframe id="same-frame" title="same-process frame" src="/tasks/frame.html" width="300" height="120"></iframe>
+  <iframe id="oopif" title="cross-site frame" src="__CROSS_ORIGIN__/oopif-child.html" width="300" height="120"></iframe>
+  <div id="shadow-host"></div>
+  <p id="shadow-out">shadow idle</p>
+</div>
+
+<div class="box">
+  <a id="download" href="/tasks/payload.txt" download="hand-task.txt">Download fixture</a>
+  <button id="net-fetch" type="button">Fetch network fixture</button>
+  <p id="net-out">network idle</p>
+  <p id="clock">clock pending</p>
+</div>
+
+<div class="box">
+  <ul id="dnd-list">
+    <li id="dnd1" draggable="true">Dnd 1</li>
+    <li id="dnd2" draggable="true">Dnd 2</li>
+    <li id="dnd3" draggable="true">Dnd 3</li>
+  </ul>
+  <p id="dnd-ledger">drag idle</p>
+</div>
+
+<div id="spacer"></div>
+
+<script>
+  // The page owns the evidence: every input handler records isTrusted itself.
+  window.__drag = { dragstart: false, dragover: false, drop: false, trustedDown: 0, trustedUp: 0 };
+  document.getElementById('act').addEventListener('click', () => {
+    document.getElementById('out').textContent = 'clicked';
+  });
+
+  const menu = document.getElementById('menu');
+  document.getElementById('rc').addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    menu.hidden = false;
+  });
+  document.addEventListener('click', () => { menu.hidden = true; });
+
+  let dbl = 0;
+  document.getElementById('dbl').addEventListener('dblclick', () => {
+    dbl += 1;
+    document.getElementById('dbl-out').textContent = 'dbl: ' + dbl;
+  });
+
+  document.getElementById('file').addEventListener('change', (e) => {
+    const name = e.target.files && e.target.files[0] ? e.target.files[0].name : 'none';
+    document.getElementById('file-out').textContent = 'file: ' + name;
+  });
+
+  document.getElementById('labelled-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const field = document.getElementById('required-field');
+    document.getElementById('form-out').textContent = field.checkValidity() ? 'form valid' : 'form invalid';
+  });
+
+  const host = document.getElementById('shadow-host');
+  const shadow = host.attachShadow({ mode: 'open' });
+  shadow.innerHTML = '<button id="shadow-btn" type="button">Shadow action</button>';
+  shadow.getElementById('shadow-btn').addEventListener('click', () => {
+    document.getElementById('shadow-out').textContent = 'shadow clicked';
+  });
+
+  document.getElementById('net-fetch').addEventListener('click', async () => {
+    try {
+      const response = await fetch('/tasks/network.json', { cache: 'no-store' });
+      const body = await response.json();
+      document.getElementById('net-out').textContent = 'value:' + body.value;
+    } catch (error) {
+      document.getElementById('net-out').textContent = 'error:' + error.name;
+    }
+  });
+
+  document.getElementById('clock').textContent = 'clock: ' + Date.now();
+
+  const list = document.getElementById('dnd-list');
+  let dragSrc = null;
+  document.getElementById('dnd1').addEventListener('dragstart', (e) => {
+    window.__drag.dragstart = e.isTrusted;
+    if (e.dataTransfer) e.dataTransfer.setData('text/plain', 'dnd1');
+  });
+  document.getElementById('dnd3').addEventListener('dragover', (e) => {
+    e.preventDefault();
+    window.__drag.dragover = e.isTrusted;
+  });
+  document.getElementById('dnd3').addEventListener('drop', (e) => {
+    e.preventDefault();
+    window.__drag.drop = e.isTrusted;
+    document.getElementById('dnd-ledger').textContent = JSON.stringify(window.__drag);
+  });
+  list.addEventListener('pointerdown', (e) => {
+    const li = e.target.closest && e.target.closest('#dnd-list > li');
+    if (!li) return;
+    dragSrc = li;
+    if (e.isTrusted) window.__drag.trustedDown += 1;
+  });
+  list.addEventListener('pointermove', () => {});
+  list.addEventListener('pointerup', (e) => {
+    if (e.isTrusted) window.__drag.trustedUp += 1;
+    if (!dragSrc) return;
+    const under = document.elementFromPoint(e.clientX, e.clientY);
+    const target = under && under.closest ? under.closest('#dnd-list > li') : null;
+    const src = dragSrc;
+    dragSrc = null;
+    if (!target || target === src) return;
+    const items = Array.prototype.slice.call(list.children);
+    const from = items.indexOf(src);
+    const to = items.indexOf(target);
+    list.insertBefore(src, from < to ? target.nextSibling : target);
+  });
+</script>
+</body>
+</html>

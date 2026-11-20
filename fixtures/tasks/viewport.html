@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Hand Tasks Viewport</title>
+<style>
+  body { font: 16px/1.4 system-ui; margin: 0; padding: 8px; background: #fff; color: #111; }
+  #wide { width: 1400px; height: 40px; background: #e8e8e8; }
+  #low-contrast { color: #b8b8b8; background: #fff; }
+  #tiny { width: 12px; height: 12px; padding: 0; border: 1px solid #999; }
+  #focusable:focus { outline: none; }
+</style>
+</head>
+<body>
+<h1>Hand Tasks Viewport</h1>
+<div id="wide">deliberate horizontal overflow</div>
+<p id="low-contrast">Low contrast text for the audit check.</p>
+<button id="tiny" type="button" aria-label="Tiny target"></button>
+<input id="focusable" type="text" aria-label="No focus ring">
+</body>
+</html>

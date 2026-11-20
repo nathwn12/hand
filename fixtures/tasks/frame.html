@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Hand Tasks Frame</title>
+</head>
+<body>
+<h2>Same-process frame</h2>
+<button id="frame-btn" type="button">Frame action</button>
+<p id="frame-out">frame idle</p>
+<script>
+  document.getElementById('frame-btn').addEventListener('click', () => {
+    document.getElementById('frame-out').textContent = 'frame clicked';
+  });
+</script>
+</body>
+</html>
