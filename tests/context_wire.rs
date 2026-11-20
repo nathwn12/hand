@@ -86,7 +86,9 @@ impl Fixture {
             while !flag.load(Ordering::SeqCst) {
                 match listener.accept() {
                     Ok((stream, _)) => {
-                        let _ = serve(stream);
+                        std::thread::spawn(move || {
+                            let _ = serve(stream);
+                        });
                     }
                     Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                         std::thread::sleep(Duration::from_millis(5));
@@ -113,6 +115,10 @@ impl Drop for Fixture {
 }
 
 fn serve(mut stream: TcpStream) -> std::io::Result<()> {
+    // Accepted sockets inherit the listener's nonblocking mode on Windows.
+    // Without this, a read before the request arrives returns WouldBlock and
+    // drops the stream, which Chrome sees as ERR_CONNECTION_ABORTED.
+    stream.set_nonblocking(false)?;
     stream.set_read_timeout(Some(Duration::from_secs(5)))?;
     let mut reader = BufReader::new(stream.try_clone()?);
     let mut request = String::new();

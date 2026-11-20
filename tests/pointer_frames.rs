@@ -94,6 +94,11 @@ impl Drop for Fixture {
 }
 
 fn serve(mut stream: TcpStream, other_origin: &str) -> std::io::Result<()> {
+    // The listener is nonblocking, and accepted sockets inherit that mode on
+    // Windows. Reading before Chrome's request arrives would return WouldBlock
+    // and drop the stream, which Chrome sees as ERR_CONNECTION_ABORTED.
+    stream.set_nonblocking(false)?;
+    stream.set_read_timeout(Some(Duration::from_secs(5)))?;
     let mut buf = [0u8; 4096];
     let n = stream.read(&mut buf)?;
     let request = String::from_utf8_lossy(&buf[..n]);
