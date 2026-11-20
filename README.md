@@ -33,7 +33,7 @@ Most agent tooling makes you choose: a browser MCP *or* a desktop MCP. hand is b
 ## Install
 
 ```powershell
-npx -y hand-mcp@0.1.1 --version
+npx -y hand-mcp@0.2.0 --version
 ```
 
 ```jsonc
@@ -42,7 +42,7 @@ npx -y hand-mcp@0.1.1 --version
     "servers": {
       "hand": {
         "type": "local",
-        "command": ["cmd", "/c", "npx", "-y", "hand-mcp@0.1.1"]
+        "command": ["cmd", "/c", "npx", "-y", "hand-mcp@0.2.0"]
       }
     }
   }
