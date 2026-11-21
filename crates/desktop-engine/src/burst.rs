@@ -645,6 +645,7 @@ fn verify_capture_once(hwnd: i64) -> Result<crate::cap::Img, String> {
         elements: false,
         out: None,
         target: Some(serde_json::json!({ "hwnd": hwnd })),
+        privacy_masks: vec![],
     };
     let reply: Value = serde_json::from_str(&crate::screen::dispatch_screenshot(&args))
         .map_err(|e| format!("verify capture unparseable: {e}"))?;

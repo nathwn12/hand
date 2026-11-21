@@ -386,6 +386,7 @@ fn call_screenshot(args: &Map<String, Value>) -> String {
             "elements",
             "target",
             "out",
+            "privacyMasks",
         ],
     );
     let display = req_int(args, &mut errs, "display", -1);
@@ -405,6 +406,20 @@ fn call_screenshot(args: &Map<String, Value>) -> String {
     };
     let window = opt_str(args, &mut errs, "window");
     let target = opt_target(args, &mut errs);
+    let privacy_masks: Vec<Value> = match args.get("privacyMasks") {
+        None | Some(Value::Null) => Vec::new(),
+        Some(Value::Array(a)) => a.clone(),
+        Some(v) => {
+            errs.push(crate::VErr {
+                loc: "privacyMasks".to_string(),
+                msg: "Input should be a valid array of privacy masks".to_string(),
+                typ: "list_type".to_string(),
+                iv: crate::render_iv(v),
+                it: crate::input_type_of(v).to_string(),
+            });
+            Vec::new()
+        }
+    };
     let max_px: Option<Option<i64>> = match args.get("max_px") {
         None => Some(Some(1280)),
         Some(Value::Null) => Some(None),
@@ -448,6 +463,7 @@ fn call_screenshot(args: &Map<String, Value>) -> String {
         elements: elements.unwrap(),
         out: out.unwrap(),
         target: target.unwrap(),
+        privacy_masks,
     })
 }
 

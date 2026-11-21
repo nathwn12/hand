@@ -39,6 +39,10 @@ pub struct ShotArgs {
     /// Structured target lock (object or selector string); wins over
     /// `window` when present. Captured without activation or restore.
     pub target: Option<Value>,
+    /// Privacy masks drawn on the RGB pixels BEFORE encode, so the covered
+    /// bytes never reach the image. `{rect:[l,t,r,b]}` uses screen pixels;
+    /// `{window:<selector>}` resolves through the target machinery.
+    pub privacy_masks: Vec<Value>,
 }
 
 /// Revalidate a resolved target immediately before acting on its handle.
@@ -183,6 +187,201 @@ fn parse_region(region: &Option<Vec<Value>>) -> Result<Option<[i64; 4]>, String>
     }
 }
 
+/// One requested privacy mask, before it meets a capture rect.
+#[derive(Clone, Debug)]
+enum MaskSpec {
+    Rect([i64; 4]),
+    Window(Value),
+}
+
+/// One resolved mask: the screen-space rect blanked before encode, plus the
+/// identity the result names. `rect` is reported in final image pixels;
+/// `screenRect` keeps the native screen pixels it came from.
+#[derive(Clone, Debug)]
+struct ResolvedMask {
+    screen: [i64; 4],
+    kind: &'static str,
+    identity: Option<Map<String, Value>>,
+}
+
+fn mask_int(v: &Value) -> Option<i64> {
+    v.as_i64()
+        .or_else(|| v.as_u64().and_then(|u| i64::try_from(u).ok()))
+}
+
+/// Parse the `privacyMasks` array. Shape errors are typed `bad_mask`, never a
+/// silent skip: a mask the server cannot understand must fail the capture.
+fn parse_privacy_masks(v: &[Value]) -> Result<Vec<MaskSpec>, String> {
+    let mut out = Vec::with_capacity(v.len());
+    for item in v {
+        let o = item.as_object().ok_or_else(|| {
+            "error: bad_mask: a privacy mask must be {rect:[l,t,r,b]} or {window:<selector>}"
+                .to_string()
+        })?;
+        match (o.get("rect"), o.get("window")) {
+            (Some(r), None) => {
+                let a = r.as_array().ok_or_else(|| {
+                    "error: bad_mask: rect must be [left,top,right,bottom]".to_string()
+                })?;
+                if a.len() != 4 {
+                    return Err(format!(
+                        "error: bad_mask: rect needs 4 edges, got {} in {r}",
+                        a.len()
+                    ));
+                }
+                let mut rect = [0i64; 4];
+                for (i, x) in a.iter().enumerate() {
+                    rect[i] = mask_int(x).ok_or_else(|| {
+                        format!("error: bad_mask: rect edge must be an integer (got {x})")
+                    })?;
+                }
+                if rect[2] <= rect[0] || rect[3] <= rect[1] {
+                    return Err(format!(
+                        "error: bad_mask: rect [{},{},{},{}] needs right>left and bottom>top",
+                        rect[0], rect[1], rect[2], rect[3]
+                    ));
+                }
+                out.push(MaskSpec::Rect(rect));
+            }
+            (None, Some(w)) => out.push(MaskSpec::Window(w.clone())),
+            _ => {
+                return Err(
+                    "error: bad_mask: a privacy mask needs exactly one of rect or window"
+                        .to_string(),
+                )
+            }
+        }
+    }
+    Ok(out)
+}
+
+fn intersect(a: [i64; 4], b: [i64; 4]) -> Option<[i64; 4]> {
+    let (l, t) = (a[0].max(b[0]), a[1].max(b[1]));
+    let (r, bo) = (a[2].min(b[2]), a[3].min(b[3]));
+    (r > l && bo > t).then_some([l, t, r, bo])
+}
+
+/// Resolve each mask against the capture's screen rect. A window mask goes
+/// through the same `TargetSpec`/`TargetLock` machinery as `window=`, so a
+/// vanished or ambiguous selector is the same typed refusal; a window whose
+/// rect does not touch the capture is a typed `mask_no_match`.
+fn resolve_privacy_masks(specs: &[MaskSpec], rect: [i64; 4]) -> Result<Vec<ResolvedMask>, String> {
+    let mut out = Vec::with_capacity(specs.len());
+    for s in specs {
+        match s {
+            MaskSpec::Rect(r) => {
+                let clipped = intersect(*r, rect).ok_or_else(|| {
+                    format!(
+                        "error: mask_no_match: rect [{},{},{},{}] does not intersect the capture [{},{},{},{}]",
+                        r[0], r[1], r[2], r[3], rect[0], rect[1], rect[2], rect[3]
+                    )
+                })?;
+                out.push(ResolvedMask {
+                    screen: clipped,
+                    kind: "rect",
+                    identity: None,
+                });
+            }
+            MaskSpec::Window(w) => {
+                let spec = crate::target::TargetSpec::parse(w).map_err(|e| e.text())?;
+                let lock = crate::target::lock(&spec).map_err(|e| e.text())?;
+                lock.revalidate().map_err(|e| e.text())?;
+                let hwnd = lock.hwnd;
+                let (dwm, _) = crate::dwm_rect(hwnd as HWND);
+                if dwm.len() != 4 {
+                    return Err(format!(
+                        "error: bad_mask: cannot read the rect of hwnd={hwnd} for a window mask"
+                    ));
+                }
+                let wr = [dwm[0] as i64, dwm[1] as i64, dwm[2] as i64, dwm[3] as i64];
+                let mut id = Map::new();
+                id.insert("hwnd".to_string(), Value::from(hwnd));
+                id.insert(
+                    "exe".to_string(),
+                    Value::from(crate::exe_of_pid(crate::pid_of(hwnd as HWND))),
+                );
+                id.insert(
+                    "title".to_string(),
+                    Value::from(unsafe { crate::win_text(hwnd as HWND) }),
+                );
+                id.insert(
+                    "rect".to_string(),
+                    Value::from(wr.iter().map(|v| Value::from(*v)).collect::<Vec<_>>()),
+                );
+                let clipped = intersect(wr, rect).ok_or_else(|| {
+                    format!(
+                        "error: mask_no_match: window hwnd={hwnd} at [{},{},{},{}] does not intersect the capture [{},{},{},{}]",
+                        wr[0], wr[1], wr[2], wr[3], rect[0], rect[1], rect[2], rect[3]
+                    )
+                })?;
+                out.push(ResolvedMask {
+                    screen: clipped,
+                    kind: "window",
+                    identity: Some(id),
+                });
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// Blank each resolved rect on the native RGB pixels. This runs before
+/// `finalize`, so resizing and encoding only ever see the masked bytes.
+fn apply_privacy_masks(img: &mut Img, origin: (i64, i64), masks: &[ResolvedMask]) {
+    let (w, h) = (img.w as usize, img.h as usize);
+    for m in masks {
+        let l = (m.screen[0] - origin.0).max(0) as usize;
+        let t = (m.screen[1] - origin.1).max(0) as usize;
+        let r = (m.screen[2] - origin.0).min(img.w as i64).max(0) as usize;
+        let b = (m.screen[3] - origin.1).min(img.h as i64).max(0) as usize;
+        for y in t..b.min(h) {
+            for x in l..r.min(w) {
+                let p = (y * w + x) * 3;
+                img.px[p] = 0;
+                img.px[p + 1] = 0;
+                img.px[p + 2] = 0;
+            }
+        }
+    }
+}
+
+/// The `masks[]` result array. `rect` is in final image pixels; `screenRect`
+/// is the native screen rect it was mapped from, so a caller can audit both.
+fn masks_json(masks: &[ResolvedMask], origin: (i64, i64), scale: f64, iw: i64, ih: i64) -> Value {
+    let arr: Vec<Value> = masks
+        .iter()
+        .map(|m| {
+            let rect = [
+                (m.screen[0] - origin.0).max(0),
+                (m.screen[1] - origin.1).max(0),
+                ((m.screen[2] - origin.0) as f64 * scale).round().min(iw as f64) as i64,
+                ((m.screen[3] - origin.1) as f64 * scale).round().min(ih as f64) as i64,
+            ];
+            let rect = [rect[0].min(rect[2]), rect[1].min(rect[3]), rect[2], rect[3]];
+            let mut o = Map::new();
+            o.insert("kind".to_string(), Value::from(m.kind));
+            o.insert(
+                "rect".to_string(),
+                Value::from(rect.iter().map(|v| Value::from(*v)).collect::<Vec<_>>()),
+            );
+            o.insert(
+                "screenRect".to_string(),
+                Value::from(
+                    m.screen
+                        .iter()
+                        .map(|v| Value::from(*v))
+                        .collect::<Vec<_>>(),
+                ),
+            );
+            if let Some(id) = &m.identity {
+                o.insert("window".to_string(), Value::Object(id.clone()));
+            }
+            Value::Object(o)
+        })
+        .collect();
+    Value::Array(arr)
+}
+
 fn cursor_xy(fallback: (i64, i64)) -> (i64, i64) {
     unsafe {
         let mut pt = std::mem::zeroed::<POINT>();
@@ -283,6 +482,10 @@ pub fn screenshot_window(a: &ShotArgs) -> String {
         Ok(r) => r,
         Err(e) => return shot_err_list(vec![e]),
     };
+    let mask_specs = match parse_privacy_masks(&a.privacy_masks) {
+        Ok(s) => s,
+        Err(e) => return shot_err_list(vec![e]),
+    };
     if let Err(e) = revalidate_locked(&locked) {
         return shot_err_list(vec![format!("error: {}", e)]);
     }
@@ -307,13 +510,17 @@ pub fn screenshot_window(a: &ShotArgs) -> String {
             "error: empty_crop: crop rect is empty/outside the capture".to_string(),
         ]);
     }
+    let resolved_masks = match resolve_privacy_masks(&mask_specs, [cx0, cy0, cx1, cy1]) {
+        Ok(m) => m,
+        Err(e) => return shot_err_list(vec![e]),
+    };
     let (bx0, by0, bx1, by1) = (
         (cx0 - dl) as usize,
         (cy0 - dt) as usize,
         (cx1 - dl) as usize,
         (cy1 - dt) as usize,
     );
-    let img = if (bx0, by0, bx1, by1) != (0, 0, sw as usize, sh as usize) {
+    let mut img = if (bx0, by0, bx1, by1) != (0, 0, sw as usize, sh as usize) {
         let cw = bx1 - bx0;
         let ch = by1 - by0;
         let mut px = vec![0u8; cw * ch * 3];
@@ -330,6 +537,9 @@ pub fn screenshot_window(a: &ShotArgs) -> String {
     } else {
         cap.img
     };
+    // Masks land on native pixels BEFORE resize + encode: the covered bytes
+    // never reach the encoder, whatever format or scale follows.
+    apply_privacy_masks(&mut img, (cx0, cy0), &resolved_masks);
     let (src_w, src_h) = (cx1 - cx0, cy1 - cy0);
     let (data, iw, ih, scale, f, q) = match finalize(img, a.max_px, &a.fmt, a.quality, a.grid) {
         Ok(v) => v,
@@ -388,6 +598,10 @@ pub fn screenshot_window(a: &ShotArgs) -> String {
     );
     cmap.insert("window".to_string(), Value::from(win));
     cmap.insert("scale".to_string(), Value::from(scale));
+    cmap.insert(
+        "masks".to_string(),
+        masks_json(&resolved_masks, (cx0, cy0), scale, iw, ih),
+    );
     cmap.insert(
         "monitors".to_string(),
         Value::from(cmaps_monitors(n_mon, vrt, &mons)),
@@ -584,6 +798,10 @@ pub fn screenshot_desktop(a: &ShotArgs) -> String {
         Ok(r) => r,
         Err(e) => return shot_err_list(vec![e]),
     };
+    let mask_specs = match parse_privacy_masks(&a.privacy_masks) {
+        Ok(s) => s,
+        Err(e) => return shot_err_list(vec![e]),
+    };
     if let Some(r) = &region {
         match crate::validate_region(r[0], r[1], r[2], r[3], MAX_GRAB_EDGE) {
             Ok(_) => {}
@@ -620,6 +838,10 @@ pub fn screenshot_desktop(a: &ShotArgs) -> String {
             "error: empty_crop: crop rect is empty/outside the capture".to_string(),
         ]);
     }
+    let resolved_masks = match resolve_privacy_masks(&mask_specs, [cx0, cy0, cx1, cy1]) {
+        Ok(m) => m,
+        Err(e) => return shot_err_list(vec![e]),
+    };
     let mut note: Option<String> = if n_mon > 1 && grab_scope == "virtual" {
         if kind == "virtual" {
             Some(format!(
@@ -738,7 +960,10 @@ pub fn screenshot_desktop(a: &ShotArgs) -> String {
         };
     }
     let (sw, sh) = (img.w, img.h);
+    // Measure capture validity on the real pixels; blank the mask regions only
+    // after that, so a mask can never turn a valid frame into a blank verdict.
     let blank_check = crate::cap::blank_check_json(crate::cap::max_channel_of(&img));
+    apply_privacy_masks(&mut img, (cx0, cy0), &resolved_masks);
     let (data, iw, ih, scale, f, q) = match finalize(img, a.max_px, &a.fmt, a.quality, a.grid) {
         Ok(v) => v,
         Err(e) => return shot_err_list(vec![e]),
@@ -778,6 +1003,10 @@ pub fn screenshot_desktop(a: &ShotArgs) -> String {
     src.insert("kind".to_string(), Value::from(kind));
     cmap.insert("source".to_string(), Value::from(src));
     cmap.insert("scale".to_string(), Value::from(scale));
+    cmap.insert(
+        "masks".to_string(),
+        masks_json(&resolved_masks, (cx0, cy0), scale, iw, ih),
+    );
     cmap.insert(
         "monitors".to_string(),
         Value::from(cmaps_monitors(n_mon, (vx, vy, vr, vb), &mons)),
@@ -922,6 +1151,7 @@ mod tests {
             elements: false,
             target: None,
             out: None,
+            privacy_masks: vec![],
         });
         assert!(
             out.contains("target_gone"),
@@ -953,6 +1183,7 @@ mod tests {
             elements: false,
             target: Some(serde_json::json!({"hwnd": hwnd})),
             out: None,
+            privacy_masks: vec![],
         });
         assert!(
             out.contains("target_gone"),
@@ -1031,6 +1262,7 @@ mod tests {
             elements: true,
             target: None,
             out: None,
+            privacy_masks: vec![],
         });
         let outer: Value = serde_json::from_str(&out).expect("outer frame");
         let sc = outer
@@ -1083,6 +1315,7 @@ mod tests {
             elements: true,
             target: None,
             out: None,
+            privacy_masks: vec![],
         });
         let outer: Value = serde_json::from_str(&out).expect("outer frame");
         let sc = outer
@@ -1177,5 +1410,128 @@ mod tests {
         ]);
         let err = parse_region(&region).expect_err("1e19 region must be rejected");
         assert_eq!(err, crate::int_overflow_err(&v));
+    }
+
+    fn shot_args(hwnd: i64, masks: Vec<Value>) -> ShotArgs {
+        ShotArgs {
+            display: -1,
+            region: None,
+            window: None,
+            max_px: None,
+            fmt: "png".to_string(),
+            quality: None,
+            grid: false,
+            allow_crop_fallback: false,
+            elements: false,
+            out: None,
+            target: Some(serde_json::json!({"hwnd": hwnd})),
+            privacy_masks: masks,
+        }
+    }
+
+    fn shot_image(out: &str) -> (Img, Value) {
+        let frame: Value = serde_json::from_str(out).expect("frame is JSON");
+        assert_eq!(frame["isError"], Value::from(false), "capture failed: {out}");
+        let b64 = frame["content"][0]["data"].as_str().expect("image data");
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(b64)
+            .expect("image is base64");
+        let img = crate::cap::decode_png(&bytes).expect("image is PNG");
+        let sc = frame["structuredContent"].clone();
+        (img, sc)
+    }
+
+    /// The mask is drawn on the RGB pixels BEFORE `finalize` resizes/encodes:
+    /// the covered bytes are zero in the returned PNG, the same pixels are
+    /// non-zero in an unmasked capture, and `masks[]` names the rect in final
+    /// image pixels plus the screen rect it came from.
+    #[test]
+    fn privacy_mask_blanks_pixels_before_encode_and_names_them() {
+        let _g = crate::fixture::desktop();
+        let f = crate::fixture::Fixture::new();
+        let hwnd = f.hwnd_i64();
+        let (dwm, _) = crate::dwm_rect(f.hwnd());
+        assert_eq!(dwm.len(), 4, "fixture has a DWM rect");
+        let (l, t) = (dwm[0] as i64, dwm[1] as i64);
+        let mask_rect = [l, t, l + 16, t + 16];
+
+        let (plain, _) = shot_image(&dispatch_screenshot(&shot_args(hwnd, vec![])));
+        let (masked, sc) = shot_image(&dispatch_screenshot(&shot_args(
+            hwnd,
+            vec![serde_json::json!({"rect": mask_rect})],
+        )));
+        assert_eq!((plain.w, plain.h), (masked.w, masked.h));
+
+        let mut had_content = false;
+        for y in 0..16usize {
+            for x in 0..16usize {
+                let p = (y * masked.w as usize + x) * 3;
+                assert_eq!(
+                    &masked.px[p..p + 3],
+                    &[0, 0, 0],
+                    "masked pixel ({x},{y}) must be blanked before encode"
+                );
+                if plain.px[p..p + 3].iter().any(|v| *v != 0) {
+                    had_content = true;
+                }
+            }
+        }
+        assert!(
+            had_content,
+            "the unmasked capture must hold content in the masked rect, or the proof is vacuous"
+        );
+
+        let masks = sc["masks"].as_array().expect("masks[] in the result");
+        assert_eq!(masks.len(), 1);
+        assert_eq!(masks[0]["kind"], Value::from("rect"));
+        assert_eq!(
+            masks[0]["rect"],
+            serde_json::json!([0, 0, 16, 16]),
+            "rect is reported in final image pixels at scale 1"
+        );
+        assert_eq!(
+            masks[0]["screenRect"],
+            serde_json::json!(mask_rect),
+            "screenRect keeps the native screen pixels"
+        );
+    }
+
+    /// A window mask resolves through the same target lock as `window=`,
+    /// reports the window identity, and blanks its rect.
+    #[test]
+    fn privacy_window_mask_names_the_window_and_blanks_it() {
+        let _g = crate::fixture::desktop();
+        let f = crate::fixture::Fixture::new();
+        let hwnd = f.hwnd_i64();
+        let (_, sc) = shot_image(&dispatch_screenshot(&shot_args(
+            hwnd,
+            vec![serde_json::json!({"window": serde_json::json!({"hwnd": hwnd})})],
+        )));
+        let masks = sc["masks"].as_array().expect("masks[] in the result");
+        assert_eq!(masks.len(), 1);
+        assert_eq!(masks[0]["kind"], Value::from("window"));
+        assert_eq!(
+            masks[0]["window"]["hwnd"],
+            Value::from(hwnd),
+            "the mask names the resolved window identity"
+        );
+        assert!(
+            masks[0]["window"]["title"].as_str().is_some(),
+            "window identity carries a title"
+        );
+    }
+
+    /// A window selector that resolves to no window is a typed refusal, never
+    /// a silently skipped mask.
+    #[test]
+    fn privacy_window_mask_that_cannot_resolve_is_typed() {
+        let out = dispatch_screenshot(&shot_args(
+            1,
+            vec![serde_json::json!({"window": "hwnd:99999999"})],
+        ));
+        assert!(
+            out.contains("bad_window") || out.contains("target_gone"),
+            "an unresolvable window mask must be typed, got: {out}"
+        );
     }
 }

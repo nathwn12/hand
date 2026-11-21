@@ -67,6 +67,11 @@ fn parse_mask(v: &Value) -> Result<Vec<[i64; 4]>, String> {
 fn resolve_operand(side: &str, v: &Value) -> Result<(Img, Value), String> {
     if let Value::Object(o) = v {
         if let Some(p) = o.get("path") {
+            if o.get("privacyMasks").is_some_and(|m| !m.is_null()) {
+                return Err(format!(
+                    "error: bad_mask: {side} privacyMasks need a live capture target; a {{path}} operand has no screen geometry"
+                ));
+            }
             let path = p.as_str().ok_or_else(|| {
                 format!("error: bad_diff: {side} path must be a string (got {p})")
             })?;
@@ -89,6 +94,7 @@ fn resolve_operand(side: &str, v: &Value) -> Result<(Img, Value), String> {
             elements: false,
             out: None,
             target: None,
+            privacy_masks: vec![],
         },
         Value::Object(o) => {
             let window = match o.get("window") {
@@ -129,6 +135,15 @@ fn resolve_operand(side: &str, v: &Value) -> Result<(Img, Value), String> {
                     ));
                 }
             };
+            let privacy_masks = match o.get("privacyMasks") {
+                None | Some(Value::Null) => Vec::new(),
+                Some(Value::Array(a)) => a.clone(),
+                Some(x) => {
+                    return Err(format!(
+                        "error: bad_mask: {side} privacyMasks must be an array (got {x})"
+                    ))
+                }
+            };
             ShotArgs {
                 display,
                 region,
@@ -141,6 +156,7 @@ fn resolve_operand(side: &str, v: &Value) -> Result<(Img, Value), String> {
                 elements: false,
                 out: None,
                 target,
+                privacy_masks,
             }
         }
         x => {
