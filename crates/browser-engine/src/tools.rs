@@ -56,7 +56,10 @@ pub fn list() -> Value {
                      "height": {"type": "number", "exclusiveMinimum": 0}},
                  "required": ["x", "y", "width", "height"], "additionalProperties": false},
              "format": {"type": "string", "enum": ["png", "jpeg", "webp"], "default": "png"},
-             "quality": {"type": "integer", "minimum": 0, "maximum": 100}},
+             "quality": {"type": "integer", "minimum": 0, "maximum": 100},
+              "freeze": {"type": "boolean"},
+              "waitForStable": {"type": "integer", "minimum": 0},
+              "force": {"type": "boolean"}},
              "additionalProperties": false},
          "outputSchema": {"type": "object",
             "properties": {"mimeType": {"type": "string"}, "format": {"type": "string"}, "bytes": {"type": "integer", "minimum": 0},
@@ -68,7 +71,9 @@ pub fn list() -> Value {
                 "reducedMotionEmulated": {"type": "boolean"},
                 "settled": {"type": "boolean"}, "settleTimeouts": {"type": "array"},
                 "freeze": {"type": "object"}, "freezeMode": {"type": "string"},
-                "fontsPending": {"type": "integer", "minimum": 0}},
+                "fontsPending": {"type": "integer", "minimum": 0},
+                 "motion": {"type": "array", "items": {"type": "string"}},
+                 "paused": {"type": "array", "items": {"type": "string"}}},
             "required": ["mimeType", "bytes"], "additionalProperties": false},
          "annotations": {"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}},
         {"name": "click", "title": "Click",
@@ -980,10 +985,16 @@ pub async fn call(name: &str, args: &Value, browser: &Browser) -> Value {
                     "clip",
                     "format",
                     "quality",
+                    "freeze",
+                    "waitForStable",
+                    "force",
                 ],
             ) {
                 return e.envelope();
             }
+            let freeze = args.get("freeze").and_then(|v| v.as_bool()).unwrap_or(false);
+            let wait_for_stable = args.get("waitForStable").and_then(|v| v.as_u64());
+            let force = args.get("force").and_then(|v| v.as_bool()).unwrap_or(false);
             let full = args
                 .get("fullPage")
                 .and_then(|v| v.as_bool())
@@ -1086,6 +1097,9 @@ pub async fn call(name: &str, args: &Value, browser: &Browser) -> Value {
                 clip,
                 format,
                 quality,
+                freeze,
+                wait_for_stable,
+                force,
             )
             .await
         }
@@ -3902,6 +3916,44 @@ async fn push_backend_node(
 /// `unfrozen`, never retried forever.
 const CAPTURE_STABILITY_ATTEMPTS: u64 = 3;
 
+/// Poll checksums until two consecutive frames agree or `ms` elapses. A page
+/// that never settles is a typed failure unless `force` asks for the last frame
+/// with an `unfrozen` verdict.
+async fn capture_until_stable(
+    browser: &Browser,
+    opts: &crate::capture::Options,
+    ms: u64,
+    force: bool,
+) -> Result<(crate::capture::Capture, Value), ToolErr> {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(ms);
+    let mut last: Option<crate::capture::Capture> = None;
+    loop {
+        let frame = crate::capture::capture(browser, opts)
+            .await
+            .map_err(ToolErr::from)?;
+        if last
+            .as_ref()
+            .is_some_and(|prev| prev.checksum == frame.checksum)
+        {
+            let verdict = json!({"verdict":"frozen","code":"frozen","mode":"stable-poll",
+                                 "checksum":frame.checksum.clone()});
+            return Ok((frame, verdict));
+        }
+        last = Some(frame);
+        if std::time::Instant::now() >= deadline {
+            let verdict = json!({"verdict":"unfrozen","code":"unfrozen","mode":"stable-poll"});
+            if !force {
+                return Err(ToolErr::typed(
+                    format!("screenshot: page did not settle within {ms}ms"),
+                    json!({"code": ToolCode::Timeout.as_str(), "reason": ToolReason::Unsettled.as_str(),
+                           "tool": "screenshot", "stability": verdict}),
+                ));
+            }
+            return Ok((last.expect("a frame was captured"), verdict));
+        }
+    }
+}
+
 /// Double-capture a live page and compare the decoded bytes. An equal pair is
 /// `frozen`; a page that keeps changing is `unfrozen` with the differing
 /// checksums named. Deterministic captures are frozen by construction and pay
@@ -3952,6 +4004,9 @@ pub(crate) async fn tool_screenshot(
     clip: Option<crate::capture::Clip>,
     format: crate::capture::Format,
     quality: Option<u8>,
+    freeze: bool,
+    wait_for_stable: Option<u64>,
+    force: bool,
 ) -> Result<Value, ToolErr> {
     match crate::browser::backend_caps() {
         Ok(crate::browser::BackendCaps::DomOnly) => {
@@ -3963,6 +4018,19 @@ pub(crate) async fn tool_screenshot(
         Ok(crate::browser::BackendCaps::Render) => {}
         Err(e) => return Err(ToolErr::fallback(format!("screenshot: {e}"))),
     }
+    // `freeze` pauses the page's own motion sources before any framing work;
+    // `motion` is the residual after freezing ([] when the pause took effect).
+    // A deterministic capture already pins its own freeze and reports no new
+    // sources here.
+    let freeze_active = freeze && !deterministic;
+    let (motion, paused) = if freeze_active {
+        let acted_on = crate::capture::apply_shot_freeze(browser).await;
+        (crate::capture::shot_motion(browser).await, acted_on)
+    } else if deterministic {
+        (Vec::new(), Vec::new())
+    } else {
+        (crate::capture::shot_motion(browser).await, Vec::new())
+    };
     let target_before = if deterministic {
         None
     } else {
@@ -3972,19 +4040,23 @@ pub(crate) async fn tool_screenshot(
         Some(el) => Some(screenshot_element_box(browser, el).await?),
         None => clip,
     };
-    let (cap, stability) = Box::pin(capture_stable(
-        browser,
-        &crate::capture::Options {
-            full_page,
-            deterministic,
-            width,
-            height,
-            clip,
-            format,
-            quality,
-        },
-    ))
-    .await?;
+    let opts = crate::capture::Options {
+        full_page,
+        deterministic,
+        width,
+        height,
+        clip,
+        format,
+        quality,
+    };
+    let captured = match wait_for_stable {
+        None => Box::pin(capture_stable(browser, &opts)).await,
+        Some(ms) => Box::pin(capture_until_stable(browser, &opts, ms, force)).await,
+    };
+    if freeze_active {
+        crate::capture::restore_shot_freeze(browser).await;
+    }
+    let (cap, stability) = captured?;
     if let Some(before) = target_before {
         let after = browser.active_target_id().await;
         if after != before {
@@ -4007,6 +4079,8 @@ pub(crate) async fn tool_screenshot(
         _ => serde_json::Map::new(),
     };
     meta.insert("stability".to_string(), stability);
+    meta.insert("motion".to_string(), json!(motion));
+    meta.insert("paused".to_string(), json!(paused));
     // A deterministic capture already carries the pinned viewport; a plain
     // capture must echo the live one so both report the same fact.
     if !meta.contains_key("viewport") {

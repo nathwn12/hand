@@ -24,6 +24,9 @@
       "properties.format",
       "properties.quality",
       "properties.selector",
+      "properties.freeze",
+      "properties.waitForStable",
+      "properties.force",
       "anyOf"
     ],
     "browser_select": [
@@ -67,7 +70,9 @@
       "properties.clip",
       "properties.element",
       "properties.format",
-      "properties.stability"
+      "properties.stability",
+      "properties.motion",
+      "properties.paused"
     ],
     "browser_select": [
       "properties.actionability",

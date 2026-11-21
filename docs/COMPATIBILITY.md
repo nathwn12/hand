@@ -243,7 +243,14 @@ total.
      fills it on a plain capture too. An owned Chromium launch pins the window
      to 1440x900, and the owned session replays a 1440x900 device-metrics
      override so the page viewport matches; an attached engine has no override
-     and keeps its owner's viewport.
+     and keeps its owner's viewport. `browser_screenshot` also adds input
+     `properties.freeze`, `properties.waitForStable` and `properties.force`,
+     plus output `properties.motion` and `properties.paused`. `freeze` pauses
+     the page's running animations and videos, injects a pause style, and
+     restores them; `motion` names what is still moving after that, `paused`
+     names what was acted on. `waitForStable` polls checksums and refuses an
+     unsettled page unless `force` accepts the last frame with an `unfrozen`
+     stability verdict. No option changes the historic default capture.
    - `inputSchema`: `browser_click` adds `properties.button` and
      `properties.clickCount` (right/middle button, double click) and
      `browser_screenshot` adds `properties.clip`, `properties.element`,

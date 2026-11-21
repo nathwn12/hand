@@ -189,6 +189,113 @@ fn style_restore_js() -> String {
     )
 }
 
+/// The motion inventory for a plain capture. It names the running animations
+/// (CSS by animation name, WAAPI by id or constructor), playing videos and
+/// fonts still loading. It is a read: nothing here mutates the page.
+const MOTION_JS: &str = r#"(() => {
+  const out = [];
+  try {
+    for (const a of (document.getAnimations ? document.getAnimations() : [])) {
+      let state = ''; try { state = a.playState; } catch (e) {}
+      if (state !== 'running') continue;
+      let name = ''; try { name = a.animationName || ''; } catch (e) {}
+      if (!name) { try { name = a.id || ''; } catch (e) {} }
+      if (!name) { try { name = a.constructor.name || 'animation'; } catch (e) { name = 'animation'; } }
+      out.push('animation:' + name);
+    }
+  } catch (e) {}
+  try {
+    for (const v of document.querySelectorAll('video')) {
+      if (v.paused || v.ended) continue;
+      let id = 'video'; try { id = v.id || v.className || 'video'; } catch (e) {}
+      out.push('video:' + id);
+    }
+  } catch (e) {}
+  try { if (document.fonts && document.fonts.status === 'loading') out.push('fonts-loading'); } catch (e) {}
+  return out;
+})()"#;
+
+/// Pause the live motion sources and inject a style that holds animations and
+/// transitions still. Every mutation records its own restore closure; the
+/// restore runs in reverse so the page is left as it was found.
+const SHOT_FREEZE_JS: &str = r#"(() => {
+  const paused = [];
+  const restore = [];
+  try {
+    for (const a of (document.getAnimations ? document.getAnimations() : [])) {
+      let state = ''; try { state = a.playState; } catch (e) {}
+      if (state !== 'running') continue;
+      let name = ''; try { name = a.animationName || ''; } catch (e) {}
+      if (!name) { try { name = a.id || ''; } catch (e) {} }
+      if (!name) { try { name = a.constructor.name || 'animation'; } catch (e) { name = 'animation'; } }
+      let at = null; try { at = a.currentTime; } catch (e) {}
+      try { a.pause(); } catch (e) { continue; }
+      paused.push('animation:' + name);
+      restore.push(() => { try { if (at !== null && at !== undefined) a.currentTime = at; a.play(); } catch (e) {} });
+    }
+  } catch (e) {}
+  try {
+    for (const v of document.querySelectorAll('video')) {
+      if (v.paused || v.ended) continue;
+      let id = 'video'; try { id = v.id || v.className || 'video'; } catch (e) {}
+      let at = null; try { at = v.currentTime; } catch (e) {}
+      try { v.pause(); } catch (e) { continue; }
+      paused.push('video:' + id);
+      restore.push(() => { try {
+        if (at !== null && at !== undefined) v.currentTime = at;
+        const p = v.play(); if (p && p.catch) p.catch(() => {});
+      } catch (e) {} });
+    }
+  } catch (e) {}
+  const style = document.createElement('style');
+  style.id = '__hand_shot_freeze';
+  style.textContent = '*,*::before,*::after{animation-play-state:paused!important;transition:none!important;transition-duration:0s!important;caret-color:transparent!important;scroll-behavior:auto!important;}';
+  try { (document.head || document.documentElement).appendChild(style); } catch (e) {}
+  restore.push(() => { try { style.remove(); } catch (e) {} });
+  window.__handShotFreeze = {restore: restore};
+  return paused;
+})()"#;
+
+const SHOT_FREEZE_RESTORE_JS: &str = r#"(() => {
+  const st = window.__handShotFreeze;
+  let restored = 0;
+  if (st && Array.isArray(st.restore)) {
+    for (let i = st.restore.length - 1; i >= 0; i--) {
+      try { st.restore[i](); restored++; } catch (e) {}
+    }
+  }
+  window.__handShotFreeze = null;
+  return restored;
+})()"#;
+
+/// Names of the motion sources still running on the page.
+pub(crate) async fn shot_motion(browser: &Browser) -> Vec<String> {
+    match browser.eval(MOTION_JS).await {
+        Ok(Value::Array(items)) => items
+            .iter()
+            .filter_map(|v| v.as_str().map(str::to_string))
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// Pause the page's motion sources; returns the names acted on.
+pub(crate) async fn apply_shot_freeze(browser: &Browser) -> Vec<String> {
+    match browser.eval(SHOT_FREEZE_JS).await {
+        Ok(Value::Array(items)) => items
+            .iter()
+            .filter_map(|v| v.as_str().map(str::to_string))
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+pub(crate) async fn restore_shot_freeze(browser: &Browser) {
+    if let Err(e) = browser.eval(SHOT_FREEZE_RESTORE_JS).await {
+        warn(&format!("screenshot: could not undo the motion freeze: {e}"));
+    }
+}
+
 /// The freeze rules: animation/transition stopped (delay and duration
 /// pinned to 0 so a running one cannot resume), caret hidden, smooth
 /// scrolling and overflow anchoring off, scrollbar gutter forced to auto and

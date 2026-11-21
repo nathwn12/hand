@@ -38,6 +38,13 @@ const NEXT: &str = r#"<!doctype html>
 <html><head><meta charset="utf-8"><title>Hand Next</title></head>
 <body><h1>Second page</h1><button id="other">Other</button></body></html>"#;
 
+const MOTION: &str = r#"<!doctype html>
+<html><head><meta charset="utf-8"><title>Hand Motion</title>
+<style>
+@keyframes spin { to { transform: rotate(360deg); } }
+#box { width: 40px; height: 40px; background: #c00; animation: spin 2s linear infinite; }
+</style></head><body><div id="box"></div></body></html>"#;
+
 struct Fixture {
     base: String,
     stop: Arc<AtomicBool>,
@@ -98,6 +105,7 @@ fn serve(mut stream: TcpStream) -> std::io::Result<()> {
     let (status, body, content_type) = match path {
         "/" => ("200 OK", INDEX, "text/html; charset=utf-8"),
         "/next" => ("200 OK", NEXT, "text/html; charset=utf-8"),
+        "/motion" => ("200 OK", MOTION, "text/html; charset=utf-8"),
         "/missing" => (
             "404 Not Found",
             "<h1>missing</h1>",
@@ -284,6 +292,40 @@ fn browser_inspect_act_verify_and_stale_ref_refusal() {
         nul_sc.get("void").is_none(),
         "explicit null must not set void: {nul_sc}"
     );
+
+    let moving = navigate_with_retry(&mut s, &format!("{}/motion", fixture.base));
+    assert!(!is_error(&moving), "motion fixture failed: {}", text_of(&moving));
+
+    let plain = s.call("browser_screenshot", json!({}));
+    assert!(!is_error(&plain), "plain capture failed: {}", text_of(&plain));
+    let motion = structured(&plain)["motion"]
+        .as_array()
+        .expect("motion sources on a plain capture")
+        .iter()
+        .filter_map(|v| v.as_str())
+        .any(|m| m.contains("spin"));
+    assert!(motion, "a running CSS animation must be named: {plain}");
+
+    let frozen = s.call("browser_screenshot", json!({"freeze": true}));
+    assert!(!is_error(&frozen), "frozen capture failed: {}", text_of(&frozen));
+    let frozen_sc = structured(&frozen);
+    assert_eq!(frozen_sc["motion"], json!([]), "{frozen_sc}");
+    let paused_named = frozen_sc["paused"]
+        .as_array()
+        .expect("paused sources")
+        .iter()
+        .filter_map(|v| v.as_str())
+        .any(|p| p.contains("spin"));
+    assert!(paused_named, "freeze must name the animation it paused: {frozen_sc}");
+    assert_eq!(frozen_sc["stability"]["verdict"], json!("frozen"), "{frozen_sc}");
+
+    let unstable = s.call("browser_screenshot", json!({"waitForStable": 200}));
+    assert!(is_error(&unstable), "an unfrozen page must not pass waitForStable: {unstable}");
+    assert_eq!(structured(&unstable)["reason"], json!("unsettled"), "{unstable}");
+
+    let forced = s.call("browser_screenshot", json!({"waitForStable": 200, "force": true}));
+    assert!(!is_error(&forced), "force accepts the last frame: {}", text_of(&forced));
+    assert_eq!(structured(&forced)["stability"]["verdict"], json!("unfrozen"));
 }
 
 /// `selector` is a published alias: a client that prunes undeclared keys must
