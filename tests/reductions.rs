@@ -59,6 +59,10 @@ requestAnimationFrame(draw);
 
 const STILL: &str = r#"<!doctype html><html><head><title>Still</title></head><body><h1>still</h1></body></html>"#;
 
+const FORM: &str = r#"<!doctype html><html><head><title>Form</title></head><body>
+<form id="f"><input id="name" name="name"><button id="go" type="button">Go</button></form>
+<script>console.log('form fixture ready');</script></body></html>"#;
+
 struct Fixture {
     base: String,
     stop: Arc<AtomicBool>,
@@ -117,6 +121,7 @@ fn serve(mut stream: TcpStream) -> std::io::Result<()> {
         "/late" => ("200 OK", LATE),
         "/canvas" => ("200 OK", CANVAS),
         "/still" => ("200 OK", STILL),
+        "/form" => ("200 OK", FORM),
         "/favicon.ico" => ("204 No Content", ""),
         _ => ("404 Not Found", "missing"),
     };
@@ -133,6 +138,80 @@ fn evaluate(s: &mut Session, expr: &str) -> Value {
     let r = s.call("browser_evaluate", json!({"expression": expr}));
     assert!(!is_error(&r), "evaluate failed: {}", text_of(&r));
     structured(&r)["value"].clone()
+}
+
+#[test]
+fn r3_failing_form_step_carries_evidence_bundle() {
+    let _g = serial();
+    let fx = Fixture::start();
+    let mut s = Session::spawn();
+    let nav = navigate_with_retry(&mut s, &format!("{}/form", fx.base));
+    assert!(!is_error(&nav), "nav: {}", text_of(&nav));
+
+    let resp = s.call(
+        "browser_form",
+        json!({"fields": [
+            {"field": "#name", "action": "type", "value": "Ada"},
+            {"field": "#bad", "action": "bogus", "value": "x"}
+        ]}),
+    );
+    assert!(!is_error(&resp), "form: {}", text_of(&resp));
+    let sc = structured(&resp);
+    let steps = sc["steps"].as_array().expect("steps");
+    assert_eq!(steps.len(), 2, "steps: {sc}");
+    assert_eq!(steps[0]["status"], "ok", "steps: {sc}");
+    assert_eq!(steps[1]["status"], "error", "steps: {sc}");
+
+    let ev = &steps[1]["evidence"];
+    assert!(ev.is_object(), "failing step must carry an evidence bundle: {steps:?}");
+    for kind in ["screenshot", "console", "network"] {
+        let part = &ev[kind];
+        let path = part["path"].as_str().unwrap_or_else(|| panic!("{kind} path: {part}"));
+        let bytes = part["bytes"]
+            .as_u64()
+            .unwrap_or_else(|| panic!("{kind} bytes: {part}"));
+        assert!(bytes > 0, "{kind} must carry real bytes: {part}");
+        let on_disk = std::fs::metadata(path)
+            .unwrap_or_else(|e| panic!("{kind} evidence file {path}: {e}"))
+            .len();
+        assert_eq!(on_disk, bytes, "{kind} path and bytes must agree: {part}");
+    }
+}
+
+#[test]
+fn r3_action_error_and_step_timeout_carry_evidence() {
+    let _g = serial();
+    let fx = Fixture::start();
+    let mut s = Session::spawn();
+    let nav = navigate_with_retry(&mut s, &format!("{}/form", fx.base));
+    assert!(!is_error(&nav), "nav: {}", text_of(&nav));
+
+    let action_error = s.call(
+        "browser_form",
+        json!({"fields": [{"field": "#missing", "action": "type", "value": "x"}]}),
+    );
+    let step_timeout = s.call(
+        "browser_form",
+        json!({"fields": [{"field": "#missing", "action": "type", "value": "x"}],
+               "timeoutMs": 200}),
+    );
+    for resp in [&action_error, &step_timeout] {
+        assert!(!is_error(resp), "form: {}", text_of(resp));
+        let steps = structured(resp)["steps"].as_array().expect("steps");
+        assert_eq!(steps[0]["status"], "error", "steps: {steps:?}");
+        let ev = &steps[0]["evidence"];
+        assert!(ev.is_object(), "failing step must carry evidence: {steps:?}");
+        for kind in ["screenshot", "console", "network"] {
+            let path = ev[kind]["path"].as_str().unwrap_or_else(|| panic!("{kind} path: {ev}"));
+            let bytes = ev[kind]["bytes"].as_u64().expect("bytes");
+            assert!(bytes > 0, "{kind}: {ev}");
+            assert_eq!(
+                std::fs::metadata(path).expect("evidence file").len(),
+                bytes,
+                "{kind} path/bytes"
+            );
+        }
+    }
 }
 
 #[test]

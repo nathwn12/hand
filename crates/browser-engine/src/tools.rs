@@ -421,7 +421,7 @@ pub fn list() -> Value {
         "outputSchema": {"type": "object", "properties": {
             "steps": {"type": "array", "items": {"type": "object", "properties": {
                 "field": {"type": "string"}, "status": {"type": "string"},
-                "error": {"type": "string"}},
+                "error": {"type": "string"}, "evidence": {"type": "object"}},
                 "required": ["field", "status"], "additionalProperties": false}},
             "submitted": {"type": "boolean"}, "verdict": {"type": "string"}},
             "required": ["steps", "submitted", "verdict"], "additionalProperties": false},
@@ -5215,6 +5215,49 @@ async fn tool_wheel(
 /// type/select/click tool a human agent would use; a failed or timed-out step
 /// is recorded with an error and the batch continues. The top-level verdict is
 /// pass only when every step is ok and a requested submit also succeeded.
+static EVIDENCE_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Write one evidence file and report its real path and byte count. A write
+/// failure is typed in the entry rather than turning a failing step into a
+/// failing batch.
+fn write_evidence(dir: &std::path::Path, name: &str, bytes: &[u8]) -> Value {
+    let path = dir.join(name);
+    match std::fs::write(&path, bytes) {
+        Ok(()) => json!({"path": path.to_string_lossy(), "bytes": bytes.len()}),
+        Err(e) => json!({"path": Value::Null, "bytes": 0, "error": e.to_string()}),
+    }
+}
+
+/// The three pieces of evidence at a failing step: a screenshot of the page
+/// as it stood, the console log and the network log. Each is a real file with
+/// its path and byte count, never a promise to capture one later.
+async fn step_evidence(browser: &Browser, field: &str) -> Value {
+    let dir = std::env::temp_dir().join("hand-evidence");
+    let _ = std::fs::create_dir_all(&dir);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let seq = EVIDENCE_SEQ.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let safe: String = field
+        .chars()
+        .take(24)
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect();
+    let stamp = format!("{nanos}-{seq}-{safe}");
+    let shot = crate::capture::capture(browser, &crate::capture::Options::default())
+        .await
+        .map(|c| c.bytes)
+        .unwrap_or_default();
+    let console = browser.console_get(100).await.to_string().into_bytes();
+    let network = browser.network_get(None, 100).await.to_string().into_bytes();
+    json!({
+        "screenshot": write_evidence(&dir, &format!("{stamp}-shot.png"), &shot),
+        "console": write_evidence(&dir, &format!("{stamp}-console.log"), &console),
+        "network": write_evidence(&dir, &format!("{stamp}-network.log"), &network),
+    })
+}
+
 async fn tool_form(browser: &Browser, args: &Value) -> Result<Value, ToolErr> {
     check_unknown("form", args, &["fields", "submit", "timeoutMs"])?;
     let fields = match args.get("fields").and_then(|v| v.as_array()) {
@@ -5242,19 +5285,23 @@ async fn tool_form(browser: &Browser, args: &Value) -> Result<Value, ToolErr> {
             "select" => ("select", json!({"element": label, "value": value})),
             "check" | "click" => ("click", json!({"element": label})),
             other => {
+                let evidence = Box::pin(step_evidence(browser, &label)).await;
                 steps.push(json!({"field": label, "status": "error",
-                                  "error": format!("unknown action '{other}'")}));
+                                  "error": format!("unknown action '{other}'"),
+                                  "evidence": evidence}));
                 all_ok = false;
                 continue;
             }
         };
-        let fut = call(tool_name, &call_args, browser);
+        let fut = Box::pin(call(tool_name, &call_args, browser));
         let resp = match timeout {
             Some(d) => match tokio::time::timeout(d, fut).await {
                 Ok(r) => r,
                 Err(_) => {
+                    let evidence = Box::pin(step_evidence(browser, &label)).await;
                     steps.push(json!({"field": label, "status": "error",
-                                      "error": format!("timeout after {}ms", d.as_millis())}));
+                                      "error": format!("timeout after {}ms", d.as_millis()),
+                                      "evidence": evidence}));
                     all_ok = false;
                     continue;
                 }
@@ -5270,7 +5317,9 @@ async fn tool_form(browser: &Browser, args: &Value) -> Result<Value, ToolErr> {
                 .and_then(|t| t.as_str())
                 .unwrap_or("action failed")
                 .to_string();
-            steps.push(json!({"field": label, "status": "error", "error": err}));
+            let evidence = Box::pin(step_evidence(browser, &label)).await;
+            steps.push(json!({"field": label, "status": "error", "error": err,
+                              "evidence": evidence}));
             all_ok = false;
         } else {
             steps.push(json!({"field": label, "status": "ok"}));
@@ -5279,7 +5328,7 @@ async fn tool_form(browser: &Browser, args: &Value) -> Result<Value, ToolErr> {
 
     let mut submitted = false;
     if let Some(sel) = args.get("submit").and_then(|v| v.as_str()) {
-        let resp = call("click", &json!({"element": sel}), browser).await;
+        let resp = Box::pin(call("click", &json!({"element": sel}), browser)).await;
         submitted = resp.get("isError").and_then(|v| v.as_bool()) != Some(true);
     }
     let verdict = if all_ok && (args.get("submit").is_none() || submitted) {

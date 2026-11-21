@@ -309,6 +309,16 @@ total.
     pay no extra capture. The new output property is declared under
     `outputSchema` in `baseline/declared-additions.json`.
 
+14. **Failure evidence on `browser_form` steps.** A step whose action fails,
+    times out or uses an unknown action now carries `evidence` beside its
+    `error`: a PNG screenshot of the page at that moment, the console log and
+    the network log. Each piece is a real file under the temp `hand-evidence`
+    directory, reported with its `path` and `bytes`, never a promise to
+    capture one later. Successful steps are unchanged, and a failing step no
+    longer stops the batch. `browser_form` is a hand addition outside the
+    32-tool floor, so this step-level output needs no `declared-additions.json`
+    entry; its published `outputSchema` records the optional property.
+
 ## External CDP engines
 
 `GLADIUS_CDP_URL` attaches the browser domain to any CDP endpoint instead of the
