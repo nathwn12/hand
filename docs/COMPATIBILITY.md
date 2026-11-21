@@ -120,7 +120,7 @@ modified or retired; no drop-in compatibility is claimed.
 {
   "name": "hand",
   "title": "hand",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "platform": "windows-x64",
   "engines": {
     "browser": {"engine": "gladius", "sourcePin": "59c6d77", "version": "0.8.0",

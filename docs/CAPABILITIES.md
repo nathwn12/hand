@@ -9,7 +9,7 @@ not to be claimed.
 | | |
 |---|---|
 | Host | `NECESSE`, Windows 11 Pro, x64, Ryzen 7 5800X, 31.9 GB |
-| Build | `cargo` 1.100.0, dev and release profiles, `hand 0.2.0` |
+| Build | `cargo` 1.100.0, dev and release profiles, `hand 0.3.0` |
 | Browser | full `chrome` 158.0.8127.36 (`Google Chrome for Testing`) |
 | Browser path | `%LOCALAPPDATA%\gladius\chromium\158.0.8127.36-6a8ad290\chrome-win64\chrome.exe` |
 | Browser SHA-256 | `f304cbc534586babe4e1e49817ab6d562f3ac9bf7d0d49f8ebb15295997f8fd6` (matches `crates/browser-engine/scripts/chromium-manifest.json`) |
@@ -21,11 +21,12 @@ The smaller `chrome-headless-shell` is an opt-in fallback selected with `GLADIUS
 | Capability | Evidence |
 |---|---|
 | One executable, one stdio MCP connection | `tests/discovery.rs` (7 tests): initialize, ping, tools/list, tools/call, server/discover, version gate |
-| Both catalogs plus hand's own tools, legacy bodies byte-identical except the declared additions in `baseline/declared-additions.json` | `catalog_is_the_floor_plus_hand_additions`, `tool_bodies_are_engine_bodies_under_the_prefix` (compares each published body with `baseline/hand-catalog.json` after the declared paths are checked present and stripped; `baseline/test/declared-additions.test.mjs` proves it red on an undeclared addition and on a deleted one); independent `baseline/scripts/compare-catalog.mjs` PASS: 32/32 legacy tools compared, additional hand tools reported as extras, 10 declared addition groups, 7 description differences. The live catalog is **40** tools: the 32-name compatibility floor plus eight hand additions (`browser_context`, `browser_wheel`, `browser_drag`, `browser_form`, `browser_download`, `browser_assert`, `browser_audit`, `browser_trace`). Additions are reported as extras by the independent comparison and are never entered in `baseline/declared-additions.json` |
+| Both catalogs plus hand's own tools, legacy bodies byte-identical except the declared additions in `baseline/declared-additions.json` | `catalog_is_the_floor_plus_hand_additions`, `tool_bodies_are_engine_bodies_under_the_prefix` (compares each published body with `baseline/hand-catalog.json` after the declared paths are checked present and stripped; `baseline/test/declared-additions.test.mjs` proves it red on an undeclared addition and on a deleted one); independent `baseline/scripts/compare-catalog.mjs` PASS: 32/32 legacy tools compared, additional hand tools reported as extras, 10 declared addition groups, 7 description differences. The live catalog is **41** tools: the 32-name compatibility floor plus nine hand additions (`browser_context`, `browser_wheel`, `browser_drag`, `browser_form`, `browser_download`, `browser_assert`, `browser_audit`, `browser_trace`, `browser_run`). Additions are reported as extras by the independent comparison and are never entered in `baseline/declared-additions.json` |
 | Isolated, named browser contexts over the real MCP route | `tests/context_wire.rs`: published schema; two contexts with separate cookie jars; legacy page and legacy tab space untouched; `targets select` refuses a context page; typed errors; shutdown disposes only hand's contexts (two clients attached to one external engine, the other's context, page and cookie survive) |
 | Browser backend identity and availability | `initialize_identifies_version_platform_and_both_engines`: `gladius` pin, `puppet` pin, platform, counts, instructions |
 | Live headless browser inspect → act → verify | `tests/browser_live.rs`: loopback fixture; navigate, AX snapshot, click by `@eN`, DOM effect proven by evaluate, type into a labelled field and read back |
 | Deterministic browser screenshot | same test: `deterministic:true`, PNG > 1000 bytes, checksum present |
+| 0.3.0 field bar on the live MCP route | `tests/browser_live.rs`: `selector` alias click and typed `ambiguous_target` on both keys; `void 0` returns `value:null` with `void:true` while `null` has no flag; owned launch reports 1440x900 in evaluate/navigate/snapshot/screenshot; CSS-animation page names `spin` in `motion`, `freeze` empties residual motion and names it in `paused`, `waitForStable` refuses an unsettled page and `force` accepts the last frame; jpeg/webp carry `size`, scale 0.5 halves it, jpeg q80 40392 B vs png 89983 B on the noise fixture; `browser_run` returns three step verdicts and honours continueOnError |
 | Navigation invalidates refs; stale ref refused | same test: old ref after navigation returns typed `stale_ref` (prose names staleness), engine stays healthy |
 | Pointer completeness: right/middle click, double click, wheel with read-back, drag | `tests/pointer_frames.rs`: right click raises the page's own `contextmenu` and the menu appears as `menu`/`menuitem` nodes in the next snapshot; `clickCount:2` raises exactly one `dblclick`; a 400 px wheel scrolls (`scrollY` 400) and the reply reports the measured offset, `moved:false` over a page that cannot scroll; a drag reorders the DOM with `isTrusted:true` pointer events (no synthetic DragEvent) and dispatches one positioning move, press, the moves and the release |
 | Element and clip screenshot, format passthrough | same test: `element` captures the element's border box (PNG IHDR width equals `browser_layout`'s box width), two `deterministic:true` captures share a checksum, `jpeg`/`webp` with `quality` answer their own `mimeType`, `png` + `quality` is refused by name, an unknown ref is typed `stale_ref` |
@@ -135,7 +136,7 @@ existing target takes precedence over the hidden-launch request.
 - `oc-hand` OpenCode wiring: an installed copy serves the local
   OpenCode config; its version follows the release. Public remote
   `github.com/nathwn12/hand`; `hand-mcp` is published on npm through
-  `0.1.1`, with `0.2.0` shipping as this release.
+  `0.1.1` and `0.2.0`, with `0.3.0` shipping as this release.
 - Product and executable are `hand`; the repo, crate and binary were renamed
   from `hand-mcp`. Fixture ids, baseline captures and benchmark receipt schemas
   keep the `hand-mcp` names on purpose: they record what was measured, and

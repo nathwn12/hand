@@ -11,6 +11,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Initial public release: 38 tools over the pinned, credited Gladius browser engine and Puppet desktop engine. Quiet by default; typed errors; a compact published catalog (instructions 1,301 B to 725 B, `tools/list` 74,054 B to 61,560 B).
 
+## [0.3.0] - 2026-11-22
+
+### Added
+
+- `browser_run`: ordered browser batches of 1..64 steps. Each step reports `{index, tool, status, ms, result?|error?}` with its own structured content as evidence, plus an `ok`/`failed`/`ms` aggregate. `continueOnError` (default false) stops at the first failing step; `timeoutMs` defaults to 30000. `run` and `close` are excluded from the tool enum. The catalog is now 41 tools: 34 browser, 7 desktop.
+- `selector` is a published alias for `element` on click, type, select, hover, upload and screenshot; passing both is a typed `invalid_args`/`ambiguous_target` refusal. Argument errors now carry the sorted `received` keys.
+- `browser_evaluate` returns `value:null` with `void:true` for a valueless result; an explicit `null` stays unflagged. Internal eval helpers keep refusing undefined.
+- `initialize.instructions` carries a generated parameter line per tool: required keys first, then optional keys, built from the same prefixed catalog the server publishes (2691 bytes at 40 tools).
+- Owned Chromium launches pin 1440x900 (window flag plus device-metrics override); an attached engine keeps its owner's viewport. Navigate, snapshot and screenshot echo the live `{width,height}`.
+- Screenshot `freeze` pauses running animations and videos, injects a pause style and restores them; `motion` names residual sources, `paused` names what was acted on. `waitForStable` polls checksums and refuses an unsettled page unless `force` accepts the last frame with an `unfrozen` verdict.
+- Screenshot `scale` (0.1..1) scales the CDP clip; `size` is now read from jpeg SOF and webp RIFF chunks as well as png IHDR. Measured on the 320x200 noise fixture: jpeg q80 40392 bytes, png 89983 bytes; scale 0.5 reported 160x100.
+
+### Changed
+
+- The compatibility floor gained declared input/output properties for the fields above; the floor itself and the 32 pinned bodies are unchanged. The generated instruction index replaced the hand-maintained tool list.
+
+### Fixed
+
+- Discovery, not capture: `format`, `quality` and `fullPage` already existed in 0.2.0. Clients pruned undeclared keys before hand saw them, so adding `selector` to the published schema and generating the parameter index closed the real gap.
+
 ## [0.2.0] - 2026-11-21
 
 ### Added

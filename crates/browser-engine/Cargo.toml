@@ -1,6 +1,6 @@
 [package]
 name = "browser-engine"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 license = "MIT"
 description = "Gladius browser engine (pinned 59c6d77, Gladius 0.8.0) as a library: headless Chrome over CDP"

@@ -4,7 +4,7 @@
 <p align="center">
   <a href="https://www.npmjs.com/package/hand-mcp"><img src="https://img.shields.io/npm/v/hand-mcp" alt="npm version"></a>
   <img src="https://img.shields.io/badge/platform-windows%20x64-blue" alt="platform">
-  <img src="https://img.shields.io/badge/tools-40-brightgreen" alt="40 tools">
+  <img src="https://img.shields.io/badge/tools-41-brightgreen" alt="41 tools">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT">
 </p>
 
@@ -47,9 +47,9 @@ The client spawns npx, which runs the bundled binary and speaks newline-delimite
 
 ## What it does
 
-One connection, two domains, 40 tools:
+One connection, two domains, 41 tools:
 
-- **Browser, 33**: `browser_navigate`, `browser_snapshot` (stable `@eN` refs), click with right/middle/double, type, hover, select, key, upload, wheel, drag, ordered form batches, downloads, evaluate, console, network interception (route, mock, abort, offline), fetch text, wait, layout and layout assertions, DOM/text/URL/ax assertions, viewport audits (six sizes, WCAG contrast evidence), visual regression, screenshots (whole page, one element, or a clip; png, jpeg, webp), storage, tabs, viewport, dialog, history, targets, named contexts, opt-in traces (HAR, counted redaction), raw CDP, close.
+- **Browser, 34**: `browser_navigate`, `browser_snapshot` (stable `@eN` refs), click with right/middle/double, type, hover, select, key, upload, wheel, drag, ordered form batches, downloads, evaluate, console, network interception (route, mock, abort, offline), fetch text, wait, layout and layout assertions, DOM/text/URL/ax assertions, viewport audits (six sizes, WCAG contrast evidence), visual regression, screenshots (whole page, one element, or a clip; png, jpeg, webp), storage, tabs, viewport, dialog, history, targets, named contexts, opt-in traces (HAR, counted redaction), raw CDP, `browser_run` (ordered batches with per-step evidence), close. Screenshots add `freeze`, `waitForStable`, `force` and `scale`; element tools accept `selector`; evaluate marks undefined results with `void: true`.
 - **Desktop, 7**: `desktop_screenshot`, `desktop_diff`, `desktop_list_windows`, `desktop_window`, `desktop_do`, `desktop_cursor`, `desktop_elements`, over Win32 and UI Automation.
 
 A desktop action posts to the chosen window: no global mouse, no physical pointer movement, no window activation, no clipboard write. A refusal names its reason: a cancelled or expired call answers `outcome: unknown` with `retry: unsafe` instead of implying the work stopped. A healthy run writes nothing to the terminal.

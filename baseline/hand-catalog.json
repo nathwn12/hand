@@ -4,43 +4,55 @@
   "counts": {
     "browser": 25,
     "desktop": 7,
-    "live": 35,
+    "live": 41,
     "total": 32
   },
   "live": {
     "capture": {
-      "executable": "Q:\\PROJECTS\\PERSONAL\\hand\\target\\gap-build\\release\\hand.exe",
-      "executableSha256": "sha256:b50b18d75634557694d8fbcb8e3f833680e397706e99d4fcc6608e6ee8c42fd0",
-      "reportedVersion": "hand 0.1.0 (9580b5bf1b59f1e1edd858fbf7dd087097e00fa0-dirty; release)"
+      "executable": "Q:\\PROJECTS\\PERSONAL\\hand\\target\\debug\\hand.exe",
+      "executableSha256": "sha256:ebb5eb6ecfbe7fa2e771aabb025daf03fefddcb5b7688dd6e72f503738676daf",
+      "reportedVersion": "hand 0.3.0 (e5b693043782975cc29a6acad3e9b73eb9ef2ef1-dirty; debug)"
     },
     "extra": [
+      "browser_assert",
+      "browser_audit",
       "browser_context",
+      "browser_download",
       "browser_drag",
+      "browser_form",
+      "browser_run",
+      "browser_trace",
       "browser_wheel"
     ],
     "names": [
+      "browser_assert",
       "browser_assert_layout",
+      "browser_audit",
       "browser_cdp",
       "browser_click",
       "browser_close",
       "browser_console",
       "browser_context",
       "browser_dialog",
+      "browser_download",
       "browser_drag",
       "browser_evaluate",
       "browser_fetch_text",
+      "browser_form",
       "browser_history",
       "browser_hover",
       "browser_key",
       "browser_layout",
       "browser_navigate",
       "browser_network",
+      "browser_run",
       "browser_screenshot",
       "browser_select",
       "browser_snapshot",
       "browser_storage",
       "browser_tabs",
       "browser_targets",
+      "browser_trace",
       "browser_type",
       "browser_upload",
       "browser_viewport",
@@ -56,11 +68,11 @@
       "desktop_window"
     ],
     "protocolVersion": "2025-11-25",
-    "toolCount": 35
+    "toolCount": 41
   },
   "notes": [
-    "live: 39 tools published by C:\\Users\\nathan\\AppData\\Local\\Temp\\opencode\\hand-b3-target\\debug\\hand.exe; the floor is 32",
-    "live: beyond the 32-tool floor: browser_assert, browser_audit, browser_context, browser_download, browser_drag, browser_form, browser_wheel"
+    "live: 41 tools published by Q:\\PROJECTS\\PERSONAL\\hand\\target\\debug\\hand.exe; the floor is 32",
+    "live: beyond the 32-tool floor: browser_assert, browser_audit, browser_context, browser_download, browser_drag, browser_form, browser_run, browser_trace, browser_wheel"
   ],
   "provenance": {
     "generator": "baseline/scripts/build-hand-catalog.mjs",

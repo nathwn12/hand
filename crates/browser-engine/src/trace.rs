@@ -186,7 +186,7 @@ async fn har_text(browser: &Browser) -> String {
     json!({
         "log": {
             "version": "1.2",
-            "creator": {"name": "hand browser_trace", "version": "0.2.0"},
+            "creator": {"name": "hand browser_trace", "version": "0.3.0"},
             "browser": {"name": crate::browser::backend_name()},
             "pages": [{"startedDateTime": started, "id": "page_1",
                        "title": "", "pageTimings": {"onContentLoad": -1, "onLoad": -1}}],
