@@ -237,6 +237,22 @@ fn browser_inspect_act_verify_and_stale_ref_refusal() {
 
     let alive = s.call("browser_evaluate", json!({"expression": "document.title"}));
     assert_eq!(structured(&alive)["value"].as_str(), Some("Hand Next"));
+
+    // An undefined result is a void success; an explicit null is not void.
+    let void = s.call("browser_evaluate", json!({"expression": "void 0"}));
+    assert!(!is_error(&void), "void 0 must be ok: {}", text_of(&void));
+    let void_sc = structured(&void);
+    assert_eq!(void_sc["value"], json!(null), "{void_sc}");
+    assert_eq!(void_sc["void"], json!(true), "{void_sc}");
+
+    let nul = s.call("browser_evaluate", json!({"expression": "null"}));
+    assert!(!is_error(&nul), "null must be ok: {}", text_of(&nul));
+    let nul_sc = structured(&nul);
+    assert_eq!(nul_sc["value"], json!(null), "{nul_sc}");
+    assert!(
+        nul_sc.get("void").is_none(),
+        "explicit null must not set void: {nul_sc}"
+    );
 }
 
 /// `selector` is a published alias: a client that prunes undeclared keys must

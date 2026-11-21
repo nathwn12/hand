@@ -46,6 +46,9 @@
     ]
   },
   "outputSchema": {
+    "browser_evaluate": [
+      "properties.void"
+    ],
     "browser_click": [
       "properties.actionability",
       "properties.resolved"

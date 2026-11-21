@@ -233,6 +233,11 @@ total.
      `desktop_elements` add `properties.noSteal`: attribution beside the raw
      before/after booleans that says whether a pointer or foreground change was
      the owner's input or this process's. The legacy fields stay unchanged.
+     `browser_evaluate` adds `properties.void`: a valueless JavaScript result
+     is a success with `value: null` and `void: true`, while an explicit
+     `null` keeps `value: null` with no flag. The engine's internal eval
+     helpers stay strict; only the public tool boundary reads the
+     `undefined_result` marker.
    - `inputSchema`: `browser_click` adds `properties.button` and
      `properties.clickCount` (right/middle button, double click) and
      `browser_screenshot` adds `properties.clip`, `properties.element`,

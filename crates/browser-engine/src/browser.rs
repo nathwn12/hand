@@ -3185,6 +3185,18 @@ pub(crate) fn js_no_value(robj: &Value) -> String {
     )
 }
 
+/// True for the one error the public evaluate tool turns into a void success.
+/// Internal eval callers keep the strict error; only the tool boundary reads
+/// this marker, so a JS error that merely mentions "undefined" is not mistaken
+/// for a valueless result.
+pub(crate) fn is_undefined_result(err: &str) -> bool {
+    err.starts_with(&format!(
+        "{}{}:",
+        ToolCode::JsError.marker(),
+        ToolReason::UndefinedResult.as_str()
+    ))
+}
+
 /// `send_raw` with an injectable response timeout (production passes 30s;
 /// tests pass a short budget against the black-hole rig).
 async fn send_raw_with_timeout(

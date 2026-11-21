@@ -97,7 +97,7 @@ pub fn list() -> Value {
          "description": "Evaluate a JS expression in the page, await promises. Optional realm routing: target=<CDP targetId> evaluates in that target's realm (page, dedicated/shared worker, service worker); frame=<CDP frameId> evaluates in that iframe's realm (isolated world, works cross-origin). Without either, the active page's main frame. target and frame are mutually exclusive.",
          "inputSchema": {"type": "object", "properties": {"expression": {"type": "string"}, "target": {"type": "string"}, "frame": {"type": "string"}}, "required": ["expression"], "additionalProperties": false},
          "outputSchema": {"type": "object",
-            "properties": {"value": {}, "dialog": {"type": "object"}, "note": {"type": "string"}},
+            "properties": {"value": {}, "void": {"type": "boolean"}, "dialog": {"type": "object"}, "note": {"type": "string"}},
             "required": ["value"], "additionalProperties": false},
          "annotations": {"readOnlyHint": false, "destructiveHint": true, "idempotentHint": false, "openWorldHint": true}},
         {"name": "wait_for", "title": "Wait For",
@@ -5926,6 +5926,32 @@ async fn submit_enter(browser: &Browser) -> Result<(), String> {
     Ok(())
 }
 
+/// The public evaluate boundary: a valueless CDP result is a void success,
+/// not an error. Internal callers keep the strict eval helpers; only this
+/// boundary reads the `undefined_result` marker and mints the `void` flag.
+async fn eval_public(
+    browser: &Browser,
+    target: Option<&str>,
+    frame: Option<&str>,
+    expression: &str,
+) -> Result<(Value, bool), ToolErr> {
+    let raw: Result<Value, String> = match (target, frame) {
+        (Some(tid), None) => browser.eval_in_target(tid, expression).await,
+        (None, Some(fid)) => match browser.oop_session_for_frame(fid).await {
+            Some((_, sid)) => browser.eval_in_session(&sid, expression).await,
+            None => browser.eval_in_frame(fid, expression).await,
+        },
+        (None, None) => browser.eval(expression).await,
+        _ => unreachable!("target and frame are mutually exclusive at the dispatch boundary"),
+    };
+    match raw {
+        Ok(v) => Ok((v, false)),
+        Err(e) if crate::browser::is_undefined_result(&e) => Ok((Value::Null, true)),
+        Err(e) if frame.is_some() => Err(frame_lookup_err("evaluate", frame.expect("frame"), e)),
+        Err(e) => Err(ToolErr::from(e)),
+    }
+}
+
 async fn tool_evaluate(
     browser: &Browser,
     expression: &str,
@@ -5940,17 +5966,12 @@ async fn tool_evaluate(
         ));
     }
     browser.take_dialog().await;
-    let v = match (target, frame) {
-        (Some(tid), None) => browser.eval_in_target(tid, expression).await?,
-        (None, Some(fid)) => match frame_realm_eval(browser, "evaluate", fid, expression).await {
-            Ok(v) => v,
-            Err(e) => return Err(e),
-        },
-        (None, None) => browser.eval(expression).await?,
-        _ => unreachable!(),
-    };
+    let (v, void) = eval_public(browser, target, frame, expression).await?;
     let mut obj = serde_json::Map::new();
     obj.insert("value".to_string(), v);
+    if void {
+        obj.insert("void".to_string(), json!(true));
+    }
     if let Some(d) = browser.last_dialog().await {
         obj.insert(
             "dialog".to_string(),
