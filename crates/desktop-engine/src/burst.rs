@@ -4705,6 +4705,12 @@ pub fn do_burst(args: &DoArgs) -> String {
         payload.insert("target_pid".to_string(), Value::from(l.pid as i64));
         payload.insert("target_exe".to_string(), Value::from(l.exe.clone()));
         payload.insert("target_spec".to_string(), Value::from(l.spec.describe()));
+        if let Some(id) = &l.app_id {
+            payload.insert("appId".to_string(), Value::from(id.clone()));
+        }
+        if let Some(h) = &l.host {
+            payload.insert("hostHwnd".to_string(), Value::from(h.hwnd));
+        }
     }
     if bg_mode {
         payload.insert(

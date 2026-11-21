@@ -758,3 +758,196 @@ fn hidden_desktop_uia_text_entry_reports_verified_effect() {
         sc["foregroundUnchanged"], sc["cursorUnchanged"]
     );
 }
+
+// ---- D8: hosted-frame target lock and appId provenance ----
+
+#[repr(C)]
+struct D8Class {
+    style: u32,
+    wnd_proc: Option<unsafe extern "system" fn(*mut c_void, u32, usize, isize) -> isize>,
+    cls_extra: i32,
+    wnd_extra: i32,
+    instance: *mut c_void,
+    icon: *mut c_void,
+    cursor: *mut c_void,
+    background: *mut c_void,
+    menu_name: *const u16,
+    class_name: *const u16,
+}
+
+unsafe extern "system" fn d8_proc(h: *mut c_void, msg: u32, w: usize, l: isize) -> isize {
+    DefWindowProcW(h, msg, w, l)
+}
+
+#[link(name = "user32")]
+extern "system" {
+    fn RegisterClassW(class: *const D8Class) -> u16;
+    fn CreateWindowExW(
+        ex: u32,
+        class: *const u16,
+        title: *const u16,
+        style: u32,
+        x: i32,
+        y: i32,
+        w: i32,
+        h: i32,
+        parent: *mut c_void,
+        menu: *mut c_void,
+        instance: *mut c_void,
+        param: *const c_void,
+    ) -> *mut c_void;
+    fn ShowWindow(hwnd: *mut c_void, cmd: i32) -> i32;
+    fn DestroyWindow(hwnd: *mut c_void) -> i32;
+    fn DefWindowProcW(h: *mut c_void, msg: u32, w: usize, l: isize) -> isize;
+}
+
+fn d8_call(name: &str, args: Value) -> Value {
+    desktop_engine::call_tool(json!(1), "1", json!({"name": name, "arguments": args}))
+        .unwrap_or_else(|| panic!("{name} answered"))
+}
+
+/// D8 live proof. A real window that carries an AppUserModelID resolves by
+/// that id and the result NAMES it as provenance. A built host/child pair
+/// named like ApplicationFrameHost's pair resolves to the CHILD window, not
+/// the frame; identity revalidation covers both.
+#[test]
+fn uwp_target_lock_reports_appid_provenance() {
+    let listed = d8_call("list_windows", json!({"include_app_ids": true}));
+    let windows = listed["result"]["structuredContent"]["windows"]
+        .as_array()
+        .expect("windows array")
+        .clone();
+    let sample = windows
+        .iter()
+        .find(|w| w["appId"].as_str().is_some_and(|s| !s.is_empty()));
+    let Some(app) = sample else {
+        eprintln!("UWP_LIVE_UNVERIFIED: no window exposes an AppUserModelID on this desktop");
+        return;
+    };
+    let app_id = app["appId"].as_str().unwrap().to_string();
+    let out = d8_call("elements", json!({"target": {"appId": app_id.clone()}}));
+    assert_eq!(
+        out["result"]["isError"], json!(false),
+        "appId lock failed: {}",
+        text_of(&out)
+    );
+    let sc = &out["result"]["structuredContent"];
+    assert_eq!(
+        sc["appId"].as_str(),
+        Some(app_id.as_str()),
+        "the result must name the appId used to resolve the target: {sc}"
+    );
+
+    // Built hosted pair, named exactly like an ApplicationFrameHost frame and
+    // its UWP core window. The selector names the frame; the lock must bind the
+    // child app window and keep the frame as its host identity.
+    let host_class = "ApplicationFrameWindow\0".encode_utf16().collect::<Vec<_>>();
+    let child_class = "Windows.UI.Core.CoreWindow\0".encode_utf16().collect::<Vec<_>>();
+    for name in [&host_class, &child_class] {
+        let mut wc: D8Class = unsafe { std::mem::zeroed() };
+        wc.wnd_proc = Some(d8_proc);
+        wc.background = 6usize as *mut c_void; // COLOR_WINDOW + 1
+        wc.class_name = name.as_ptr();
+        unsafe {
+            RegisterClassW(&wc); // already registered is fine on a repeat
+        }
+    }
+    unsafe {
+        let host = CreateWindowExW(
+            0,
+            host_class.as_ptr(),
+            std::ptr::null(),
+            0x8000_0000 | 0x1000_0000, // WS_POPUP | WS_VISIBLE
+            1200,
+            120,
+            360,
+            240,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null(),
+        );
+        assert!(!host.is_null(), "hosted frame fixture created");
+        let child = CreateWindowExW(
+            0,
+            child_class.as_ptr(),
+            std::ptr::null(),
+            0x4000_0000 | 0x1000_0000, // WS_CHILD | WS_VISIBLE
+            10,
+            10,
+            160,
+            60,
+            host,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null(),
+        );
+        assert!(!child.is_null(), "hosted app child fixture created");
+        ShowWindow(host, 4); // SW_SHOWNOACTIVATE
+        let bound = d8_call(
+            "elements",
+            json!({"target": {"className": "ApplicationFrameWindow"}}),
+        );
+        let bsc = &bound["result"]["structuredContent"];
+        assert_eq!(
+            bsc["targetLocked"].as_i64(),
+            Some(child as i64),
+            "a hosted frame selector must bind the app child, not the host frame: {bsc}"
+        );
+        assert_eq!(
+            bsc["hostHwnd"].as_i64(),
+            Some(host as i64),
+            "the frame identity must stay in the result as the host: {bsc}"
+        );
+        DestroyWindow(host);
+    }
+
+    let uwp = windows.iter().find(|w| {
+        w["class"].as_str() == Some("ApplicationFrameWindow")
+            && w["appId"].as_str().is_some_and(|s| !s.is_empty())
+    });
+    match uwp {
+        Some(w) => {
+            let id = w["appId"].as_str().unwrap();
+            let bound = d8_call("elements", json!({"target": {"appId": id}}));
+            assert_eq!(bound["result"]["isError"], json!(false), "{}", text_of(&bound));
+            assert_eq!(
+                bound["result"]["structuredContent"]["appId"].as_str(),
+                Some(id),
+                "live UWP lock must name its appId"
+            );
+            eprintln!("UWP_LIVE_OK appId={id} hwnd={}", w["hwnd"]);
+        }
+        None => eprintln!(
+            "UWP_LIVE_UNVERIFIED: no visible ApplicationFrameWindow with an AppUserModelID on this desktop; hosted resolution proved with the built host/child pair"
+        ),
+    }
+}
+
+/// The listing carries the extra per-window fields where the OS supplies
+/// them. Absent fields are omitted, never guessed.
+#[test]
+fn desktop_list_windows_reports_monitor_scale_and_visibility() {
+    let listed = d8_call("list_windows", json!({}));
+    let windows = listed["result"]["structuredContent"]["windows"]
+        .as_array()
+        .expect("windows array");
+    assert!(!windows.is_empty(), "a desktop has at least one window");
+    for key in ["monitor", "dpi", "scale", "occluded"] {
+        assert!(
+            windows.iter().any(|w| w.get(key).is_some()),
+            "at least one listed window must carry {key}"
+        );
+    }
+    let mut secure_seen = false;
+    for w in windows {
+        if let Some(v) = w.get("secureDesktop") {
+            assert!(v.is_boolean(), "secureDesktop must be a real verdict: {w}");
+            secure_seen = true;
+        }
+    }
+    assert!(
+        secure_seen,
+        "the input desktop name is readable here, so secureDesktop must be reported"
+    );
+}

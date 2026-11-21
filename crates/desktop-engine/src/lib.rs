@@ -53,7 +53,8 @@ use windows_sys::Win32::Graphics::Dwm::{
     DwmGetWindowAttribute, DWMWA_CLOAKED, DWMWA_EXTENDED_FRAME_BOUNDS,
 };
 use windows_sys::Win32::Graphics::Gdi::{
-    EnumDisplayMonitors, GetMonitorInfoW, HDC, HMONITOR, MONITORINFO, MONITORINFOEXW,
+    EnumDisplayMonitors, GetMonitorInfoW, MonitorFromWindow, HDC, HMONITOR, MONITORINFO,
+    MONITORINFOEXW, MONITOR_DEFAULTTONEAREST,
 };
 use windows_sys::Win32::Security::{
     GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY,
@@ -971,7 +972,7 @@ unsafe extern "system" fn child_cb(hwnd: HWND, lp: LPARAM) -> BOOL {
     1
 }
 
-fn enum_child_windows(hwnd: HWND) -> Result<Vec<HWND>, String> {
+pub(crate) fn enum_child_windows(hwnd: HWND) -> Result<Vec<HWND>, String> {
     use windows_sys::Win32::System::Diagnostics::Debug::{
         FormatMessageW, FORMAT_MESSAGE_FROM_SYSTEM,
     };
@@ -1400,7 +1401,41 @@ fn window_info(hwnd: HWND, include_app_ids: bool) -> Option<Map<String, Value>> 
         );
         m.insert("cloaked".to_string(), Value::from(cloaked(hwnd)));
         m.insert("visible".to_string(), Value::from(true));
-        m.insert("dpi".to_string(), Value::from(win_dpi(hwnd)));
+        let dpi = win_dpi(hwnd);
+        m.insert("dpi".to_string(), Value::from(dpi));
+        if dpi > 0 {
+            m.insert("scale".to_string(), Value::from(py_round_n(dpi as f64 / 96.0, 3)));
+        }
+        // 0-based monitor index, the same space `screenshot display=` uses.
+        let hmon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+        if !hmon.is_null() {
+            if let Some((idx, _)) = display_monitor_handles()
+                .iter()
+                .enumerate()
+                .find(|(_, (_, h))| *h == hmon)
+            {
+                m.insert("monitor".to_string(), Value::from(idx as i64));
+            }
+        }
+        // Visibility-region occlusion, not DWM cloaking. Omitted when unreadable.
+        let occlusion = crate::cap::occlusion_of(hwnd, [dwm[0], dwm[1], dwm[2], dwm[3]]);
+        if occlusion != crate::cap::Occlusion::Unknown {
+            m.insert(
+                "occluded".to_string(),
+                Value::from(matches!(
+                    occlusion,
+                    crate::cap::Occlusion::Full | crate::cap::Occlusion::Partial
+                )),
+            );
+        }
+        // The secure desktop is named "Winlogon". Omitted when the name is
+        // unreadable, never guessed from an unrelated handle comparison.
+        if let Some(name) = window_desktop_name(hwnd) {
+            m.insert(
+                "secureDesktop".to_string(),
+                Value::from(name.eq_ignore_ascii_case("Winlogon")),
+            );
+        }
         m.insert(
             "elevated".to_string(),
             match window_elevated(hwnd) {

@@ -359,6 +359,15 @@ fn call_elements(args: &Map<String, Value>) -> String {
         model.next_offset,
     );
     let mut o = o;
+    if let Some(l) = &locked {
+        o.insert("targetLocked".to_string(), Value::from(l.hwnd));
+        if let Some(id) = &l.app_id {
+            o.insert("appId".to_string(), Value::from(id.clone()));
+        }
+        if let Some(h) = &l.host {
+            o.insert("hostHwnd".to_string(), Value::from(h.hwnd));
+        }
+    }
     let cur_after = crate::no_steal::Evidence::cursor_now();
     evidence.finish(
         unsafe { windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow() as i64 },

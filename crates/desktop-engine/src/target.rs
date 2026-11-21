@@ -239,29 +239,39 @@ impl TargetSpec {
         parts.join(" ")
     }
 
+    /// A field may name either half of a hosted pair: a selector that says
+    /// `className: ApplicationFrameWindow` or the frame's hwnd still resolves
+    /// the app window it hosts. Every present field must match some half.
     fn matches_row(&self, r: &Row) -> bool {
+        let host = r.host.as_ref();
         if let Some(h) = self.hwnd {
-            if r.hwnd != h {
+            if r.hwnd != h && host.is_none_or(|x| x.hwnd != h) {
                 return false;
             }
         }
         if let Some(p) = self.pid {
-            if r.pid != p {
+            if r.pid != p && host.is_none_or(|x| x.pid != p) {
                 return false;
             }
         }
         if let Some(e) = &self.exe {
-            if crate::exe_stem(&r.exe) != crate::exe_stem(e) {
+            let want = crate::exe_stem(e);
+            if crate::exe_stem(&r.exe) != want && host.is_none_or(|x| crate::exe_stem(&x.exe) != want) {
                 return false;
             }
         }
         if let Some(t) = &self.title_contains {
-            if !r.title.to_lowercase().contains(&t.to_lowercase()) {
+            let want = t.to_lowercase();
+            if !r.title.to_lowercase().contains(&want)
+                && host.is_none_or(|x| !x.title.to_lowercase().contains(&want))
+            {
                 return false;
             }
         }
         if let Some(c) = &self.class_name {
-            if !r.class.eq_ignore_ascii_case(c) {
+            if !r.class.eq_ignore_ascii_case(c)
+                && host.is_none_or(|x| !x.class.eq_ignore_ascii_case(c))
+            {
                 return false;
             }
         }
@@ -294,6 +304,24 @@ fn string_of(v: &Value, key: &str) -> Result<String, TargetError> {
     }
 }
 
+/// Window class of an ApplicationFrameHost frame and of the UWP core window
+/// it hosts. A structured selector against the frame must bind the child app.
+pub const HOST_CLASS: &str = "ApplicationFrameWindow";
+pub const HOST_EXE: &str = "ApplicationFrameHost";
+pub const APP_CLASS: &str = "Windows.UI.Core.CoreWindow";
+
+/// The frame half of a hosted pair. Kept on the lock so `revalidate` proves
+/// the pair is still the same pair, not just the child window.
+#[derive(Clone, Debug)]
+pub struct HostIdentity {
+    pub hwnd: i64,
+    pub pid: u32,
+    pub created: u64,
+    pub exe: String,
+    pub title: String,
+    pub class: String,
+}
+
 /// One enumerable top-level window with the identity fields the lock keeps.
 #[derive(Clone, Debug)]
 pub struct Row {
@@ -305,6 +333,58 @@ pub struct Row {
     pub title: String,
     pub class: String,
     pub app_id: Option<String>,
+    /// The ApplicationFrameHost frame when this row is its real app window.
+    pub host: Option<HostIdentity>,
+}
+
+fn is_hosted_frame(r: &Row) -> bool {
+    r.class.eq_ignore_ascii_case(HOST_CLASS)
+        || crate::exe_stem(&r.exe).eq_ignore_ascii_case(HOST_EXE)
+}
+
+/// From an ApplicationFrameHost frame, find the real app window it hosts.
+/// The child that carries an AppUserModelID wins; otherwise the core-class
+/// child wins; otherwise a child owned by a different process. Nothing is
+/// activated or focused: this is a child enumeration plus identity reads.
+fn hosted_app_row(frame: &Row) -> Option<Row> {
+    let host = HostIdentity {
+        hwnd: frame.hwnd,
+        pid: frame.pid,
+        created: frame.created.unwrap_or(0),
+        exe: frame.exe.clone(),
+        title: frame.title.clone(),
+        class: frame.class.clone(),
+    };
+    let mut best: Option<(Row, u8)> = None;
+    for kid in crate::enum_child_windows(frame.hwnd as HWND).ok()? {
+        let class = unsafe { crate::win_class(kid) };
+        let pid = crate::pid_of(kid);
+        if !class.eq_ignore_ascii_case(APP_CLASS) && pid == frame.pid {
+            continue;
+        }
+        let hwnd = kid as i64;
+        let row = Row {
+            hwnd,
+            pid,
+            created: crate::process_created(pid),
+            exe: crate::exe_of_pid(pid),
+            title: unsafe { crate::win_text(kid) },
+            app_id: app_id_of(hwnd),
+            class,
+            host: Some(host.clone()),
+        };
+        let score = if row.app_id.is_some() {
+            2
+        } else if row.class.eq_ignore_ascii_case(APP_CLASS) {
+            1
+        } else {
+            0
+        };
+        if best.as_ref().is_none_or(|(_, s)| score > *s) {
+            best = Some((row, score));
+        }
+    }
+    best.map(|(r, _)| r)
 }
 
 fn row_of(hwnd: i64) -> Option<Row> {
@@ -317,7 +397,7 @@ fn row_of(hwnd: i64) -> Option<Row> {
             return None;
         }
         let pid = crate::pid_of(h);
-        Some(Row {
+        let row = Row {
             hwnd,
             pid,
             created: crate::process_created(pid),
@@ -325,7 +405,14 @@ fn row_of(hwnd: i64) -> Option<Row> {
             title: crate::win_text(h),
             class: crate::win_class(h),
             app_id: None,
-        })
+            host: None,
+        };
+        if is_hosted_frame(&row) {
+            if let Some(app) = hosted_app_row(&row) {
+                return Some(app);
+            }
+        }
+        Some(row)
     }
 }
 
@@ -355,6 +442,9 @@ fn candidate_map(r: &Row) -> Map<String, Value> {
     if let Some(a) = &r.app_id {
         m.insert("appId".to_string(), Value::from(a.clone()));
     }
+    if let Some(h) = &r.host {
+        m.insert("hostHwnd".to_string(), Value::from(h.hwnd));
+    }
     m
 }
 
@@ -372,6 +462,8 @@ pub struct TargetLock {
     pub exe: String,
     pub class: String,
     pub app_id: Option<String>,
+    /// The ApplicationFrameHost frame, when the target is its hosted app.
+    pub host: Option<HostIdentity>,
     pub spec: TargetSpec,
 }
 
@@ -443,6 +535,48 @@ impl TargetLock {
                 }
             }
         }
+        if let Some(host) = &self.host {
+            let hh = host.hwnd as HWND;
+            if host.hwnd == 0 || unsafe { IsWindow(hh) } == 0 {
+                return Err(TargetError::new(
+                    GONE,
+                    format!("hosted frame hwnd {} no longer exists", host.hwnd),
+                ));
+            }
+            let hpid = crate::pid_of(hh);
+            if hpid != host.pid {
+                return Err(TargetError::new(
+                    GONE,
+                    format!(
+                        "hosted frame hwnd {} changed owner pid ({} -> {hpid})",
+                        host.hwnd, host.pid
+                    ),
+                ));
+            }
+            if host.created != 0 && crate::process_created(hpid).unwrap_or(0) != host.created {
+                return Err(TargetError::new(
+                    GONE,
+                    format!("hosted frame hwnd {} is a different process (pid recycled)", host.hwnd),
+                ));
+            }
+            let hexe = crate::exe_of_pid(hpid);
+            if crate::exe_stem(&hexe) != crate::exe_stem(&host.exe) {
+                return Err(TargetError::new(
+                    GONE,
+                    format!("hosted frame hwnd {} now belongs to {hexe}", host.hwnd),
+                ));
+            }
+            let hclass = unsafe { crate::win_class(hh) };
+            if hclass != host.class {
+                return Err(TargetError::new(
+                    GONE,
+                    format!(
+                        "hosted frame hwnd {} changed window class ({:?} -> {:?})",
+                        host.hwnd, host.class, hclass
+                    ),
+                ));
+            }
+        }
         Ok(())
     }
 }
@@ -506,8 +640,8 @@ pub fn lock(spec: &TargetSpec) -> Result<TargetLock, TargetError> {
                     format!("no window with hwnd {h} (closed or recycled)"),
                 )
             })?;
-            if spec.app_id.is_some() {
-                r.app_id = app_id_of(h);
+            if r.app_id.is_none() {
+                r.app_id = app_id_of(r.hwnd);
             }
             if !spec.matches_row(&r) {
                 return Err(TargetError::new(
@@ -520,7 +654,13 @@ pub fn lock(spec: &TargetSpec) -> Result<TargetLock, TargetError> {
             }
             r
         }
-        None => resolve_from(spec, rows())?,
+        None => {
+            let mut r = resolve_from(spec, rows())?;
+            if r.app_id.is_none() {
+                r.app_id = app_id_of(r.hwnd);
+            }
+            r
+        }
     };
     Ok(TargetLock {
         hwnd: row.hwnd,
@@ -529,6 +669,7 @@ pub fn lock(spec: &TargetSpec) -> Result<TargetLock, TargetError> {
         exe: row.exe,
         class: row.class,
         app_id: row.app_id,
+        host: row.host,
         spec: spec.clone(),
     })
 }
@@ -721,6 +862,7 @@ mod tests {
             title: title.to_string(),
             class: class.to_string(),
             app_id: None,
+            host: None,
         }
     }
 
@@ -772,6 +914,69 @@ mod tests {
         spec.title_contains = Some("b".to_string());
         let one = resolve_from(&spec, rows).expect("case-insensitive single hit");
         assert_eq!(one.hwnd, 3);
+    }
+
+    /// A selector that names the ApplicationFrameHost frame binds its app
+    /// child, and the frame stays in the row as the host identity.
+    #[test]
+    fn hosted_frame_selector_binds_the_app_child() {
+        let host = HostIdentity {
+            hwnd: 10,
+            pid: 20,
+            created: 0,
+            exe: "ApplicationFrameHost.exe".to_string(),
+            title: "Host".to_string(),
+            class: HOST_CLASS.to_string(),
+        };
+        let child = Row {
+            hwnd: 11,
+            pid: 21,
+            created: None,
+            exe: "app.exe".to_string(),
+            title: "App".to_string(),
+            class: APP_CLASS.to_string(),
+            app_id: Some("Contoso.App".to_string()),
+            host: Some(host.clone()),
+        };
+        let spec = TargetSpec {
+            class_name: Some(HOST_CLASS.to_string()),
+            ..TargetSpec::default()
+        };
+        assert!(spec.matches_row(&child), "frame class must match the pair");
+        let spec = TargetSpec {
+            app_id: Some("contoso.app".to_string()),
+            ..TargetSpec::default()
+        };
+        assert!(spec.matches_row(&child), "appId names the child window");
+        let got = resolve_from(&spec, vec![child.clone()]).expect("one hosted app");
+        assert_eq!(got.hwnd, 11);
+        assert_eq!(got.host.expect("host kept").hwnd, 10);
+    }
+
+    /// Revalidation covers the frame half too: a forged host creation time
+    /// is a target_gone, never a silent continuation against a reused frame.
+    #[test]
+    fn hosted_pair_revalidation_checks_the_frame_identity() {
+        let _g = crate::fixture::desktop();
+        let f = crate::fixture::Fixture::new();
+        let host_hwnd = f.hwnd_i64();
+        let spec = TargetSpec {
+            hwnd: Some(host_hwnd),
+            ..TargetSpec::default()
+        };
+        let base = lock(&spec).expect("fixture locks");
+        let mut paired = base.clone();
+        paired.host = Some(HostIdentity {
+            hwnd: host_hwnd,
+            pid: base.pid,
+            created: base.created.wrapping_add(1),
+            exe: base.exe.clone(),
+            title: unsafe { crate::win_text(host_hwnd as HWND) },
+            class: base.class.clone(),
+        });
+        let e = paired.revalidate().expect_err("forged host must be refused");
+        assert_eq!(e.code, GONE, "{}", e.text());
+        assert!(e.text().contains("hosted frame"), "{}", e.text());
     }
 
     #[test]
