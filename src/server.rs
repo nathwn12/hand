@@ -148,12 +148,34 @@ fn instructions() -> String {
                     .collect()
             })
             .unwrap_or_default();
+        // `selector` is an alias for `element` on six tools. Printing both as
+        // separate keys hides the one-of relationship, so collapse them into
+        // one token wherever they occur (comma replaced by pipe: no growth).
+        let aliased = schema["properties"]["selector"].is_object()
+            && schema["properties"]["element"].is_object();
+        let render = |keys: &[&str]| -> Vec<String> {
+            let mut out = Vec::new();
+            let mut alias_emitted = false;
+            for key in keys {
+                if aliased && (*key == "element" || *key == "selector") {
+                    if !alias_emitted {
+                        out.push("element|selector".to_string());
+                        alias_emitted = true;
+                    }
+                } else {
+                    out.push((*key).to_string());
+                }
+            }
+            out
+        };
+        let req = render(&required);
+        let opt = render(&optional);
         text.push_str(name);
         text.push(':');
-        text.push_str(&required.join(","));
-        if !optional.is_empty() {
+        text.push_str(&req.join(","));
+        if !opt.is_empty() {
             text.push('[');
-            text.push_str(&optional.join(","));
+            text.push_str(&opt.join(","));
             text.push(']');
         }
         text.push('\n');
@@ -1160,8 +1182,12 @@ mod tests {
             "instructions must open with hand's identity: {text}"
         );
         // The index is now generated: one line per published tool with its
-        // required and optional keys. 2691 bytes at 40 tools; 4096 leaves room
+        // required and optional keys. 2772 bytes at 41 tools; 4096 leaves room
         // for the next tools without letting the index become an essay.
+        assert!(
+            text.contains("browser_click:[element|selector,"),
+            "the aliased target must render as one token: {text}"
+        );
         assert!(text.len() <= 4096, "instructions grew to {} bytes", text.len());
         for name in catalog::BROWSER_TOOLS.iter().chain(catalog::DESKTOP_TOOLS.iter()) {
             assert!(text.contains(*name), "instructions omit {name:?}: {text}");
