@@ -10,8 +10,8 @@
   "live": {
     "capture": {
       "executable": "Q:\\PROJECTS\\PERSONAL\\hand\\target\\debug\\hand.exe",
-      "executableSha256": "sha256:ebb5eb6ecfbe7fa2e771aabb025daf03fefddcb5b7688dd6e72f503738676daf",
-      "reportedVersion": "hand 0.3.0 (e5b693043782975cc29a6acad3e9b73eb9ef2ef1-dirty; debug)"
+      "executableSha256": "sha256:1fc762e2ff7ceec9783904f472ac72fdf9c8297b5d2889493b1e18344feff4ff",
+      "reportedVersion": "hand 0.3.0 (994d9c075cc524848970e7b1d8887fbcd9748920; debug)"
     },
     "extra": [
       "browser_assert",
