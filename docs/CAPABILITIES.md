@@ -141,6 +141,11 @@ existing target takes precedence over the hidden-launch request.
   from `hand-mcp`. Fixture ids, baseline captures and benchmark receipt schemas
   keep the `hand-mcp` names on purpose: they record what was measured, and
   rewriting a fingerprint would invalidate archived receipts.
+- The live capture in `baseline/hand-catalog.json` is a **baseline debug
+  capture**, not release evidence. Its receipt names the source SHA of the debug
+  binary that produced it (the honest convention), and it is rebuilt from the
+  final tree whenever the published catalog changes. No release claim rides on
+  it; the separate benchmark build receipts are the release identity evidence.
 - Attached external browser (`GLADIUS_CDP_URL`) survival of hand shutdown: not
   tested end to end. A clean detach preserves an external engine, but a restore
   cut at the EOF drain bound is reported `UNVERIFIED`, and no external CDP
