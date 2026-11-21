@@ -23,6 +23,9 @@
     ],
     "browser_visual": [
       "properties.frame"
+    ],
+    "desktop_screenshot": [
+      "properties.privacyMasks"
     ]
   },
   "outputSchema": {
@@ -61,7 +64,9 @@
       "properties.noSteal"
     ],
     "desktop_screenshot": [
-      "properties.noSteal"
+      "properties.noSteal",
+      "properties.clipboardUnchanged",
+      "properties.masks"
     ]
   },
   "metadata": {

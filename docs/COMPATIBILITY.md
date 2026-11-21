@@ -45,12 +45,14 @@ PASS hand baseline: 32 baseline tools vs 35 candidate tools
              browser_select outputSchema += properties.resolved
              browser_select metadata.description += description
              desktop_screenshot outputSchema += properties.noSteal
+             desktop_screenshot outputSchema += properties.clipboardUnchanged, properties.masks
+             desktop_screenshot inputSchema += properties.privacyMasks
              desktop_elements outputSchema += properties.noSteal
 ```
 
 The 32-name floor is served **with exactly the allowances declared in
 `baseline/declared-additions.json` and no other difference**: two input schemas
-and eight output-schema groups carry the properties listed there, thirteen tool
+and nine output-schema groups carry the properties listed there, thirteen tool
 descriptions are rewritten there, and every other property, `required` list,
 annotation, `title`, description and name is the pin's. The three extras above
 are hand's own tools, not legacy bodies. The file is not a relaxed mode: an
@@ -217,6 +219,11 @@ total.
    `baseline/scripts/lib/catalog.mjs` is its only reader. Schema paths are dotted
    and relative to the schema object, so a top-level property is
    `properties.<name>`; a metadata entry is a bare tool name.
+    - `desktop_screenshot` adds `properties.clipboardUnchanged`, the third
+      global a capture must not touch, and `properties.masks`, the regions
+      blanked before encode; both are reported on success and on typed
+      failures. Its `inputSchema` adds `properties.privacyMasks`, the mask
+      input. Legacy fields stay unchanged.
    - `outputSchema`: `click`, `type`, `hover`, `select` and `upload` add
      `properties.resolved` — `{selector, ref, role, name}` when the element
      argument used one of the accessibility forms, so the caller can see which

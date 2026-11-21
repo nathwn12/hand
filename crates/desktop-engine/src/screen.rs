@@ -5,12 +5,13 @@ use crate::dxgi::{dxgi_grab, dxgi_outputs, pick_output};
 use crate::shot::{capture_window, elements_block};
 use crate::{
     display_monitor_handles, display_monitors, image_block, monitor_device, py_round_n,
-    screenshot_ok, text_block, tool_err_blocks, virtual_rect, FORMULA,
+    screenshot_ok, text_block, virtual_rect, FORMULA,
 };
 use base64::Engine as _;
 use serde_json::{Map, Value};
 use std::time::Instant;
 use windows_sys::Win32::Foundation::{HWND, POINT};
+use windows_sys::Win32::System::DataExchange::GetClipboardSequenceNumber;
 use windows_sys::Win32::UI::WindowsAndMessaging::*;
 
 /// Grab-size bound: no single BitBlt/DXGI capture may exceed this edge.
@@ -64,8 +65,69 @@ type WindowResolve = (
 
 /// Screenshot domain error: the aggregated text block is unchanged for
 /// legacy clients; it is a real tool failure (`isError: true`).
-pub fn shot_err_list(items: Vec<String>) -> String {
-    tool_err_blocks(&[text_block(&serde_json::to_string(&items).unwrap())])
+/// Finally-shaped restore witness for one capture call. It samples the three
+/// process-global resources on entry and again on the way out, on success and
+/// on every typed failure, so a timeout cannot drop the proof with the answer.
+struct RestoreWitness {
+    fg: i64,
+    cursor: Option<(i64, i64)>,
+    clipboard: u32,
+}
+
+impl RestoreWitness {
+    fn begin() -> Self {
+        let mut pt = POINT { x: 0, y: 0 };
+        let cursor = unsafe {
+            (GetCursorPos(&mut pt) != 0).then_some((pt.x as i64, pt.y as i64))
+        };
+        Self {
+            fg: unsafe { GetForegroundWindow() as i64 },
+            cursor,
+            clipboard: unsafe { GetClipboardSequenceNumber() },
+        }
+    }
+
+    fn proof(&self, target: i64) -> Map<String, Value> {
+        let mut m = Map::new();
+        crate::no_steal::Evidence::begin(self.fg, self.cursor).finish(
+            unsafe { GetForegroundWindow() as i64 },
+            crate::no_steal::Evidence::cursor_now(),
+            target,
+            &mut m,
+        );
+        let after = unsafe { GetClipboardSequenceNumber() };
+        let unchanged = self.clipboard == after;
+        m.insert("clipboardUnchanged".to_string(), Value::from(unchanged));
+        if let Some(ns) = m.get_mut("noSteal").and_then(Value::as_object_mut) {
+            let mut clip = Map::new();
+            clip.insert(
+                "before".to_string(),
+                Value::from(self.clipboard as i64),
+            );
+            clip.insert("after".to_string(), Value::from(after as i64));
+            clip.insert("unchanged".to_string(), Value::from(unchanged));
+            ns.insert("clipboard".to_string(), Value::Object(clip));
+        }
+        m
+    }
+}
+
+/// Tool failure that carries the finally-shaped restore proof. The legacy
+/// text block stays byte-identical; `structuredContent` also carries the
+/// foreground/cursor/clipboard verdict, so a timeout cannot drop the proof
+/// together with the answer.
+fn shot_err_restore(witness: &RestoreWitness, items: Vec<String>) -> String {
+    let text = text_block(&serde_json::to_string(&items).unwrap());
+    let mut proof = witness.proof(0);
+    proof.insert("ok".to_string(), Value::from(false));
+    proof.insert(
+        "error".to_string(),
+        Value::from(items.into_iter().map(Value::from).collect::<Vec<_>>()),
+    );
+    format!(
+        "{{\"content\":[{text}],\"isError\":true,\"structuredContent\":{}}}",
+        serde_json::to_string(&proof).unwrap()
+    )
 }
 
 /// No-steal evidence check. The mechanism proof is the running executable's
@@ -425,18 +487,9 @@ fn cmaps_monitors(n: i64, v: VirtualRect, rects: &[[i32; 4]]) -> Map<String, Val
 
 pub fn screenshot_window(a: &ShotArgs) -> String {
     use windows_sys::Win32::Foundation::HWND;
-    let fg_before = unsafe { GetForegroundWindow() as i64 };
-    let mut cur0 = POINT { x: 0, y: 0 };
-    let cur_before = unsafe {
-        if GetCursorPos(&mut cur0) != 0 {
-            Some((cur0.x as i64, cur0.y as i64))
-        } else {
-            None
-        }
-    };
-    let evidence = crate::no_steal::Evidence::begin(fg_before, cur_before);
+    let witness = RestoreWitness::begin();
     if no_steal_violated() {
-        return shot_err_list(vec![
+        return shot_err_restore(&witness, vec![
             "error: no_steal_violation: the no-steal evidence check failed (banned pointer/foreground import or unreadable import table); refusing to return pixels"
                 .to_string(),
         ]);
@@ -475,23 +528,23 @@ pub fn screenshot_window(a: &ShotArgs) -> String {
             );
             items.push(crate::py_dumps(&Value::Object(obj)));
         }
-        return shot_err_list(items);
+        return shot_err_restore(&witness, items);
     }
     let hwnd = hwnd.unwrap();
     let region = match parse_region(&a.region) {
         Ok(r) => r,
-        Err(e) => return shot_err_list(vec![e]),
+        Err(e) => return shot_err_restore(&witness, vec![e]),
     };
     let mask_specs = match parse_privacy_masks(&a.privacy_masks) {
         Ok(s) => s,
-        Err(e) => return shot_err_list(vec![e]),
+        Err(e) => return shot_err_restore(&witness, vec![e]),
     };
     if let Err(e) = revalidate_locked(&locked) {
-        return shot_err_list(vec![format!("error: {}", e)]);
+        return shot_err_restore(&witness, vec![format!("error: {}", e)]);
     }
     let cap = match unsafe { capture_window(hwnd, a.allow_crop_fallback) } {
         Ok(c) => c,
-        Err(e) => return shot_err_list(vec![e]),
+        Err(e) => return shot_err_restore(&witness, vec![e]),
     };
     let (dl, dt) = (cap.dwm[0] as i64, cap.dwm[1] as i64);
     let (sw, sh) = (cap.img.w as i64, cap.img.h as i64);
@@ -506,13 +559,13 @@ pub fn screenshot_window(a: &ShotArgs) -> String {
         None => ("window", dl, dt, dl + sw, dt + sh),
     };
     if cx1 <= cx0 || cy1 <= cy0 {
-        return shot_err_list(vec![
+        return shot_err_restore(&witness, vec![
             "error: empty_crop: crop rect is empty/outside the capture".to_string(),
         ]);
     }
     let resolved_masks = match resolve_privacy_masks(&mask_specs, [cx0, cy0, cx1, cy1]) {
         Ok(m) => m,
-        Err(e) => return shot_err_list(vec![e]),
+        Err(e) => return shot_err_restore(&witness, vec![e]),
     };
     let (bx0, by0, bx1, by1) = (
         (cx0 - dl) as usize,
@@ -543,13 +596,13 @@ pub fn screenshot_window(a: &ShotArgs) -> String {
     let (src_w, src_h) = (cx1 - cx0, cy1 - cy0);
     let (data, iw, ih, scale, f, q) = match finalize(img, a.max_px, &a.fmt, a.quality, a.grid) {
         Ok(v) => v,
-        Err(e) => return shot_err_list(vec![e]),
+        Err(e) => return shot_err_restore(&witness, vec![e]),
     };
     let out_obj: Option<Map<String, Value>> = match a.out.as_deref() {
         None => None,
         Some(path) => match crate::cap::write_bytes_out(path, &data) {
             Ok(()) => Some(crate::cap::out_object(path, data.len(), &f)),
-            Err(e) => return shot_err_list(vec![e]),
+            Err(e) => return shot_err_restore(&witness, vec![e]),
         },
     };
     let (curx, cury) = cursor_xy((dl, dt));
@@ -655,13 +708,9 @@ pub fn screenshot_window(a: &ShotArgs) -> String {
     if let Some(o) = out_obj {
         cmap.insert("out".to_string(), Value::from(o));
     }
-    let cur_after = crate::no_steal::Evidence::cursor_now();
-    evidence.finish(
-        unsafe { GetForegroundWindow() as i64 },
-        cur_after,
-        cap.hwnd,
-        &mut cmap,
-    );
+    for (k, v) in witness.proof(cap.hwnd) {
+        cmap.insert(k, v);
+    }
     let mime = if f == "png" {
         "image/png"
     } else {
@@ -676,7 +725,7 @@ pub fn screenshot_window(a: &ShotArgs) -> String {
     ];
     if a.elements {
         if let Err(e) = revalidate_locked(&locked) {
-            return shot_err_list(vec![format!("error: {}", e)]);
+            return shot_err_restore(&witness, vec![format!("error: {}", e)]);
         }
         blocks.push(text_block(&elements_block(hwnd)));
     }
@@ -751,18 +800,9 @@ fn foreground_window() -> HWND {
 
 pub fn screenshot_desktop(a: &ShotArgs) -> String {
     let fg_at_entry = foreground_window();
-    let fg_before = fg_at_entry as i64;
-    let mut cur0 = POINT { x: 0, y: 0 };
-    let cur_before = unsafe {
-        if GetCursorPos(&mut cur0) != 0 {
-            Some((cur0.x as i64, cur0.y as i64))
-        } else {
-            None
-        }
-    };
-    let evidence = crate::no_steal::Evidence::begin(fg_before, cur_before);
+    let witness = RestoreWitness::begin();
     if no_steal_violated() {
-        return shot_err_list(vec![
+        return shot_err_restore(&witness, vec![
             "error: no_steal_violation: the no-steal evidence check failed (banned pointer/foreground import or unreadable import table); refusing to return pixels"
                 .to_string(),
         ]);
@@ -783,7 +823,7 @@ pub fn screenshot_desktop(a: &ShotArgs) -> String {
         } else {
             let m = match monitor_rect(&mons, a.display) {
                 Ok(m) => m,
-                Err(e) => return shot_err_list(vec![e]),
+                Err(e) => return shot_err_restore(&witness, vec![e]),
             };
             (
                 m[0] as i64,
@@ -796,28 +836,28 @@ pub fn screenshot_desktop(a: &ShotArgs) -> String {
         };
     let region = match parse_region(&a.region) {
         Ok(r) => r,
-        Err(e) => return shot_err_list(vec![e]),
+        Err(e) => return shot_err_restore(&witness, vec![e]),
     };
     let mask_specs = match parse_privacy_masks(&a.privacy_masks) {
         Ok(s) => s,
-        Err(e) => return shot_err_list(vec![e]),
+        Err(e) => return shot_err_restore(&witness, vec![e]),
     };
     if let Some(r) = &region {
         match crate::validate_region(r[0], r[1], r[2], r[3], MAX_GRAB_EDGE) {
             Ok(_) => {}
             Err(crate::RegionReject::Order) => {
-                return shot_err_list(vec![
+                return shot_err_restore(&witness, vec![
                     "error: bad_region: region must have right>left and bottom>top".to_string(),
                 ]);
             }
             Err(crate::RegionReject::Extreme) => {
-                return shot_err_list(vec![
+                return shot_err_restore(&witness, vec![
                     "error: bad_region: region coordinates outside i32 range (would truncate on cast)"
                         .to_string(),
                 ]);
             }
             Err(crate::RegionReject::OverCap(rw, rh)) => {
-                return shot_err_list(vec![format!(
+                return shot_err_restore(&witness, vec![format!(
                     "error: bad_region: region edges absurd (>8192, got {rw}x{rh})"
                 )]);
             }
@@ -834,13 +874,13 @@ pub fn screenshot_desktop(a: &ShotArgs) -> String {
         None => (gl, gt, gl + gw, gt + gh, kind),
     };
     if cx1 <= cx0 || cy1 <= cy0 {
-        return shot_err_list(vec![
+        return shot_err_restore(&witness, vec![
             "error: empty_crop: crop rect is empty/outside the capture".to_string(),
         ]);
     }
     let resolved_masks = match resolve_privacy_masks(&mask_specs, [cx0, cy0, cx1, cy1]) {
         Ok(m) => m,
-        Err(e) => return shot_err_list(vec![e]),
+        Err(e) => return shot_err_restore(&witness, vec![e]),
     };
     let mut note: Option<String> = if n_mon > 1 && grab_scope == "virtual" {
         if kind == "virtual" {
@@ -860,18 +900,18 @@ pub fn screenshot_desktop(a: &ShotArgs) -> String {
         note = Some("region grabbed directly via GDI (no full-frame grab)".to_string());
         match bitblt_grab(cx0 as i32, cy0 as i32, cw as i32, ch as i32) {
             Ok(im) => (im, "gdi".to_string()),
-            Err(e) => return shot_err_list(vec![format!("error: capture_failed: {e}")]),
+            Err(e) => return shot_err_restore(&witness, vec![format!("error: capture_failed: {e}")]),
         }
     } else {
         if gw > MAX_GRAB_EDGE || gh > MAX_GRAB_EDGE {
-            return shot_err_list(vec![format!(
+            return shot_err_restore(&witness, vec![format!(
                 "error: too_large: request edges absurd (>8192, got {gw}x{gh})"
             )]);
         }
         if force_gdi {
             match bitblt_grab(gl as i32, gt as i32, gw as i32, gh as i32) {
                 Ok(im) => (im, "gdi".to_string()),
-                Err(e) => return shot_err_list(vec![format!("error: capture_failed: {e}")]),
+                Err(e) => return shot_err_restore(&witness, vec![format!("error: capture_failed: {e}")]),
             }
         } else {
             let matched: Result<(u32, u32), String> = if grab_scope == "monitor" {
@@ -901,7 +941,7 @@ pub fn screenshot_desktop(a: &ShotArgs) -> String {
                     match bitblt_grab(gl as i32, gt as i32, gw as i32, gh as i32) {
                         Ok(im) => (im, "gdi".to_string()),
                         Err(e) => {
-                            return shot_err_list(vec![format!("error: capture_failed: {e}")])
+                            return shot_err_restore(&witness, vec![format!("error: capture_failed: {e}")])
                         }
                     }
                 }
@@ -912,7 +952,7 @@ pub fn screenshot_desktop(a: &ShotArgs) -> String {
                         match bitblt_grab(gl as i32, gt as i32, gw as i32, gh as i32) {
                             Ok(im) => (im, "gdi".to_string()),
                             Err(e) => {
-                                return shot_err_list(vec![format!("error: capture_failed: {e}")])
+                                return shot_err_restore(&witness, vec![format!("error: capture_failed: {e}")])
                             }
                         }
                     }
@@ -928,7 +968,7 @@ pub fn screenshot_desktop(a: &ShotArgs) -> String {
     let cap_ms = t0.elapsed().as_secs_f64() * 1000.0;
     let (curx, cury) = cursor_xy((gl, gt));
     if (img.w as i64, img.h as i64) != (gw, gh) {
-        return shot_err_list(vec![format!(
+        return shot_err_restore(&witness, vec![format!(
             "error: capture_failed: backend {backend} returned {}x{} for a {gw}x{gh} request",
             img.w, img.h
         )]);
@@ -940,7 +980,7 @@ pub fn screenshot_desktop(a: &ShotArgs) -> String {
         ((cy1 - gt).min(img.h as i64)) as usize,
     );
     if bx1 <= bx0 || by1 <= by0 {
-        return shot_err_list(vec![
+        return shot_err_restore(&witness, vec![
             "error: empty_crop: crop rect is empty/outside the capture".to_string(),
         ]);
     }
@@ -966,17 +1006,17 @@ pub fn screenshot_desktop(a: &ShotArgs) -> String {
     apply_privacy_masks(&mut img, (cx0, cy0), &resolved_masks);
     let (data, iw, ih, scale, f, q) = match finalize(img, a.max_px, &a.fmt, a.quality, a.grid) {
         Ok(v) => v,
-        Err(e) => return shot_err_list(vec![e]),
+        Err(e) => return shot_err_restore(&witness, vec![e]),
     };
     let out_obj: Option<Map<String, Value>> = match a.out.as_deref() {
         None => None,
         Some(path) => match crate::cap::write_bytes_out(path, &data) {
             Ok(()) => Some(crate::cap::out_object(path, data.len(), &f)),
-            Err(e) => return shot_err_list(vec![e]),
+            Err(e) => return shot_err_restore(&witness, vec![e]),
         },
     };
     if (scale - ih as f64 / sh as f64).abs() * (sw.max(sh) as f64) > 1.0 {
-        return shot_err_list(vec![
+        return shot_err_restore(&witness, vec![
             "error: capture_failed: non-uniform scale after resize".to_string(),
         ]);
     }
@@ -1023,8 +1063,9 @@ pub fn screenshot_desktop(a: &ShotArgs) -> String {
         capt.insert("note".to_string(), Value::from(n));
     }
     cmap.insert("capture".to_string(), Value::from(capt));
-    let cur_after = crate::no_steal::Evidence::cursor_now();
-    evidence.finish(foreground_window() as i64, cur_after, 0, &mut cmap);
+    for (k, v) in witness.proof(0) {
+        cmap.insert(k, v);
+    }
     cmap.insert("formula".to_string(), Value::from(FORMULA));
     let warnings = warnings_of(a.quality, q, &f);
     if !warnings.is_empty() {
@@ -1035,7 +1076,7 @@ pub fn screenshot_desktop(a: &ShotArgs) -> String {
     }
     let elements_hwnd = if a.elements {
         if fg_at_entry.is_null() {
-            return shot_err_list(vec![
+            return shot_err_restore(&witness, vec![
                 "error: bad_window: elements needs a window (no foreground window)".to_string(),
             ]);
         }

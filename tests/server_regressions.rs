@@ -363,6 +363,177 @@ fn budget_timeout_does_not_drop_a_capture_restore() {
     assert_eq!(structured(&healthy)["value"], json!(5));
 }
 
+// D12: the three process-global resources a read-only capture must not touch.
+// Read directly from user32 so a timeout or cancel is checked against the OS,
+// not only against the engine's own claim.
+#[repr(C)]
+struct CursorPt {
+    x: i32,
+    y: i32,
+}
+
+#[repr(C)]
+struct LastInputInfo {
+    cb_size: u32,
+    tick: u32,
+}
+
+#[link(name = "user32")]
+extern "system" {
+    fn GetClipboardSequenceNumber() -> u32;
+    fn GetForegroundWindow() -> *mut std::ffi::c_void;
+    fn GetCursorPos(pt: *mut CursorPt) -> i32;
+    fn GetLastInputInfo(info: *mut LastInputInfo) -> i32;
+    fn GetWindowThreadProcessId(hwnd: *mut std::ffi::c_void, pid: *mut u32) -> u32;
+}
+
+#[derive(Clone, Copy)]
+struct Globals {
+    fg: i64,
+    cur: (i32, i32),
+    clip: u32,
+    input: u32,
+}
+
+fn globals_now() -> Globals {
+    let mut p = CursorPt { x: 0, y: 0 };
+    let cur = if unsafe { GetCursorPos(&mut p) } != 0 {
+        (p.x, p.y)
+    } else {
+        (i32::MIN, i32::MIN)
+    };
+    let mut info = LastInputInfo {
+        cb_size: std::mem::size_of::<LastInputInfo>() as u32,
+        tick: 0,
+    };
+    let input = if unsafe { GetLastInputInfo(&mut info) } != 0 {
+        info.tick
+    } else {
+        0
+    };
+    Globals {
+        fg: unsafe { GetForegroundWindow() } as i64,
+        cur,
+        clip: unsafe { GetClipboardSequenceNumber() },
+        input,
+    }
+}
+
+/// The clipboard must be bit-for-bit unchanged. A pointer or foreground delta
+/// is only a defect when it is hand's: a moving input tick attributes a cursor
+/// move to the owner, and a foreground owned by another process is external.
+fn assert_no_steal(before: Globals, after: Globals, server_pid: u32) {
+    assert_eq!(after.clip, before.clip, "the clipboard changed");
+    if after.fg != before.fg {
+        let mut pid = 0u32;
+        unsafe { GetWindowThreadProcessId(after.fg as *mut std::ffi::c_void, &mut pid) };
+        assert_ne!(pid, server_pid, "the server took the foreground");
+    }
+    if after.cur != before.cur {
+        assert_ne!(
+            after.input, before.input,
+            "the cursor moved with no owner input: hand moved it"
+        );
+    }
+}
+
+fn assert_restore_proof(sc: &Value, scope: &str) {
+    for key in ["foregroundUnchanged", "cursorUnchanged", "clipboardUnchanged"] {
+        assert_eq!(
+            sc[key],
+            json!(true),
+            "{scope} dropped the {key} restore proof: {sc}"
+        );
+    }
+    assert!(
+        sc["noSteal"].is_object(),
+        "{scope} must carry the noSteal evidence: {sc}"
+    );
+}
+
+/// A timed-out desktop capture must settle with the restore proof attached,
+/// not drop it with the answer. The stall is the engine's own one-shot hook;
+/// the deadline is clamped to its 50 ms floor so the test stays short.
+#[test]
+fn desktop_capture_timeout_keeps_globals_and_reports_restore() {
+    let _serial = serial();
+    let mut s = Session::spawn_with_env(&[
+        ("PUPPET_TEST_STALL_CAPTURE_MS", "800"),
+        ("PUPPET_CAPTURE_TIMEOUT_MS", "50"),
+    ]);
+    let wins = s.call("desktop_list_windows", json!({}));
+    let hwnd = structured(&wins)["windows"][0]["hwnd"]
+        .as_i64()
+        .expect("a live window handle");
+    let before = globals_now();
+    let out = s.call(
+        "desktop_screenshot",
+        json!({"window": format!("hwnd:{hwnd}"), "max_px": 64}),
+    );
+    assert!(is_error(&out), "a timed-out capture is a typed error: {out}");
+    let text = text_of(&out);
+    assert!(
+        text.contains("capture_timeout"),
+        "the error must name the capture timeout: {text}"
+    );
+    assert_restore_proof(structured(&out), "window/timeout");
+    assert_no_steal(before, globals_now(), s.child.id());
+}
+
+/// Every scope's error path is a finally-shaped restore: window, monitor,
+/// virtual desktop, region and mask. None may answer without the proof.
+#[test]
+fn desktop_capture_error_carries_restore_proof_for_every_scope() {
+    let _serial = serial();
+    let mut s = Session::spawn();
+    let cases: Vec<(&str, Value)> = vec![
+        ("window", json!({"window": "hwnd:99999999", "max_px": 64})),
+        ("display=<n>", json!({"display": 999, "max_px": 64})),
+        (
+            "display=-1",
+            json!({"display": -1, "privacyMasks": [{"rect": [50000, 50000, 50010, 50010]}], "max_px": 64}),
+        ),
+        ("region", json!({"display": -1, "region": [0, 0, 0, 0], "max_px": 64})),
+        (
+            "mask",
+            json!({"display": -1, "privacyMasks": [{"window": "hwnd:99999999"}], "max_px": 64}),
+        ),
+    ];
+    let before = globals_now();
+    for (scope, args) in cases {
+        let out = s.call("desktop_screenshot", args);
+        assert!(is_error(&out), "{scope} must fail: {out}");
+        assert_restore_proof(structured(&out), scope);
+    }
+    assert_no_steal(before, globals_now(), s.child.id());
+}
+
+/// A cancelled capture stays silent and leaves all three globals as they were.
+#[test]
+fn desktop_capture_cancel_leaves_globals_unchanged() {
+    let _serial = serial();
+    let mut s = RawSession::spawn_with_env(&[
+        ("HAND_TEST_HOOKS", "1"),
+        ("HAND_TEST_STUCK_DESKTOP_MS", "5000"),
+    ]);
+    s.initialize();
+    let before = globals_now();
+    s.send(
+        &json!({"jsonrpc": "2.0", "id": 77, "method": "tools/call",
+                "params": {"name": "desktop_screenshot",
+                           "arguments": {"display": -1, "max_px": 64}}}),
+    );
+    s.send(
+        &json!({"jsonrpc": "2.0", "method": "notifications/cancelled",
+                "params": {"requestId": 77}}),
+    );
+    assert!(
+        s.stdout.recv_timeout(Duration::from_secs(1)).is_err(),
+        "a cancelled desktop capture must stay silent"
+    );
+    assert_no_steal(before, globals_now(), s.child.id());
+}
+
 /// A cancel answers the request immediately, with the modern marker,
 /// and states the truth - the result is discarded while the engine call keeps
 /// its slot to finish its own cleanup.
