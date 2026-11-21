@@ -91,6 +91,23 @@ fn value(resp: &Value, what: &str) -> Value {
     structured(resp)["value"].clone()
 }
 
+/// Evaluate in a named context and return the page's own value.
+fn ctx_eval(s: &mut Session, name: &str, expression: &str) -> Value {
+    let r = s.call(
+        "browser_context",
+        json!({"action": "eval", "name": name, "expression": expression}),
+    );
+    value(&r, "context eval")
+}
+
+fn ctx_create(s: &mut Session, name: &str, url: &str) {
+    let r = s.call(
+        "browser_context",
+        json!({"action": "create", "name": name, "url": url}),
+    );
+    assert!(!is_error(&r), "create {name}: {}", text_of(&r));
+}
+
 #[test]
 fn clock_is_read_back_from_the_page_after_override() {
     let _serial = serial();
@@ -287,4 +304,142 @@ fn state_exports_and_imports_across_two_contexts() {
     let destroyed = s.call("browser_context", json!({"action": "destroy_all"}));
     assert!(!is_error(&destroyed), "destroy_all failed: {}", text_of(&destroyed));
     let _ = std::fs::remove_file(&file);
+}
+
+#[test]
+fn clock_is_scoped_to_the_named_context() {
+    let _serial = serial();
+    let fixture = Fixture::start();
+    let mut s = Session::spawn();
+    let url = format!("{}/", fixture.base);
+    ctx_create(&mut s, "clka", &url);
+    ctx_create(&mut s, "clkb", &url);
+
+    let frozen = 1767323045000i64;
+    let set = s.call(
+        "browser_context",
+        json!({"action": "clock", "name": "clka", "iso": "2026-01-02T03:04:05.000Z"}),
+    );
+    assert!(!is_error(&set), "clock failed: {}", text_of(&set));
+    assert_eq!(structured(&set)["observed"], json!(frozen), "receipt: {set}");
+
+    assert_eq!(ctx_eval(&mut s, "clka", "Date.now()"), json!(frozen), "named context must read the frozen instant");
+    let real = ctx_eval(&mut s, "clkb", "Date.now()")
+        .as_i64()
+        .expect("real clock value");
+    assert_ne!(real, frozen, "the other context must keep its own clock");
+    assert!(real > frozen, "the untouched context reads wall time: {real}");
+
+    let destroyed = s.call("browser_context", json!({"action": "destroy_all"}));
+    assert!(!is_error(&destroyed), "{}", text_of(&destroyed));
+}
+
+#[test]
+fn locale_is_scoped_to_the_named_context() {
+    let _serial = serial();
+    let fixture = Fixture::start();
+    let mut s = Session::spawn();
+    let url = format!("{}/", fixture.base);
+    ctx_create(&mut s, "loca", &url);
+    ctx_create(&mut s, "locb", &url);
+
+    let set = s.call(
+        "browser_context",
+        json!({"action": "locale", "name": "loca", "locale": "fr-FR", "timezone": "Europe/Paris"}),
+    );
+    assert!(!is_error(&set), "locale failed: {}", text_of(&set));
+    let expr = "Intl.DateTimeFormat().resolvedOptions().locale + '|' + Intl.DateTimeFormat().resolvedOptions().timeZone";
+    let a = ctx_eval(&mut s, "loca", expr);
+    let b = ctx_eval(&mut s, "locb", expr);
+    assert_eq!(a, json!("fr-FR|Europe/Paris"), "named context locale: {a}");
+    assert_ne!(b, a, "the other context must keep its own locale: {b}");
+
+    let destroyed = s.call("browser_context", json!({"action": "destroy_all"}));
+    assert!(!is_error(&destroyed), "{}", text_of(&destroyed));
+}
+
+#[test]
+fn reset_clears_only_the_named_context() {
+    let _serial = serial();
+    let fixture = Fixture::start();
+    let mut s = Session::spawn();
+    let url = format!("{}/", fixture.base);
+    ctx_create(&mut s, "rsa", &url);
+    ctx_create(&mut s, "rsb", &url);
+
+    for name in ["rsa", "rsb"] {
+        assert_eq!(
+            ctx_eval(&mut s, name, "localStorage.setItem('seed','1'); localStorage.length"),
+            json!(1),
+            "seed {name}"
+        );
+    }
+    let reset = s.call("browser_context", json!({"action": "reset", "name": "rsa"}));
+    assert!(!is_error(&reset), "reset failed: {}", text_of(&reset));
+
+    assert_eq!(ctx_eval(&mut s, "rsa", "localStorage.length"), json!(0), "reset context is empty");
+    assert_eq!(ctx_eval(&mut s, "rsb", "localStorage.length"), json!(1), "other context is untouched");
+
+    let destroyed = s.call("browser_context", json!({"action": "destroy_all"}));
+    assert!(!is_error(&destroyed), "{}", text_of(&destroyed));
+}
+
+#[test]
+fn clock_override_refuses_a_non_rfc3339_instant() {
+    let _serial = serial();
+    let mut s = Session::spawn();
+    let resp = s.call("browser_context", json!({"action": "clock", "iso": "yesterday"}));
+    assert!(is_error(&resp), "a non-instant must refuse typed");
+    // `new Date('yesterday').getTime()` is NaN, so the engine refuses the
+    // non-value as a typed js_error before it can install a broken clock.
+    assert_eq!(structured(&resp)["code"], "js_error", "typed code: {}", text_of(&resp));
+}
+
+#[test]
+fn export_state_relative_path_is_a_typed_refusal() {
+    let _serial = serial();
+    let fixture = Fixture::start();
+    let mut s = Session::spawn();
+    ctx_create(&mut s, "exr", &format!("{}/", fixture.base));
+
+    let resp = s.call(
+        "browser_context",
+        json!({"action": "export_state", "name": "exr", "path": "relative-state.json"}),
+    );
+    assert!(is_error(&resp), "a relative path must refuse typed");
+    let sc = structured(&resp);
+    assert_eq!(sc["code"], "invalid_args", "typed code: {sc}");
+    assert!(
+        text_of(&resp).to_lowercase().contains("absolute"),
+        "refusal must say the path needs to be absolute: {}",
+        text_of(&resp)
+    );
+
+    let destroyed = s.call("browser_context", json!({"action": "destroy_all"}));
+    assert!(!is_error(&destroyed), "{}", text_of(&destroyed));
+}
+
+#[test]
+fn import_state_missing_file_is_a_typed_refusal() {
+    let _serial = serial();
+    let fixture = Fixture::start();
+    let mut s = Session::spawn();
+    ctx_create(&mut s, "imp", &format!("{}/", fixture.base));
+
+    let missing = std::env::temp_dir().join(format!(
+        "hand-missing-state-{}-{}.json",
+        std::process::id(),
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos()
+    ));
+    let resp = s.call(
+        "browser_context",
+        json!({"action": "import_state", "name": "imp", "path": missing.to_string_lossy()}),
+    );
+    assert!(is_error(&resp), "a missing file must refuse typed");
+    let sc = structured(&resp);
+    assert_eq!(sc["code"], "file_not_found", "typed code: {sc}");
+    assert_eq!(sc["reason"], "unreadable", "typed reason: {sc}");
+
+    let destroyed = s.call("browser_context", json!({"action": "destroy_all"}));
+    assert!(!is_error(&destroyed), "{}", text_of(&destroyed));
 }

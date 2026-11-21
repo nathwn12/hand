@@ -26,6 +26,12 @@ const NAV: &str = r#"<!doctype html><html><head><title>Nav Page</title></head>
 <body><h1>nav</h1></body></html>"#;
 const NEXT: &str = r#"<!doctype html><html><head><title>Next Page</title></head>
 <body><h1>next</h1></body></html>"#;
+/// Visible text arrives after 400 ms, so a bounded assertion must poll rather
+/// than read once and give up.
+const DELAYED: &str = r#"<!doctype html><html><head><title>Delayed</title></head>
+<body><p id="out">waiting</p><script>
+setTimeout(function () { document.getElementById('out').textContent = 'ready now'; }, 400);
+</script></body></html>"#;
 const FRAMES: &str = r#"<!doctype html><html><head><title>Frames</title></head>
 <body><iframe id="f" src="/frame" style="width:300px;height:200px;border:0"></iframe></body></html>"#;
 const FRAME: &str = r#"<!doctype html><html><head><title>Frame</title></head>
@@ -146,6 +152,7 @@ fn serve(mut stream: TcpStream) -> std::io::Result<()> {
         "/dl" => ("200 OK", DL_PAGE.to_string()),
         "/" => ("200 OK", NAV.to_string()),
         "/next" => ("200 OK", NEXT.to_string()),
+        "/delayed" => ("200 OK", DELAYED.to_string()),
         "/frames" => ("200 OK", FRAMES.to_string()),
         "/frame" => ("200 OK", FRAME.to_string()),
         "/drag" => ("200 OK", DRAG.to_string()),
@@ -661,5 +668,170 @@ fn b6_trace_writes_har_with_counted_redaction_and_cancel_cleans_up() {
     let cancel_again = s.call("browser_trace", json!({"action": "cancel"}));
     assert!(!is_error(&cancel_again), "cancel is idempotent: {}", text_of(&cancel_again));
     assert_eq!(structured(&cancel_again)["ok"].as_bool(), Some(true));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A per-test absolute trace directory, unique so two tests never share the
+/// artifacts they are about to assert on.
+fn trace_dir(tag: &str) -> std::path::PathBuf {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    std::env::temp_dir().join(format!("hand-trace-{tag}-{}-{nanos}", std::process::id()))
+}
+
+#[test]
+fn navigate_404_reports_the_real_status() {
+    let _g = serial();
+    let fx = Fixture::start();
+    let mut s = Session::spawn();
+
+    let r = navigate_with_retry(&mut s, &format!("{}/missing", fx.base));
+    assert!(!is_error(&r), "an HTTP 404 is still a navigation: {}", text_of(&r));
+    let sc = structured(&r);
+    assert_eq!(sc["observed"]["status"].as_i64(), Some(404), "observed status: {sc}");
+    assert_eq!(evaluate(&mut s, "document.querySelector('h1').textContent"), json!("missing"));
+}
+
+#[test]
+fn assert_dom_false_keeps_the_last_observed_value() {
+    let _g = serial();
+    let fx = Fixture::start();
+    let mut s = Session::spawn();
+    let page = navigate_with_retry(&mut s, &format!("{}/next", fx.base));
+    assert!(!is_error(&page), "{}", text_of(&page));
+
+    let r = s.call("browser_assert", json!({
+        "kind": "dom", "target": "h1", "expected": {"exists": false}, "timeoutMs": 300
+    }));
+    assert!(!is_error(&r), "a false verdict is not an error: {}", text_of(&r));
+    let sc = structured(&r);
+    assert_eq!(sc["verdict"], false, "the h1 exists: {sc}");
+    assert_eq!(sc["expected"], json!({"exists": false}));
+    assert_eq!(sc["observed"]["exists"], true, "last observation: {sc}");
+}
+
+#[test]
+fn assert_text_poll_waits_for_delayed_content() {
+    let _g = serial();
+    let fx = Fixture::start();
+    let mut s = Session::spawn();
+    let page = navigate_with_retry(&mut s, &format!("{}/delayed", fx.base));
+    assert!(!is_error(&page), "{}", text_of(&page));
+
+    let r = s.call("browser_assert", json!({
+        "kind": "text", "expected": {"contains": "ready now"},
+        "timeoutMs": 3000, "pollMs": 50
+    }));
+    assert!(!is_error(&r), "poll must find the late text: {}", text_of(&r));
+    let sc = structured(&r);
+    assert_eq!(sc["verdict"], true, "verdict: {sc}");
+    assert!(
+        sc["observed"]["text"].as_str().unwrap_or("").contains("ready now"),
+        "observed text: {sc}"
+    );
+    assert!(
+        sc["elapsedMs"].as_u64().unwrap_or(0) >= 100,
+        "the assertion must have waited, not read once: {sc}"
+    );
+}
+
+#[test]
+fn assert_unknown_kind_is_a_typed_refusal() {
+    let _g = serial();
+    let mut s = Session::spawn();
+    let r = s.call("browser_assert", json!({"kind": "bogus", "expected": {}}));
+    assert!(is_error(&r), "an unknown kind must refuse typed");
+    let sc = structured(&r);
+    assert_eq!(sc["code"], "invalid_args", "typed code: {sc}");
+    assert_eq!(sc["arg"], "kind", "bad argument named: {sc}");
+    assert!(text_of(&r).to_lowercase().contains("unknown kind"), "reason: {}", text_of(&r));
+}
+
+#[test]
+fn download_relative_dir_is_a_typed_refusal() {
+    let _g = serial();
+    let mut s = Session::spawn();
+    let r = s.call("browser_download", json!({"dir": "relative/downloads"}));
+    assert!(is_error(&r), "a relative dir must refuse typed");
+    let sc = structured(&r);
+    assert_eq!(sc["code"], "invalid_args", "typed code: {sc}");
+    assert_eq!(sc["reason"], "bad_value", "typed reason: {sc}");
+    assert_eq!(sc["arg"], "dir", "bad argument named: {sc}");
+}
+
+#[test]
+fn download_accept_list_refuses_a_wrong_mime() {
+    let _g = serial();
+    let fx = Fixture::start();
+    let mut s = Session::spawn();
+    let page = navigate_with_retry(&mut s, &format!("{}/dl", fx.base));
+    assert!(!is_error(&page), "{}", text_of(&page));
+
+    let dir = download_dir("mime");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let r = s.call("browser_download", json!({
+        "dir": dir.to_string_lossy(), "accept": ["image/png"], "timeoutMs": 15000
+    }));
+    assert!(is_error(&r), "a MIME outside accept must refuse typed");
+    let sc = structured(&r);
+    assert_eq!(sc["code"], "invalid_args", "typed code: {sc}");
+    assert_eq!(sc["arg"], "accept", "bad argument named: {sc}");
+    let leftovers: Vec<_> = std::fs::read_dir(&dir).expect("read dir").filter_map(Result::ok).collect();
+    assert!(leftovers.is_empty(), "a refused download leaves no file: {:?}", leftovers.iter().map(|e| e.file_name()).collect::<Vec<_>>());
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn trace_har_only_writes_one_file() {
+    let _g = serial();
+    let fx = Fixture::start();
+    let mut s = Session::spawn();
+    let dir = trace_dir("har-only");
+    let dir_str = dir.to_string_lossy().to_string();
+
+    let armed = s.call("browser_network", json!({"action": "get"}));
+    assert!(!is_error(&armed), "{}", text_of(&armed));
+    let page = navigate_with_retry(&mut s, &format!("{}/trace", fx.base));
+    assert!(!is_error(&page), "{}", text_of(&page));
+
+    let r = s.call("browser_trace", json!({"dir": dir_str, "har": true, "screenshots": false}));
+    assert!(!is_error(&r), "trace: {}", text_of(&r));
+    let sc = structured(&r);
+    let files = sc["files"].as_array().expect("files");
+    assert_eq!(files.len(), 1, "HAR only, no step PNG: {sc}");
+    assert_eq!(files[0]["name"], "trace.har", "file name: {sc}");
+    assert_eq!(files[0]["kind"], "har", "typed file kind: {sc}");
+    assert!(dir.join("trace.har").is_file(), "HAR on disk");
+    assert!(!dir.join("step-0001.png").exists(), "no screenshot requested");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn trace_empty_redact_list_is_accepted_and_named() {
+    let _g = serial();
+    let fx = Fixture::start();
+    let mut s = Session::spawn();
+    let dir = trace_dir("no-redact");
+    let dir_str = dir.to_string_lossy().to_string();
+
+    let armed = s.call("browser_network", json!({"action": "get"}));
+    assert!(!is_error(&armed), "{}", text_of(&armed));
+    let page = navigate_with_retry(&mut s, &format!("{}/trace", fx.base));
+    assert!(!is_error(&page), "{}", text_of(&page));
+
+    let r = s.call("browser_trace", json!({
+        "dir": dir_str, "har": true, "screenshots": true, "redact": []
+    }));
+    assert!(!is_error(&r), "an empty redaction list must be valid: {}", text_of(&r));
+    let sc = structured(&r);
+    assert_eq!(sc["ok"], true, "trace payload: {sc}");
+    let redactions = sc["redactions"].as_array().expect("redactions");
+    assert!(redactions.is_empty(), "nothing named when nothing is redacted: {sc}");
+    assert_eq!(sc["files"].as_array().expect("files").len(), 2, "both artifacts: {sc}");
+
     let _ = std::fs::remove_dir_all(&dir);
 }

@@ -147,6 +147,22 @@ fn net(s: &mut Session, args: Value) -> Value {
     s.call("browser_network", args)
 }
 
+/// Fetch from a named context's own page, so a context-scoped route can be
+/// proved against the page that actually lives in that context.
+fn ctx_fetch(s: &mut Session, name: &str) -> String {
+    let expr = "fetch('/network.json', {cache:'no-store'}).then(r => r.json()) \
+                .then(j => 'value:' + j.value).catch(e => 'error:' + e.name)";
+    let r = s.call(
+        "browser_context",
+        json!({"action": "eval", "name": name, "expression": expr}),
+    );
+    assert!(!is_error(&r), "context fetch failed: {}", text_of(&r));
+    structured(&r)["value"]
+        .as_str()
+        .unwrap_or("")
+        .to_string()
+}
+
 #[test]
 fn catalog_exposes_the_five_interception_actions_and_block_lists() {
     let _serial = serial();
@@ -292,5 +308,106 @@ fn a_context_route_dies_with_its_context() {
         structured(&after)["removed"],
         0,
         "teardown must have removed the context's route already: {after}"
+    );
+}
+
+#[test]
+fn mock_persists_across_repeated_fetches() {
+    let _serial = serial();
+    let fixture = Fixture::start();
+    let mut s = opened(&fixture);
+
+    let armed = net(
+        &mut s,
+        json!({"action": "mock", "url": "*/network.json", "body": {"value": "mocked"}}),
+    );
+    assert!(!is_error(&armed), "mock failed: {}", text_of(&armed));
+
+    for _ in 0..2 {
+        click_fetch(&mut s);
+        assert_eq!(
+            wait_out(&mut s, "value:"),
+            "value:mocked",
+            "a mock route must answer every matching fetch until restored"
+        );
+    }
+
+    let restored = net(&mut s, json!({"action": "restore"}));
+    assert!(!is_error(&restored), "{}", text_of(&restored));
+}
+
+#[test]
+fn restore_with_no_active_route_reports_removed_zero() {
+    let _serial = serial();
+    let mut s = Session::spawn();
+    let resp = net(&mut s, json!({"action": "restore"}));
+    assert!(!is_error(&resp), "restore with nothing armed: {}", text_of(&resp));
+    let sc = structured(&resp);
+    assert_eq!(sc["removed"], 0, "nothing to remove: {sc}");
+    assert_eq!(sc["offline"], false, "offline stays off: {sc}");
+}
+
+#[test]
+fn restore_is_idempotent_after_a_real_route() {
+    let _serial = serial();
+    let fixture = Fixture::start();
+    let mut s = opened(&fixture);
+    let armed = net(
+        &mut s,
+        json!({"action": "mock", "url": "*/data.json", "body": {"value": "x"}}),
+    );
+    assert!(!is_error(&armed), "mock failed: {}", text_of(&armed));
+
+    let first = net(&mut s, json!({"action": "restore"}));
+    assert!(!is_error(&first), "first restore: {}", text_of(&first));
+    assert!(structured(&first)["removed"].as_u64().unwrap_or(0) >= 1, "route removed: {first}");
+
+    let second = net(&mut s, json!({"action": "restore"}));
+    assert!(!is_error(&second), "second restore: {}", text_of(&second));
+    assert_eq!(structured(&second)["removed"], 0, "restore is idempotent: {second}");
+}
+
+#[test]
+fn abort_is_scoped_to_the_named_context() {
+    let _serial = serial();
+    let fixture = Fixture::start();
+    let mut s = Session::spawn();
+    let url = format!("{}/", fixture.base);
+
+    for name in ["neta", "netb"] {
+        let created = s.call(
+            "browser_context",
+            json!({"action": "create", "name": name, "url": url}),
+        );
+        assert!(!is_error(&created), "create {name}: {}", text_of(&created));
+    }
+
+    let armed = net(
+        &mut s,
+        json!({"action": "abort", "context": "neta", "url": "*/network.json"}),
+    );
+    assert!(!is_error(&armed), "scoped abort: {}", text_of(&armed));
+
+    let a = ctx_fetch(&mut s, "neta");
+    let b = ctx_fetch(&mut s, "netb");
+    assert!(a.starts_with("error:"), "the routed context sees the abort: {a}");
+    assert_eq!(b, "value:real", "the other context keeps real network: {b}");
+
+    let destroyed = s.call("browser_context", json!({"action": "destroy_all"}));
+    assert!(!is_error(&destroyed), "{}", text_of(&destroyed));
+}
+
+#[test]
+fn unknown_network_action_is_a_typed_refusal() {
+    let _serial = serial();
+    let mut s = Session::spawn();
+    let resp = net(&mut s, json!({"action": "bogus"}));
+    assert!(is_error(&resp), "an unknown action must refuse typed");
+    let sc = structured(&resp);
+    assert_eq!(sc["code"], "invalid_args", "typed code: {sc}");
+    assert!(
+        text_of(&resp).to_lowercase().contains("unknown action"),
+        "the refusal must name the bad action: {}",
+        text_of(&resp)
     );
 }

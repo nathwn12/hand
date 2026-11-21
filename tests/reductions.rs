@@ -59,6 +59,20 @@ requestAnimationFrame(draw);
 
 const STILL: &str = r#"<!doctype html><html><head><title>Still</title></head><body><h1>still</h1></body></html>"#;
 
+/// A form whose controls are hidden and disabled at load and become visible
+/// and enabled 150 ms later. One control stays hidden the whole time, so a
+/// typed timeout can be proved against the same page as a successful wait.
+const LATE_INPUT: &str = r#"<!doctype html><html><head><title>LateInput</title></head><body>
+<input id="field" disabled style="display:none">
+<select id="choice" disabled style="display:none"><option value="a">A</option><option value="b">B</option></select>
+<input id="never-field" disabled style="display:none">
+<script>
+setTimeout(function () {
+  var f = document.getElementById('field'); f.style.display = 'block'; f.disabled = false;
+  var c = document.getElementById('choice'); c.style.display = 'block'; c.disabled = false;
+}, 150);
+</script></body></html>"#;
+
 const FORM: &str = r#"<!doctype html><html><head><title>Form</title></head><body>
 <form id="f"><input id="name" name="name"><button id="go" type="button">Go</button></form>
 <script>console.log('form fixture ready');</script></body></html>"#;
@@ -119,6 +133,7 @@ fn serve(mut stream: TcpStream) -> std::io::Result<()> {
         .to_string();
     let (status, body): (&str, &str) = match path.as_str() {
         "/late" => ("200 OK", LATE),
+        "/late-input" => ("200 OK", LATE_INPUT),
         "/canvas" => ("200 OK", CANVAS),
         "/still" => ("200 OK", STILL),
         "/form" => ("200 OK", FORM),
@@ -302,4 +317,152 @@ fn r1_click_timeout_is_typed_with_delta() {
         sc["actionability"]["waitedMs"].as_u64().unwrap_or(0) >= 1500,
         "waited to the hard bound: {sc}"
     );
+}
+
+#[test]
+fn r1_type_waits_for_actionable_input_and_readback() {
+    let _g = serial();
+    let fx = Fixture::start();
+    let mut s = Session::spawn();
+    let nav = navigate_with_retry(&mut s, &format!("{}/late-input", fx.base));
+    assert!(!is_error(&nav), "nav: {}", text_of(&nav));
+
+    let resp = s.call("browser_type", json!({"element": "#field", "text": "Ada"}));
+    assert!(!is_error(&resp), "late input must accept text after the wait: {}", text_of(&resp));
+    let a = &structured(&resp)["actionability"];
+    assert_eq!(a["verdict"], "settled", "type delta: {a}");
+    assert!(a["waitedMs"].as_u64().unwrap_or(0) >= 50, "type had to wait: {a}");
+    assert_eq!(a["visible"], true, "type delta: {a}");
+    assert_eq!(a["enabled"], true, "type delta: {a}");
+    assert_eq!(evaluate(&mut s, "document.getElementById('field').value"), json!("Ada"));
+}
+
+#[test]
+fn r1_select_waits_for_actionable_control_and_readback() {
+    let _g = serial();
+    let fx = Fixture::start();
+    let mut s = Session::spawn();
+    let nav = navigate_with_retry(&mut s, &format!("{}/late-input", fx.base));
+    assert!(!is_error(&nav), "nav: {}", text_of(&nav));
+
+    let resp = s.call("browser_select", json!({"element": "#choice", "value": "b"}));
+    assert!(!is_error(&resp), "late select must settle: {}", text_of(&resp));
+    let a = &structured(&resp)["actionability"];
+    assert_eq!(a["verdict"], "settled", "select delta: {a}");
+    assert_eq!(a["mode"], "probed", "select delta: {a}");
+    assert_eq!(evaluate(&mut s, "document.getElementById('choice').value"), json!("b"));
+}
+
+#[test]
+fn r1_type_on_hidden_input_is_typed_timeout_with_delta() {
+    let _g = serial();
+    let fx = Fixture::start();
+    let mut s = Session::spawn();
+    let nav = navigate_with_retry(&mut s, &format!("{}/late-input", fx.base));
+    assert!(!is_error(&nav), "nav: {}", text_of(&nav));
+
+    let resp = s.call("browser_type", json!({"element": "#never-field", "text": "x"}));
+    assert!(is_error(&resp), "permanently hidden input must refuse typed");
+    let sc = structured(&resp);
+    assert_eq!(sc["code"], "timeout", "typed code: {sc}");
+    assert_eq!(sc["actionability"]["verdict"], "timeout", "delta: {sc}");
+    assert!(
+        sc["actionability"]["waitedMs"].as_u64().unwrap_or(0) >= 1500,
+        "bounded wait: {sc}"
+    );
+}
+
+#[test]
+fn r1_unknown_ref_is_typed_stale_ref_and_lands_nothing() {
+    let _g = serial();
+    let fx = Fixture::start();
+    let mut s = Session::spawn();
+    let nav = navigate_with_retry(&mut s, &format!("{}/late", fx.base));
+    assert!(!is_error(&nav), "nav: {}", text_of(&nav));
+
+    let resp = s.call("browser_click", json!({"element": "@e999999"}));
+    assert!(is_error(&resp), "an unminted ref must refuse typed");
+    assert_eq!(structured(&resp)["code"], "stale_ref", "typed code: {}", text_of(&resp));
+    assert_eq!(evaluate(&mut s, "window.clicked || 0"), json!(0), "nothing may fire");
+}
+
+#[test]
+fn r2_element_capture_reports_stability_verdict() {
+    let _g = serial();
+    let fx = Fixture::start();
+    let mut s = Session::spawn();
+    let nav = navigate_with_retry(&mut s, &format!("{}/canvas", fx.base));
+    assert!(!is_error(&nav), "nav: {}", text_of(&nav));
+
+    let resp = s.call("browser_screenshot", json!({"element": "#c"}));
+    assert!(!is_error(&resp), "element capture: {}", text_of(&resp));
+    let sc = structured(&resp);
+    let st = &sc["stability"];
+    assert!(st.is_object(), "element capture must carry stability: {sc}");
+    let verdict = st["verdict"].as_str().unwrap_or("");
+    assert!(verdict == "frozen" || verdict == "unfrozen", "typed verdict: {st}");
+    assert_eq!(st["code"], verdict, "verdict code: {st}");
+    assert!(st["attempts"].as_u64().unwrap_or(0) >= 1, "compared frames: {st}");
+}
+
+#[test]
+fn r2_clip_capture_reports_stability_verdict() {
+    let _g = serial();
+    let fx = Fixture::start();
+    let mut s = Session::spawn();
+    let nav = navigate_with_retry(&mut s, &format!("{}/canvas", fx.base));
+    assert!(!is_error(&nav), "nav: {}", text_of(&nav));
+
+    let resp = s.call("browser_screenshot", json!({
+        "clip": {"x": 0, "y": 0, "width": 100, "height": 50}
+    }));
+    assert!(!is_error(&resp), "clip capture: {}", text_of(&resp));
+    let st = &structured(&resp)["stability"];
+    assert!(st.is_object(), "clip capture must carry stability: {st}");
+    let verdict = st["verdict"].as_str().unwrap_or("");
+    assert!(verdict == "frozen" || verdict == "unfrozen", "typed verdict: {st}");
+    assert_eq!(st["code"], verdict, "verdict code: {st}");
+}
+
+#[test]
+fn r2_screenshot_publishes_stability_in_output_schema() {
+    let _g = serial();
+    let mut s = Session::spawn();
+    let tools = s.list_tools();
+    let tool = common::tool(&tools, "browser_screenshot");
+    let stability = &tool["outputSchema"]["properties"]["stability"];
+    assert!(
+        stability["type"] == "object",
+        "stability must be a published result field: {tool:?}"
+    );
+    for tool_name in ["browser_click", "browser_type", "browser_select"] {
+        let t = common::tool(&tools, tool_name);
+        assert_eq!(
+            t["outputSchema"]["properties"]["actionability"]["type"],
+            "object",
+            "{tool_name} must publish actionability: {t:?}"
+        );
+    }
+}
+
+#[test]
+fn r3_form_bad_first_step_still_runs_later_steps() {
+    let _g = serial();
+    let fx = Fixture::start();
+    let mut s = Session::spawn();
+    let nav = navigate_with_retry(&mut s, &format!("{}/form", fx.base));
+    assert!(!is_error(&nav), "nav: {}", text_of(&nav));
+
+    let resp = s.call("browser_form", json!({"fields": [
+        {"field": "#missing", "action": "bogus", "value": "x"},
+        {"field": "#name", "action": "type", "value": "Ada"}
+    ]}));
+    assert!(!is_error(&resp), "form: {}", text_of(&resp));
+    let sc = structured(&resp);
+    let steps = sc["steps"].as_array().expect("steps");
+    assert_eq!(steps.len(), 2, "one step per field: {sc}");
+    assert_eq!(steps[0]["status"], "error", "bad action first: {sc}");
+    assert_eq!(steps[1]["status"], "ok", "a bad first step must not abort the batch: {sc}");
+    assert_eq!(sc["verdict"], "fail", "one error makes the batch fail: {sc}");
+    assert_eq!(evaluate(&mut s, "document.getElementById('name').value"), json!("Ada"));
 }
