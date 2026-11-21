@@ -10,10 +10,10 @@
 //!   context and is proven gone; the legacy tab/selection space never adopts a
 //!   context page, and `tabs select` plus realm-scoped `evaluate target=` both
 //!   refuse one by name;
-//! - measured teardown mechanics: `destroy` closes the context's pages WITHOUT
-//!   running `beforeunload`/`pagehide`/`unload`, while `close` (closeTarget)
-//!   does run them - the second is the control that proves the fixture's sink
-//!   works;
+//! - measured teardown mechanics: `destroy` closes the context's pages with
+//!   `pagehide` (Chrome 158 fires it and CDP cannot suppress it) but never
+//!   `beforeunload`/`unload`, while `close` (closeTarget) runs both - the second
+//!   is the control that proves the fixture's sink works;
 //! - safety under failure, each with its own test: a cancelled `create` is
 //!   still committed by its own task (no orphan context), a failed `open`
 //!   closes the page it made, a failed disposal keeps the context tracked and
@@ -848,12 +848,12 @@ fn context_arguments_and_unknown_names_are_typed_refusals() {
     });
 }
 
-/// Measured teardown semantics: disposing a context closes its pages WITHOUT
-/// running `beforeunload` or `unload`; `close` (a plain closeTarget) does run
-/// teardown handlers. Chrome 158 full Chrome additionally fires `pagehide` on
-/// dispose (headless-shell 155 fired none), so `pagehide` is allowed here - it
-/// is a browser platform behaviour, not an engine action. The orderly `close`
-/// half is the control that proves the fixture's sink observes handler traffic.
+/// Measured teardown semantics: disposing a context fires `pagehide` on each
+/// page but never `beforeunload` or `unload`. Chrome 158 full Chrome fires
+/// `pagehide` on `Target.disposeBrowserContext` and CDP cannot suppress it, so
+/// this pins the browser's behaviour, not an engine action. `close` (a plain
+/// closeTarget) runs `pagehide` + `unload`: the control that proves the
+/// fixture's sink observes handler traffic.
 #[test]
 fn destroy_skips_page_teardown_handlers_while_close_runs_them() {
     let _serial = serial();
@@ -902,7 +902,12 @@ fn destroy_skips_page_teardown_handlers_while_close_runs_them() {
         let seen = fixture.seen();
         // Chrome 158 emits `pagehide` on dispose; it cannot be suppressed from
         // CDP. The guarantee that matters - no handler that can block navigation
-        // (`beforeunload`) or persist work (`unload`) - still holds.
+        // (`beforeunload`) or persist work (`unload`) - still holds, and the
+        // pagehide assertion pins the truth the old tool text got wrong.
+        assert!(
+            seen.iter().any(|s| s == "pagehide"),
+            "disposeBrowserContext must fire pagehide on Chrome 158; observed {seen:?}"
+        );
         assert!(
             !seen.iter().any(|s| s == "beforeunload" || s == "unload"),
             "disposeBrowserContext must run no beforeunload/unload; observed {seen:?}"

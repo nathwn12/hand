@@ -63,9 +63,10 @@
 //! Teardown is explicit and verified, never assumed: `destroy` disposes the
 //! browser context and then proves it is gone (no page target carries its
 //! `browserContextId` and `Storage.getCookies` refuses the id), reporting
-//! `disposedBy: "hand"` or `"already-gone"`. Measured on the pinned build:
-//! disposing a context closes its pages WITHOUT running `beforeunload`,
-//! `pagehide` or `unload` (a plain `closeTarget` does run `pagehide` +
+//! `disposedBy: "hand"` or `"already-gone"`. Measured on pinned Chrome 158:
+//! disposing a context fires `pagehide` on its pages but never `beforeunload`
+//! or `unload`; `pagehide` cannot be suppressed from CDP, so it is browser
+//! behaviour, not a hand action (a plain `closeTarget` does run `pagehide` +
 //! `unload`), and `disposeOnDetach: true` disposes a hand-created context when
 //! the CDP connection closes cleanly. With two independent CDP connections to
 //! one external engine, disposing or detaching one client's contexts left the
@@ -1885,7 +1886,7 @@ const LIMITS: [&str; 11] = [
     "a JS dialog opened by a context page is not auto-handled (Page events are not enabled on context sessions); dispose the context to recover",
     "pages are discovered from Target.getTargets, so a page the site opened appears after the next list/show",
     "frame-scoped refs are legacy-surface only and do not exist for context pages",
-    "destroy closes the context's pages abruptly: no beforeunload, pagehide or unload handler runs (measured on the pinned build); use close for an orderly page close",
+    "destroy closes the context's pages abruptly: `pagehide` fires but never `beforeunload` or `unload` (measured on Chrome 158; pagehide cannot be suppressed from CDP); use close for an orderly page close",
     "in an attached engine (GLADIUS_CDP_URL) only contexts hand created are touched: a clean detach (Browser::close sends a WebSocket close frame) disposes them, but a hard kill of hand never runs that path - an abrupt socket drop was measured to close the context pages while leaving the context object answering Storage.getCookies, so an external browser may retain it until that engine exits; a lost attached connection is reported UNVERIFIED (kept tracked and excluded, no disposal claimed) and list/show re-establish the configured connection to reconcile; a hard kill is never reported as a disposal",
     "an acquisition is matched by its own token, never by name: destroying and re-creating a name cannot let a stale acquisition write into, or roll back, its successor; an id-less creation can always be destroyed (nothing is named) and its task disposes whatever it later creates",
     "create/open are committed by their own task: a cancelled call leaves tracked state behind (phase 'creating' when it cannot finish) instead of an invisible context, and shutdown reports what it could not dispose",
@@ -1912,8 +1913,9 @@ pub fn tool_schema() -> Value {
     disposes the context and PROVES it is gone: no page target carries its browserContextId and \
     Storage.getCookies refuses the id; disposedBy says hand|already-gone, a dead engine reports \
     went-with-engine, and a failed disposal keeps the context tracked and excluded from legacy \
-    tabs; the pages it closes run NO beforeunload/pagehide/unload handler - measured - so use \
-    close when a page must run its own teardown handlers) | destroy_all | eval (expression in the \
+    tabs; on destroy the pages it closes fire `pagehide` but never `beforeunload` or `unload` \
+    (measured on Chrome 158; pagehide cannot be suppressed from CDP) - so use close when a page \
+    must run its own teardown handlers) | destroy_all | eval (expression in the \
     context's page; typed js_error on a throw) | cookies (read this context's jar, or set cookies \
     and verify each by name+domain+path identity plus the requested attributes, with preexisting \
     reported; a cookie needs name+value and either url or domain, or the engine cannot tell which \
@@ -2018,7 +2020,7 @@ pub fn capability_info() -> Value {
             },
             "selection": SELECT_AFFECTS,
             "legacyReach": "tabs, tabs select and realm-scoped evaluate refuse a context page by name; the raw cdp tool is the documented escape hatch",
-            "teardown": "Target.disposeBrowserContext plus a verified gone-check; closing a context runs no beforeunload/pagehide/unload on its pages (measured), and a clean detach (Browser::close sends a WebSocket close frame) disposes hand-created contexts while another client's contexts stay untouched",
+            "teardown": "Target.disposeBrowserContext plus a verified gone-check; on destroy the pages fire `pagehide` but never `beforeunload` or `unload` (measured on Chrome 158; pagehide cannot be suppressed from CDP), and a clean detach (Browser::close sends a WebSocket close frame) disposes hand-created contexts while another client's contexts stay untouched",
             "hardKillResidual": "a hard kill of hand sends no close frame, so disposeOnDetach cannot run: measured on the pinned build, an abrupt socket drop closed the context's pages but left the context object answering Storage.getCookies, so an attached engine may retain it until that engine exits; hand never reports a hard kill as a disposal and a hard kill is not a cleanup path",
             "cancellation": "create/open are committed by their own task; tracked state (phase 'creating') survives a cancelled call, and a lost owned engine is reported as no longer reachable instead of a fabricated disposal",
             "cookieVerification": "name+domain+path identity plus requested secure/httpOnly/sameSite; preexisting reported; expiry not asserted",
@@ -3313,6 +3315,36 @@ mod tests {
             "http://127.0.0.1:1/"
         );
         assert!(normalise_url(Some("  ")).is_err());
+    }
+
+    /// The published text must not claim that destroy fires no teardown handler.
+    /// Chrome 158 fires `pagehide` on `Target.disposeBrowserContext`, and CDP
+    /// cannot suppress it; only `beforeunload` and `unload` never run.
+    #[test]
+    fn published_text_states_the_measured_destroy_teardown() {
+        let schema = tool_schema();
+        let info = capability_info();
+        let description = schema["description"].as_str().expect("tool description");
+        let limits = LIMITS.join("\n");
+        let teardown = info["isolatedContexts"]["teardown"]
+            .as_str()
+            .expect("capability teardown");
+        for text in [description, limits.as_str(), teardown] {
+            assert!(
+                text.contains("`pagehide`"),
+                "the published text must name pagehide as firing on destroy: {text}"
+            );
+            assert!(
+                text.contains("never `beforeunload` or `unload`"),
+                "the published text must state that beforeunload/unload never fire: {text}"
+            );
+            assert!(
+                !text.contains("NO beforeunload/pagehide/unload")
+                    && !text.contains("no beforeunload, pagehide or unload")
+                    && !text.contains("no beforeunload/pagehide/unload"),
+                "the old false claim must be gone: {text}"
+            );
+        }
     }
 
     #[test]
