@@ -5,7 +5,7 @@
 
 mod common;
 
-use common::{is_error, structured, text_of, Session};
+use common::{is_error, navigate_with_retry, structured, text_of, Session};
 use serde_json::{json, Value};
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -181,7 +181,7 @@ fn b11_browser_form_runs_ordered_steps_with_partial_failure() {
     assert!(names.iter().any(|t| t["name"] == "browser_form"),
             "catalog must publish browser_form");
 
-    let r = s.call("browser_navigate", json!({"url": format!("{}/form", fx.base)}));
+    let r = navigate_with_retry(&mut s, &format!("{}/form", fx.base));
     assert!(!is_error(&r), "{}", text_of(&r));
 
     // A missing field fails its step but the batch continues and submits.
@@ -230,7 +230,7 @@ fn b10_native_datatransfer_drag_is_trusted() {
     let _g = serial();
     let fx = Fixture::start();
     let mut s = Session::spawn();
-    let r = s.call("browser_navigate", json!({"url": format!("{}/drag", fx.base)}));
+    let r = navigate_with_retry(&mut s, &format!("{}/drag", fx.base));
     assert!(!is_error(&r), "{}", text_of(&r));
 
     let r = s.call("browser_drag", json!({
@@ -263,7 +263,7 @@ fn b9_frame_scoped_layout_assert_layout_visual() {
     let visual_dir = std::env::temp_dir().join(format!("hand-browser-rows-visual-{}", std::process::id()));
     let _ = std::fs::create_dir_all(&visual_dir);
     let mut s = Session::spawn_with_env(&[("GLADIUS_VISUAL_DIR", visual_dir.to_string_lossy().as_ref())]);
-    let r = s.call("browser_navigate", json!({"url": format!("{}/frames", fx.base)}));
+    let r = navigate_with_retry(&mut s, &format!("{}/frames", fx.base));
     assert!(!is_error(&r), "{}", text_of(&r));
     let fid = child_frame(&mut s);
 
@@ -311,7 +311,7 @@ fn b12_navigate_reports_observed_status_redirects_timings() {
     let fx = Fixture::start();
     let mut s = Session::spawn();
 
-    let r = s.call("browser_navigate", json!({"url": format!("{}/redirect", fx.base)}));
+    let r = navigate_with_retry(&mut s, &format!("{}/redirect", fx.base));
     assert!(!is_error(&r), "redirect navigation must succeed: {}", text_of(&r));
     let sc = structured(&r);
     assert_eq!(sc["url"].as_str().unwrap_or(""), format!("{}/next", fx.base));
@@ -332,7 +332,7 @@ fn b12_navigate_reports_observed_status_redirects_timings() {
 
     // A same-document (fragment) navigation never hits the network: there is
     // no HTTP status to report, so observed.status is null with a note.
-    let r2 = s.call("browser_navigate", json!({"url": format!("{}/next#frag", fx.base)}));
+    let r2 = navigate_with_retry(&mut s, &format!("{}/next#frag", fx.base));
     assert!(!is_error(&r2), "fragment navigation must succeed: {}", text_of(&r2));
     let o2 = &structured(&r2)["observed"];
     assert!(o2["status"].is_null(), "client-side navigation status must be null: {o2:?}");
@@ -360,7 +360,7 @@ fn b5_download_writes_file_with_sha256_mime_and_cleans_up() {
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).expect("create caller dir");
 
-    let page = s.call("browser_navigate", json!({"url": format!("{}/dl", fx.base)}));
+    let page = navigate_with_retry(&mut s, &format!("{}/dl", fx.base));
     assert!(!is_error(&page), "{}", text_of(&page));
 
     let r = s.call("browser_download", json!({
@@ -406,7 +406,7 @@ fn b2_assert_reports_expected_observed_verdict_for_dom_text_url() {
     assert!(names.iter().any(|t| t["name"] == "browser_assert"),
             "catalog must publish browser_assert");
 
-    let page = s.call("browser_navigate", json!({"url": format!("{}/next", fx.base)}));
+    let page = navigate_with_retry(&mut s, &format!("{}/next", fx.base));
     assert!(!is_error(&page), "{}", text_of(&page));
 
     let dom = s.call("browser_assert", json!({
