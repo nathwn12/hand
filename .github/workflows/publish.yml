@@ -1,6 +1,7 @@
 # Release lane: push to main publishes a new version by OIDC trusted publishing.
 # A version already on the registry is a skip, never a second publish. The tag
 # is created once and never moved. workflow_dispatch is the escape hatch.
+# The full gate is local; this job only builds, packs, proves and publishes.
 # No token, no OTP, no manual npm publish.
 name: publish
 
@@ -14,22 +15,7 @@ permissions:
   id-token: write
 
 jobs:
-  test:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - uses: dtolnay/rust-toolchain@stable
-      - run: powershell -ExecutionPolicy Bypass -File crates/browser-engine/scripts/fetch-chromium.ps1
-      - run: cargo test
-      - run: cargo test -p browser-engine
-      - run: cargo test -p desktop-engine -- --skip live_
-      - run: cargo build
-      - run: node baseline/scripts/compare-catalog.mjs --serve target/debug/hand.exe --baseline hand
   publish:
-    needs: test
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
