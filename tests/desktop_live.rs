@@ -96,8 +96,26 @@ fn hwnd_of_class_and_pid(class: &str, pid: u32) -> Option<i64> {
     scan.hits.first().copied()
 }
 
+/// These proofs are about an interactive user's real desktop: a bare session
+/// (a hosted CI runner) has no foreground holder, so the test's own window
+/// spawns legitimately move the foreground and the no-steal assertions stop
+/// meaning what they mean on a working desktop (measured: the occlusion
+/// proof failed on a runner because spawning moved the foreground). Run them
+/// only when HAND_LIVE_DESKTOP=1 names a real interactive session; a skip
+/// always prints its reason.
+fn live_desktop() -> bool {
+    let on = std::env::var("HAND_LIVE_DESKTOP").as_deref() == Ok("1");
+    if !on {
+        println!("SKIP live desktop proof: set HAND_LIVE_DESKTOP=1 (needs an interactive Windows session)");
+    }
+    on
+}
+
 #[test]
 fn desktop_enumerates_and_inspects_a_background_window_without_stealing() {
+    if !live_desktop() {
+        return;
+    }
     let mut s = Session::spawn();
     let own_pid = std::process::id();
 
@@ -419,6 +437,9 @@ impl Drop for LiveFixture {
 /// pixels. On the pre-fix binary `captureMethod` is absent.
 #[test]
 fn screenshot_reports_capture_method() {
+    if !live_desktop() {
+        return;
+    }
     let f = LiveFixture::launch();
     let frame = screenshot(f.hwnd);
     assert_eq!(
@@ -440,6 +461,9 @@ fn screenshot_reports_capture_method() {
 /// foregroundUnchanged. A BitBlt/DXGI screen crop would return the cover.
 #[test]
 fn occluded_live_window_captures_with_foreground_unchanged() {
+    if !live_desktop() {
+        return;
+    }
     let f = LiveFixture::launch();
     let fg_before = foreground_now();
     let fixture = f.hwnd as *mut core::ffi::c_void;

@@ -951,8 +951,25 @@ impl Drop for Cover {
     }
 }
 
+/// These proofs are about an interactive user's real desktop: a bare session
+/// (a hosted CI runner) has no foreground holder, so window spawns and occluders
+/// move the foreground legitimately there and the no-steal assertions stop
+/// meaning what they mean on a working desktop. Run the matrix only when
+/// HAND_LIVE_DESKTOP=1 names a real interactive session; a skip always prints
+/// its reason.
+fn live_desktop() -> bool {
+    let on = std::env::var("HAND_LIVE_DESKTOP").as_deref() == Ok("1");
+    if !on {
+        println!("SKIP capture matrix: set HAND_LIVE_DESKTOP=1 (needs an interactive Windows session)");
+    }
+    on
+}
+
 #[test]
 fn capture_matrix_all_14_cases() {
+    if !live_desktop() {
+        return;
+    }
     let fixture = AnchorFixture::launch();
     let scale = measured_scale(&fixture);
     let monitors = monitor_rects();
