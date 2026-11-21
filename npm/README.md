@@ -81,6 +81,6 @@ The first browser call provisions the pinned `chrome-headless-shell` into a per-
 - [MIT licence](https://opensource.org/license/mit)
 
 <p align="center">
-  <img src="signature.svg" width="120" alt="nathwn12 signature" />
+  <img src="signature-glyph.svg" width="120" alt="nathwn12 signature" />
   <br />Built by nathwn12
 </p>
