@@ -6251,19 +6251,24 @@ async fn eval_public(
     frame: Option<&str>,
     expression: &str,
 ) -> Result<(Value, bool), ToolErr> {
-    let raw: Result<Value, String> = match (target, frame) {
-        (Some(tid), None) => browser.eval_in_target(tid, expression).await,
+    // Only a same-process frame eval is a frame lookup. An OOPIF session runs
+    // JS in that frame's own realm and its error already carries a site-known
+    // type (e.g. typed:js_error); route it through ToolErr::from unchanged,
+    // exactly as frame_realm_eval does. Wrapping it in frame_lookup_err loses
+    // that type and leaks the typed marker into prose.
+    let (raw, same_process_frame): (Result<Value, String>, bool) = match (target, frame) {
+        (Some(tid), None) => (browser.eval_in_target(tid, expression).await, false),
         (None, Some(fid)) => match browser.oop_session_for_frame(fid).await {
-            Some((_, sid)) => browser.eval_in_session(&sid, expression).await,
-            None => browser.eval_in_frame(fid, expression).await,
+            Some((_, sid)) => (browser.eval_in_session(&sid, expression).await, false),
+            None => (browser.eval_in_frame(fid, expression).await, true),
         },
-        (None, None) => browser.eval(expression).await,
+        (None, None) => (browser.eval(expression).await, false),
         _ => unreachable!("target and frame are mutually exclusive at the dispatch boundary"),
     };
     match raw {
         Ok(v) => Ok((v, false)),
         Err(e) if crate::browser::is_undefined_result(&e) => Ok((Value::Null, true)),
-        Err(e) if frame.is_some() => Err(frame_lookup_err("evaluate", frame.expect("frame"), e)),
+        Err(e) if same_process_frame => Err(frame_lookup_err("evaluate", frame.expect("frame"), e)),
         Err(e) => Err(ToolErr::from(e)),
     }
 }

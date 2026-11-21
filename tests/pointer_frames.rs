@@ -325,6 +325,35 @@ fn element_screenshot_is_the_box_and_is_deterministic() {
     assert_eq!(structured(&wrong)["code"], json!("stale_ref"));
 }
 
+/// A JS error thrown inside an OOPIF's own realm is a JS failure, not a frame
+/// lookup failure. Only a same-process frame eval carries invalid_target.
+#[test]
+fn oopif_eval_js_error_is_not_a_frame_lookup_error() {
+    let _serial = serial();
+    let fx = Fixture::start();
+    let mut s = Session::spawn();
+    navigate_with_retry(&mut s, &format!("{}/oopif-parent.html", fx.a));
+    let fid = oopif_frame(&mut s);
+
+    let threw = s.call(
+        "browser_evaluate",
+        json!({"frame": fid, "expression": "throw new Error('oopif-js-error')"}),
+    );
+    assert!(is_error(&threw), "a throwing expression must be an error: {}", text_of(&threw));
+    let sc = structured(&threw);
+    assert_eq!(
+        sc["code"],
+        json!("js_error"),
+        "an OOPIF JS error must keep its site-known type: {sc}"
+    );
+    assert_eq!(sc["reason"], json!("thrown"), "{sc}");
+    assert!(
+        !text_of(&threw).contains("typed:"),
+        "the typed marker must not leak into prose: {}",
+        text_of(&threw)
+    );
+}
+
 /// A cross-origin frame with its own renderer is addressable: `snapshot` with
 /// its frame id returns ITS nodes, a click lands inside it, and a frame id no
 /// session owns stays a typed error instead of a main-frame action.
