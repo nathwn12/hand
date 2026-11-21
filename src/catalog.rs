@@ -14,9 +14,10 @@ pub const DESKTOP_PREFIX: &str = "desktop_";
 /// `context` (isolated contexts), the two pointer primitives that had no
 /// legacy tool (`wheel`, `drag`), `form` (ordered form batches) and
 /// `download` (B5: caller-directory download with SHA-256 evidence),
-/// `assert` (B2: bounded DOM, AX, text and URL assertions) and
-/// `audit` (B7: measured viewport audit).
-pub const BROWSER_TOOLS: [&str; 32] = [
+/// `assert` (B2: bounded DOM, AX, text and URL assertions),
+/// `audit` (B7: measured viewport audit) and
+/// `trace` (B6: opt-in HAR/screenshot bundle with counted redaction).
+pub const BROWSER_TOOLS: [&str; 33] = [
     "navigate",
     "snapshot",
     "screenshot",
@@ -49,6 +50,7 @@ pub const BROWSER_TOOLS: [&str; 32] = [
     "download",
     "assert",
     "audit",
+    "trace",
 ];
 
 /// The 7 Puppet tools, in catalog order.

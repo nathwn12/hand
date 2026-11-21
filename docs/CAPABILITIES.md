@@ -21,7 +21,7 @@ The smaller `chrome-headless-shell` is an opt-in fallback selected with `GLADIUS
 | Capability | Evidence |
 |---|---|
 | One executable, one stdio MCP connection | `tests/discovery.rs` (7 tests): initialize, ping, tools/list, tools/call, server/discover, version gate |
-| Both catalogs plus hand's own tools, legacy bodies byte-identical except the declared additions in `baseline/declared-additions.json` | `catalog_is_the_floor_plus_hand_additions`, `tool_bodies_are_engine_bodies_under_the_prefix` (compares each published body with `baseline/hand-catalog.json` after the declared paths are checked present and stripped; `baseline/test/declared-additions.test.mjs` proves it red on an undeclared addition and on a deleted one); independent `baseline/scripts/compare-catalog.mjs` PASS: 32/32 legacy tools compared, additional hand tools reported as extras, 10 declared addition groups, 7 description differences. The live catalog is **38** tools: the 32-name compatibility floor plus `browser_context`, `browser_wheel`, `browser_drag`, `browser_form`, `browser_download` and `browser_assert`, which hand adds on top and which `baseline/hand-catalog.json` records under `live` |
+| Both catalogs plus hand's own tools, legacy bodies byte-identical except the declared additions in `baseline/declared-additions.json` | `catalog_is_the_floor_plus_hand_additions`, `tool_bodies_are_engine_bodies_under_the_prefix` (compares each published body with `baseline/hand-catalog.json` after the declared paths are checked present and stripped; `baseline/test/declared-additions.test.mjs` proves it red on an undeclared addition and on a deleted one); independent `baseline/scripts/compare-catalog.mjs` PASS: 32/32 legacy tools compared, additional hand tools reported as extras, 10 declared addition groups, 7 description differences. The live catalog is **40** tools: the 32-name compatibility floor plus eight hand additions (`browser_context`, `browser_wheel`, `browser_drag`, `browser_form`, `browser_download`, `browser_assert`, `browser_audit`, `browser_trace`). Additions are reported as extras by the independent comparison and are never entered in `baseline/declared-additions.json` |
 | Isolated, named browser contexts over the real MCP route | `tests/context_wire.rs`: published schema; two contexts with separate cookie jars; legacy page and legacy tab space untouched; `targets select` refuses a context page; typed errors; shutdown disposes only hand's contexts (two clients attached to one external engine, the other's context, page and cookie survive) |
 | Browser backend identity and availability | `initialize_identifies_version_platform_and_both_engines`: `gladius` pin, `puppet` pin, platform, counts, instructions |
 | Live headless browser inspect → act → verify | `tests/browser_live.rs`: loopback fixture; navigate, AX snapshot, click by `@eN`, DOM effect proven by evaluate, type into a labelled field and read back |
@@ -41,7 +41,7 @@ The smaller `chrome-headless-shell` is an opt-in fallback selected with `GLADIUS
 | Desktop no-steal static, wire and gate checks | `tests/no_steal.rs`, 12 tests: banned APIs absent from all three source trees; target on every acting tool; zero `sendinput_calls`; focus refused with and without the flag; dead target typed; clipboard write refused while the burst continues |
 | Browser cancellation | `tests/cancel.rs`: typed `cancelled` immediately, no late second response, engine usable afterwards |
 | Desktop cancellation admission | `tests/cancel.rs`: token published before the worker, cancelled job stays silent (direct through the production wrapper) |
-| Vendored engine unit tests | `cargo test -p browser-engine`: 80/80 (includes Chromium pin-drift and full-Chrome identity checks); `cargo test -p desktop-engine -- --skip live_`: 203/203 |
+| Vendored engine unit tests | `cargo test -p browser-engine`: 91/91 (includes the B6 literal-redaction and HAR-date checks, Chromium pin-drift and full-Chrome identity); `cargo test -p desktop-engine -- --skip live_`: 203/203 |
 | Clean EOF shutdown with a launched engine | `tests/lifecycle.rs`: exit 0, bounded; a manual probe observed 0.06 s, zero owned Chrome processes before and after, and the next start swept the previous run's stale owned profile |
 | Pinned browser artifact | File SHA-256 recomputed and equal to the manifest; `--version` reports 158.0.8127.36 |
 | Selector engine: `role=`, `role=…[name="…"]`, `name=`, `text=`, `label=` | `tests/selectors.rs` (17 tests), resolved on `Accessibility.getFullAXTree` and acted on by backend id. Uniqueness is enforced before acting: zero → `invalid_target`/`not_found`, many → `invalid_target`/`ambiguous` listing every candidate. Names match case-insensitively after whitespace normalisation, and the resolver accepts both the raw AX name and the name `browser_snapshot` prints. `text=` reads visible text with fragments concatenated, innermost owner first; `label=` accepts only `labelfor`/`labelwrapped` provenance. CSS keeps first-match, `@eN` stays snapshot-bound with typed stale refs. Measured on 158.0.8127.36: a frame's tree excludes iframe content (the iframe is one opaque node), so scope is one frame tree and the refusals say so. |
@@ -52,9 +52,10 @@ The smaller `chrome-headless-shell` is an opt-in fallback selected with `GLADIUS
 | Ordered form batches | red-line-then-green test: `browser_form` runs an ordered batch and reports a per-step status and verdict |
 | Browser download | red-line-then-green test: `browser_download` writes to a caller-supplied directory and reports SHA-256 and MIME; a cancelled download cleans up its partial file |
 | Browser assertions | red-line-then-green test: `browser_assert` covers `dom`, `text` and `url` with bounded polling; `ax` and `network` kinds answer a typed `not_implemented` |
+| Browser trace | red-line-then-green test: `browser_trace` writes a HAR 1.2 wrapping the existing CDP Network ring plus one deterministic step PNG, counts literal HAR redactions (no regex, no false detection), refuses a relative dir and a `video` request as typed errors, and cancel removes only owned artifacts |
 | Per-monitor v2 DPI awareness | the process sets per-monitor v2 DPI awareness and reads it back at startup; `doctor` reports it |
 | Typed capture codes for frame and no-steal faults | `blank_frame`, `stale_frame`, `too_large` and `no_steal_violation` are typed codes; `no_steal_violation` fails closed and returns no pixels |
-| Repeatable browser task suite | `node fixtures/run-tasks.mjs`, three consecutive runs: pass=21 pending=9 fail=0, exit 0; a `pending` line names the tool it waits for |
+| Repeatable browser task suite | `node fixtures/run-tasks.mjs`: pass=30 pending=0 fail=0, exit 0, including t30 trace/HAR/cancel; t30 was red (`PEND waits for browser_trace`) before row B6 landed |
 
 Commands run (all exit 0):
 
@@ -97,7 +98,13 @@ These are not implemented, not exercised, or not safe to claim from this slice.
 - Responsive viewport matrices (row B7), contrast/typography/focus-indicator
   target-size evidence: a scaffolded, hidden tool is present and returns a
   typed `not_implemented` naming row B7. It is not advertised.
-- Opt-in traces/artifacts with redaction and retention.
+- Opt-in traces/artifacts (row B6): `browser_trace` writes a HAR 1.2 over
+  `browser.network_get`'s CDP ring and deterministic step captures into a
+  caller's absolute directory; `redact[]` is literal and counted, never regex
+  or automatic secret detection; cancel deletes only the names it wrote. The
+  `video` field is a named typed `not_implemented` - no CDP screencast wrapper
+  is shipped. Retention expiry is not implemented: retention is the caller's
+  directory and retention cleanup is cancel's owned-file removal.
 
 ### Desktop additions from the specification
 
