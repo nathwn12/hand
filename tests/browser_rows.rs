@@ -58,6 +58,21 @@ const FORM: &str = r#"<!doctype html><html><head><title>Form</title></head><body
 </form></body></html>"#;
 const DL_PAGE: &str = r#"<!doctype html><html><head><title>Download Page</title></head>
 <body><a id="dl" href="/payload.txt" download="hand-task.txt">download fixture</a></body></html>"#;
+/// Mirrors fixtures/tasks/viewport.html: deliberate overflow, low contrast,
+/// a tiny target and a control whose focus rule suppresses the ring.
+const AUDIT: &str = r#"<!doctype html><html lang="en"><head><meta charset="utf-8">
+<title>Hand Tasks Viewport</title><style>
+body { font: 16px/1.4 system-ui; margin: 0; padding: 8px; background: #fff; color: #111; }
+#wide { width: 1400px; height: 40px; background: #e8e8e8; }
+#low-contrast { color: #b8b8b8; background: #fff; }
+#tiny { width: 12px; height: 12px; padding: 0; border: 1px solid #999; }
+#focusable:focus { outline: none; }
+</style></head><body><h1>Hand Tasks Viewport</h1>
+<div id="wide">deliberate horizontal overflow</div>
+<p id="low-contrast">Low contrast text for the audit check.</p>
+<button id="tiny" type="button" aria-label="Tiny target"></button>
+<input id="focusable" type="text" aria-label="No focus ring">
+</body></html>"#;
 /// Exact bytes the loopback fixture delivers, and their SHA-256.
 const DOWNLOAD_BYTES: &[u8] = b"hand row B5 download payload\n";
 const DOWNLOAD_SHA256: &str = "20e1664389c59576710eca014871d3f63479d4afe7087fdd182a736e5515800d";
@@ -133,6 +148,7 @@ fn serve(mut stream: TcpStream) -> std::io::Result<()> {
         "/frame" => ("200 OK", FRAME.to_string()),
         "/drag" => ("200 OK", DRAG.to_string()),
         "/form" => ("200 OK", FORM.to_string()),
+        "/audit" => ("200 OK", AUDIT.to_string()),
         "/redirect" => {
             let head = "HTTP/1.1 302 Found\r\nLocation: /next\r\nContent-Length: 0\r\n\
                         Cache-Control: no-store\r\nConnection: close\r\n\r\n";
@@ -487,4 +503,66 @@ fn b2_assert_reports_expected_observed_verdict_for_dom_text_url() {
     let network = s.call("browser_assert", json!({"kind": "network", "expected": {}}));
     assert!(is_error(&network), "network must be a typed not_implemented");
     assert_eq!(structured(&network)["code"].as_str().unwrap_or(""), "not_implemented");
+}
+
+#[test]
+fn b7_audit_measures_six_viewports_with_evidence_per_check() {
+    let _g = serial();
+    let fx = Fixture::start();
+    let mut s = Session::spawn();
+
+    let names = s.list_tools();
+    assert!(names.iter().any(|t| t["name"] == "browser_audit"),
+            "catalog must publish browser_audit");
+
+    let page = navigate_with_retry(&mut s, &format!("{}/audit", fx.base));
+    assert!(!is_error(&page), "{}", text_of(&page));
+    let default_width = evaluate(&mut s, "window.innerWidth").as_i64().unwrap_or(0);
+
+    let r = s.call("browser_audit", json!({
+        "viewports": [360, 390, 768, 1024, 1440, 2560],
+        "checks": ["overflow", "contrast", "focus", "targetSize"]
+    }));
+    assert!(!is_error(&r), "audit failed: {}", text_of(&r));
+    let sc = structured(&r).clone();
+    assert_eq!(sc["verdict"].as_str().unwrap_or(""), "pass", "audit must complete: {sc:?}");
+    let records = sc["viewports"].as_array().expect("viewports");
+    assert_eq!(records.len(), 6, "one record per viewport: {sc:?}");
+
+    for (i, rec) in records.iter().enumerate() {
+        let requested = [360, 390, 768, 1024, 1440, 2560][i];
+        assert_eq!(rec["width"].as_i64(), Some(requested), "live read-back: {rec:?}");
+        for key in ["scrollWidth", "overflow", "contrast", "focus", "targetSize", "verdict"] {
+            assert!(rec.get(key).is_some(), "missing {key}: {rec:?}");
+        }
+        let sw = rec["scrollWidth"].as_i64().unwrap_or(0);
+        let cw = rec["overflow"]["observed"]["clientWidth"].as_i64().unwrap_or(0);
+        assert!(sw > 0 && cw > 0, "measured widths: {rec:?}");
+        assert_eq!(rec["overflow"]["observed"]["excess"].as_i64(), Some(sw - cw));
+        if requested == 360 {
+            assert!(sw > cw, "360px must show the deliberate overflow: {rec:?}");
+        }
+        for key in ["overflow", "contrast", "focus", "targetSize"] {
+            assert!(rec[key].get("observed").is_some(), "{key} needs a measurement: {rec:?}");
+            assert!(rec[key].get("expected").is_some(), "{key} needs an expectation: {rec:?}");
+            assert!(rec[key].get("pass").is_some(), "{key} needs a pass flag: {rec:?}");
+        }
+        assert!(rec["contrast"]["formula"].as_str().unwrap_or("").contains("0.2126"),
+                "contrast must state its formula: {rec:?}");
+        let ratio = rec["contrast"]["observed"]["ratio"].as_f64().unwrap_or(99.0);
+        assert!(ratio > 0.0 && ratio < 4.5, "low-contrast block must be named: {rec:?}");
+        assert_eq!(rec["contrast"]["observed"]["selector"].as_str().unwrap_or(""), "#low-contrast");
+        assert_eq!(rec["focus"]["observed"]["ringVisible"].as_bool(), Some(false),
+                   "one of the focused controls has no ring: {rec:?}");
+        let no_ring = rec["focus"]["observed"]["noRing"].as_array().expect("noRing");
+        assert!(no_ring.iter().any(|n| n.as_str() == Some("#focusable")),
+                "the control whose focus rule suppresses the ring must be named: {rec:?}");
+        let small = rec["targetSize"]["observed"]["small"].as_array().expect("small targets");
+        assert!(small.iter().any(|t| t["selector"] == "#tiny"), "tiny target must be named: {rec:?}");
+        assert_eq!(rec["verdict"].as_bool(), Some(false), "the page fails these checks: {rec:?}");
+    }
+
+    // The matrix restores the connection-wide viewport override.
+    let after = evaluate(&mut s, "window.innerWidth").as_i64().unwrap_or(0);
+    assert_eq!(after, default_width, "viewport must be restored after the audit");
 }

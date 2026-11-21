@@ -13,9 +13,10 @@ pub const DESKTOP_PREFIX: &str = "desktop_";
 /// The 25 Gladius tools, in catalog order, followed by hand's own additions:
 /// `context` (isolated contexts), the two pointer primitives that had no
 /// legacy tool (`wheel`, `drag`), `form` (ordered form batches) and
-/// `download` (B5: caller-directory download with SHA-256 evidence) and
-/// `assert` (B2: bounded DOM, text and URL assertions).
-pub const BROWSER_TOOLS: [&str; 31] = [
+/// `download` (B5: caller-directory download with SHA-256 evidence),
+/// `assert` (B2: bounded DOM, AX, text and URL assertions) and
+/// `audit` (B7: measured viewport audit).
+pub const BROWSER_TOOLS: [&str; 32] = [
     "navigate",
     "snapshot",
     "screenshot",
@@ -47,6 +48,7 @@ pub const BROWSER_TOOLS: [&str; 31] = [
     "form",
     "download",
     "assert",
+    "audit",
 ];
 
 /// The 7 Puppet tools, in catalog order.
