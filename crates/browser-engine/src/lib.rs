@@ -11,6 +11,8 @@
 //! - `contexts`: named isolated browser contexts (`Target.createBrowserContext`)
 //!   with explicit create/select/teardown, cookie/storage isolation and a
 //!   public dispatch hook for the `browser_context` tool;
+//! - `trace`: the opt-in B6 artifact bundle (HAR over the existing CDP
+//!   Network ring, deterministic screenshots, counted literal redaction);
 //! - the context-exclusion seam in `browser`: pages of a registered context
 //!   are filtered out of the legacy tab/selection space (`page_targets`,
 //!   `select_target`), the exclusion map is threaded through every launch and
@@ -63,6 +65,7 @@ mod fetch;
 mod layout;
 mod net;
 mod tools;
+mod trace;
 mod visual;
 
 pub use browser::{backend_info, Browser, EngineOwnership};
