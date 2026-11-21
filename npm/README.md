@@ -14,7 +14,7 @@
 npx hand-mcp
 ```
 
-The binary ships inside the package: about 5 MB packed, 15 MB unpacked. No install script downloads anything and no compiler is needed. Pin an exact version (`npx hand-mcp@<version>`) when you need reproducibility.
+The binary ships inside the package: about 6.4 MB packed, 19.4 MB unpacked. No install script downloads anything and no compiler is needed. Pin an exact version (`npx hand-mcp@<version>`) when you need reproducibility.
 
 A global install is not supported on purpose: the server belongs in the client's own process tree, not on `PATH`. `npx hand-mcp` needs none.
 
