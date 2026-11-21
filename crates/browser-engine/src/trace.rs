@@ -310,6 +310,7 @@ async fn capture_step(browser: &Browser, dir: &Path) -> Result<(String, usize), 
         false,
         None,
         false,
+        1.0,
     )
     .await?;
     let bytes = std::fs::metadata(&path)

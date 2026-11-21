@@ -27,6 +27,7 @@
       "properties.freeze",
       "properties.waitForStable",
       "properties.force",
+      "properties.scale",
       "anyOf"
     ],
     "browser_select": [

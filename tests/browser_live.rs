@@ -45,6 +45,20 @@ const MOTION: &str = r#"<!doctype html>
 #box { width: 40px; height: 40px; background: #c00; animation: spin 2s linear infinite; }
 </style></head><body><div id="box"></div></body></html>"#;
 
+const NOISE: &str = r#"<!doctype html>
+<html><head><meta charset="utf-8"><title>Hand Noise</title></head><body>
+<canvas id="noise" width="320" height="200"></canvas>
+<script>
+const c = document.getElementById('noise'), x = c.getContext('2d');
+const d = x.createImageData(320, 200);
+let s = 12345;
+for (let i = 0; i < d.data.length; i += 4) {
+  s = (s * 1103515245 + 12345) & 0x7fffffff;
+  d.data[i] = s & 255; d.data[i+1] = (s >> 8) & 255; d.data[i+2] = (s >> 16) & 255; d.data[i+3] = 255;
+}
+x.putImageData(d, 0, 0);
+</script></body></html>"#;
+
 struct Fixture {
     base: String,
     stop: Arc<AtomicBool>,
@@ -106,6 +120,7 @@ fn serve(mut stream: TcpStream) -> std::io::Result<()> {
         "/" => ("200 OK", INDEX, "text/html; charset=utf-8"),
         "/next" => ("200 OK", NEXT, "text/html; charset=utf-8"),
         "/motion" => ("200 OK", MOTION, "text/html; charset=utf-8"),
+        "/noise" => ("200 OK", NOISE, "text/html; charset=utf-8"),
         "/missing" => (
             "404 Not Found",
             "<h1>missing</h1>",
@@ -326,6 +341,37 @@ fn browser_inspect_act_verify_and_stale_ref_refusal() {
     let forced = s.call("browser_screenshot", json!({"waitForStable": 200, "force": true}));
     assert!(!is_error(&forced), "force accepts the last frame: {}", text_of(&forced));
     assert_eq!(structured(&forced)["stability"]["verdict"], json!("unfrozen"));
+
+    let noisy = navigate_with_retry(&mut s, &format!("{}/noise", fixture.base));
+    assert!(!is_error(&noisy), "noise fixture failed: {}", text_of(&noisy));
+    let png = s.call("browser_screenshot", json!({"element": "#noise"}));
+    assert!(!is_error(&png), "png capture failed: {}", text_of(&png));
+    let png_sc = structured(&png);
+    assert_eq!(png_sc["size"], json!({"width": 320, "height": 200}), "{png_sc}");
+
+    let jpeg = s.call("browser_screenshot", json!({
+        "element": "#noise", "format": "jpeg", "quality": 80
+    }));
+    assert!(!is_error(&jpeg), "jpeg capture failed: {}", text_of(&jpeg));
+    let jpeg_sc = structured(&jpeg);
+    assert_eq!(jpeg_sc["size"], json!({"width": 320, "height": 200}), "{jpeg_sc}");
+    let png_bytes = png_sc["bytes"].as_u64().unwrap_or(0);
+    let jpeg_bytes = jpeg_sc["bytes"].as_u64().unwrap_or(0);
+    assert!(
+        jpeg_bytes > 0 && jpeg_bytes < png_bytes,
+        "jpeg q80 must beat png on noise: jpeg={jpeg_bytes} png={png_bytes}"
+    );
+    eprintln!("HAND_JPEG_BYTES={jpeg_bytes} HAND_PNG_BYTES={png_bytes}");
+
+    let scaled = s.call("browser_screenshot", json!({
+        "element": "#noise", "scale": 0.5
+    }));
+    assert!(!is_error(&scaled), "scaled capture failed: {}", text_of(&scaled));
+    assert_eq!(
+        structured(&scaled)["size"],
+        json!({"width": 160, "height": 100}),
+        "scale 0.5 halves the captured box: {scaled}"
+    );
 }
 
 /// `selector` is a published alias: a client that prunes undeclared keys must

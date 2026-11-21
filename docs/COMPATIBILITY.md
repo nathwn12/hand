@@ -250,7 +250,11 @@ total.
      restores them; `motion` names what is still moving after that, `paused`
      names what was acted on. `waitForStable` polls checksums and refuses an
      unsettled page unless `force` accepts the last frame with an `unfrozen`
-     stability verdict. No option changes the historic default capture.
+     stability verdict. `properties.scale` (0.1..1) scales the CDP clip, so a
+     half-scale capture reports half-size `size`. `size` is now read from the
+     encoded bytes for jpeg (SOF) and webp (RIFF chunks) as well as png (IHDR);
+     the field was already in the pinned output schema. No option changes the
+     historic default capture.
    - `inputSchema`: `browser_click` adds `properties.button` and
      `properties.clickCount` (right/middle button, double click) and
      `browser_screenshot` adds `properties.clip`, `properties.element`,

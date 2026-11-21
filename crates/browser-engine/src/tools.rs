@@ -59,7 +59,8 @@ pub fn list() -> Value {
              "quality": {"type": "integer", "minimum": 0, "maximum": 100},
               "freeze": {"type": "boolean"},
               "waitForStable": {"type": "integer", "minimum": 0},
-              "force": {"type": "boolean"}},
+              "force": {"type": "boolean"},
+              "scale": {"type": "number", "minimum": 0.1, "maximum": 1}},
              "additionalProperties": false},
          "outputSchema": {"type": "object",
             "properties": {"mimeType": {"type": "string"}, "format": {"type": "string"}, "bytes": {"type": "integer", "minimum": 0},
@@ -988,6 +989,7 @@ pub async fn call(name: &str, args: &Value, browser: &Browser) -> Value {
                     "freeze",
                     "waitForStable",
                     "force",
+                    "scale",
                 ],
             ) {
                 return e.envelope();
@@ -995,6 +997,19 @@ pub async fn call(name: &str, args: &Value, browser: &Browser) -> Value {
             let freeze = args.get("freeze").and_then(|v| v.as_bool()).unwrap_or(false);
             let wait_for_stable = args.get("waitForStable").and_then(|v| v.as_u64());
             let force = args.get("force").and_then(|v| v.as_bool()).unwrap_or(false);
+            let scale = match args.get("scale") {
+                None => 1.0,
+                Some(v) => match v.as_f64() {
+                    Some(s) if (0.1..=1.0).contains(&s) => s,
+                    _ => {
+                        return ToolErr::typed(
+                            "screenshot: 'scale' must be a number 0.1-1".to_string(),
+                            json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "screenshot", "arg": "scale"}),
+                        )
+                        .envelope()
+                    }
+                },
+            };
             let full = args
                 .get("fullPage")
                 .and_then(|v| v.as_bool())
@@ -1100,6 +1115,7 @@ pub async fn call(name: &str, args: &Value, browser: &Browser) -> Value {
                 freeze,
                 wait_for_stable,
                 force,
+                scale,
             )
             .await
         }
@@ -4007,6 +4023,7 @@ pub(crate) async fn tool_screenshot(
     freeze: bool,
     wait_for_stable: Option<u64>,
     force: bool,
+    scale: f64,
 ) -> Result<Value, ToolErr> {
     match crate::browser::backend_caps() {
         Ok(crate::browser::BackendCaps::DomOnly) => {
@@ -4048,6 +4065,7 @@ pub(crate) async fn tool_screenshot(
         clip,
         format,
         quality,
+        scale,
     };
     let captured = match wait_for_stable {
         None => Box::pin(capture_stable(browser, &opts)).await,

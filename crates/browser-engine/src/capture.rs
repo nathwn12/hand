@@ -454,6 +454,8 @@ pub struct Options {
     pub format: Format,
     /// 0-100, only for the encodings that take one (`Format::takes_quality`).
     pub quality: Option<u8>,
+    /// CDP clip scale, 0.1..=1. 1 keeps the historic pixel dimensions.
+    pub scale: f64,
 }
 
 impl Default for Options {
@@ -466,6 +468,7 @@ impl Default for Options {
             clip: None,
             format: Format::Png,
             quality: None,
+            scale: 1.0,
         }
     }
 }
@@ -708,7 +711,7 @@ fn shot_params(opts: &Options) -> Value {
     if let Some(c) = opts.clip {
         p.insert(
             "clip".to_string(),
-            json!({"x": c.x, "y": c.y, "width": c.width, "height": c.height, "scale": 1}),
+            json!({"x": c.x, "y": c.y, "width": c.width, "height": c.height, "scale": opts.scale}),
         );
         p.insert("captureBeyondViewport".to_string(), json!(true));
     } else if opts.full_page {
@@ -732,7 +735,9 @@ fn decode(r: &Value, deterministic: bool, format: Format) -> Result<Capture, Str
         .decode(data.as_bytes())
         .map_err(|e| format!("screenshot: capture payload is not valid base64: {e}"))?;
     let sum = checksum(&bytes);
-    let (png_width, png_height) = png_size(&bytes).unwrap_or((0, 0));
+    // Real decoded pixel dimensions for every encoding, read from the bytes
+    // themselves (a scale override changes these without changing the box).
+    let (png_width, png_height) = image_size(&bytes, format).unwrap_or((0, 0));
     Ok(Capture {
         base64: data.to_string(),
         bytes,
@@ -763,6 +768,77 @@ fn png_size(bytes: &[u8]) -> Option<(i64, i64)> {
     let w = u32::from_be_bytes(bytes[16..20].try_into().ok()?) as i64;
     let h = u32::from_be_bytes(bytes[20..24].try_into().ok()?) as i64;
     Some((w, h))
+}
+
+/// JPEG dimensions from the first SOF marker (C0..CF except C4/C8/CC).
+fn jpeg_size(bytes: &[u8]) -> Option<(i64, i64)> {
+    if bytes.len() < 4 || bytes[0] != 0xFF || bytes[1] != 0xD8 {
+        return None;
+    }
+    let mut i = 2usize;
+    while i + 9 < bytes.len() {
+        if bytes[i] != 0xFF {
+            i += 1;
+            continue;
+        }
+        let marker = bytes[i + 1];
+        if marker == 0xD8 || marker == 0x01 || (0xD0..=0xD7).contains(&marker) {
+            i += 2;
+            continue;
+        }
+        if marker == 0xDA {
+            break;
+        }
+        let len = u16::from_be_bytes([bytes[i + 2], bytes[i + 3]]) as usize;
+        if len < 2 || i + 2 + len > bytes.len() {
+            break;
+        }
+        let sof = (0xC0..=0xCF).contains(&marker) && !matches!(marker, 0xC4 | 0xC8 | 0xCC);
+        if sof && len >= 7 {
+            let h = u16::from_be_bytes([bytes[i + 5], bytes[i + 6]]) as i64;
+            let w = u16::from_be_bytes([bytes[i + 7], bytes[i + 8]]) as i64;
+            if w > 0 && h > 0 {
+                return Some((w, h));
+            }
+        }
+        i += 2 + len;
+    }
+    None
+}
+
+/// WebP dimensions from the RIFF header's VP8X/VP8 /VP8L chunk.
+fn webp_size(bytes: &[u8]) -> Option<(i64, i64)> {
+    if bytes.len() < 16 || &bytes[..4] != b"RIFF" || &bytes[8..12] != b"WEBP" {
+        return None;
+    }
+    match &bytes[12..16] {
+        b"VP8X" if bytes.len() >= 30 => {
+            let w = 1 + bytes[24] as i64 + (bytes[25] as i64) * 256 + (bytes[26] as i64) * 65536;
+            let h = 1 + bytes[27] as i64 + (bytes[28] as i64) * 256 + (bytes[29] as i64) * 65536;
+            Some((w, h))
+        }
+        b"VP8 " if bytes.len() >= 30 => {
+            let w = u16::from_le_bytes([bytes[26], bytes[27]]) as i64 & 0x3fff;
+            let h = u16::from_le_bytes([bytes[28], bytes[29]]) as i64 & 0x3fff;
+            Some((w, h))
+        }
+        b"VP8L" if bytes.len() >= 25 => {
+            let bits = bytes[21] as i64
+                | (bytes[22] as i64) * 256
+                | (bytes[23] as i64) * 65536
+                | (bytes[24] as i64) * 16_777_216;
+            Some(((bits & 0x3fff) + 1, ((bits >> 14) & 0x3fff) + 1))
+        }
+        _ => None,
+    }
+}
+
+fn image_size(bytes: &[u8], format: Format) -> Option<(i64, i64)> {
+    match format {
+        Format::Png => png_size(bytes),
+        Format::Jpeg => jpeg_size(bytes),
+        Format::WebP => webp_size(bytes),
+    }
 }
 
 /// Replay the prior device-metrics override (or clear it when there was
