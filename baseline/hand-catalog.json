@@ -1,5 +1,5 @@
 {
-  "$comment": "Derived baseline for hand. Tools are the pinned legacy catalogues with the documented browser_/desktop_ prefix; no schema, description, annotation or ordering was changed. Regenerate with: node baseline/scripts/build-hand-catalog.mjs",
+  "$comment": "Derived baseline for hand. Tools are the pinned legacy catalogues with the documented browser_/desktop_ prefix; no schema, description, annotation or ordering was changed, except the one 0.2.0 browser_network extension in applyHand020Extensions. Regenerate with: node baseline/scripts/build-hand-catalog.mjs",
   "blockers": [],
   "counts": {
     "browser": 25,
@@ -59,8 +59,8 @@
     "toolCount": 35
   },
   "notes": [
-    "live: 35 tools published by Q:\\PROJECTS\\PERSONAL\\hand\\target\\gap-build\\release\\hand.exe; the floor is 32",
-    "live: beyond the 32-tool floor: browser_context, browser_drag, browser_wheel"
+    "live: 39 tools published by C:\\Users\\nathan\\AppData\\Local\\Temp\\opencode\\hand-b3-target\\debug\\hand.exe; the floor is 32",
+    "live: beyond the 32-tool floor: browser_assert, browser_audit, browser_context, browser_download, browser_drag, browser_form, browser_wheel"
   ],
   "provenance": {
     "generator": "baseline/scripts/build-hand-catalog.mjs",
@@ -877,9 +877,20 @@
             "enum": [
               "get",
               "drain",
-              "clear"
+              "clear",
+              "route",
+              "mock",
+              "abort",
+              "offline",
+              "restore"
             ],
             "type": "string"
+          },
+          "blockedUrls": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "filter": {
             "type": "string"

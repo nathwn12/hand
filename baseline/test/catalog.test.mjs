@@ -6,7 +6,7 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { canonicalHash } from "../scripts/lib/canonical.mjs";
-import { DECLARED_ADDITIONS, SPEC_REQUIRED, compareCatalogs, validateHandCatalog } from "../scripts/lib/catalog.mjs";
+import { applyHand020Extensions, DECLARED_ADDITIONS, SPEC_REQUIRED, compareCatalogs, validateHandCatalog } from "../scripts/lib/catalog.mjs";
 import { buildFromDisk, validateLive } from "../scripts/build-hand-catalog.mjs";
 import { captureCatalog } from "../scripts/capture-mcp-catalog.mjs";
 
@@ -56,7 +56,7 @@ function prefixed() {
     const tool = candidate.tools.find((entry) => entry.name === name);
     tool.description = `${tool.description} Declared rewrite: names the parameters this tree added.`;
   }
-  return candidate;
+  return applyHand020Extensions(candidate);
 }
 
 test("committed catalogues match the pinned canonical hashes", () => {

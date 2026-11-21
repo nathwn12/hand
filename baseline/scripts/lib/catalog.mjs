@@ -191,6 +191,26 @@ export function splitHandName(name) {
   return null;
 }
 
+/**
+ * 0.2.0 deliberate extension of the pinned `browser_network` floor. The five
+ * interception actions are ADDED after the pinned get/drain/clear; `blockedUrls`
+ * is optional. Keeping this policy in the generator means every regeneration
+ * carries it, so the floor is derived and never hand-edited. Human record:
+ * docs/COMPATIBILITY.md item 11.
+ */
+export const HAND_020_NETWORK_ACTIONS = ["route", "mock", "abort", "offline", "restore"];
+
+export function applyHand020Extensions(catalog) {
+  const tool = catalog.tools?.find((entry) => entry.name === "browser_network");
+  const action = tool?.inputSchema?.properties?.action;
+  if (!action || !Array.isArray(action.enum)) return catalog;
+  for (const name of HAND_020_NETWORK_ACTIONS) {
+    if (!action.enum.includes(name)) action.enum.push(name);
+  }
+  tool.inputSchema.properties.blockedUrls = { type: "array", items: { type: "string" } };
+  return catalog;
+}
+
 export function buildHandCatalog({ gladius, puppet, provenance }) {
   const groups = [
     { domain: "browser", source: "gladius", captured: gladius },
@@ -209,9 +229,9 @@ export function buildHandCatalog({ gladius, puppet, provenance }) {
       });
     }
   }
-  return {
+  const catalog = {
     $comment:
-      "Derived baseline for hand. Tools are the pinned legacy catalogues with the documented browser_/desktop_ prefix; no schema, description, annotation or ordering was changed. Regenerate with: node baseline/scripts/build-hand-catalog.mjs",
+      "Derived baseline for hand. Tools are the pinned legacy catalogues with the documented browser_/desktop_ prefix; no schema, description, annotation or ordering was changed, except the one 0.2.0 browser_network extension in applyHand020Extensions. Regenerate with: node baseline/scripts/build-hand-catalog.mjs",
     spec: "docs/SPEC.md: the 32-tool floor is in 'Initial public surface and lifecycle'; tools beyond it are additions, not violations.",
     provenance,
     counts: {
@@ -221,6 +241,7 @@ export function buildHandCatalog({ gladius, puppet, provenance }) {
     },
     tools,
   };
+  return applyHand020Extensions(catalog);
 }
 
 export function validateHandCatalog(catalog) {

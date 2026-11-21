@@ -278,6 +278,15 @@ total.
     - `desktop_do`: 4,027 chars upstream; one line naming `actions`.
     - `desktop_diff`: 1,133 chars upstream; one line naming `base` and `next`.
 
+11. **0.2.0 extends `browser_network` additively.** The published `action` enum
+    gains `route`, `mock`, `abort`, `offline` and `restore` after the pinned
+    `get`, `drain` and `clear`; the optional `blockedUrls` string array applies
+    `Network.setBlockedURLs` to one browser context. The old actions keep their
+    bodies and behavior, so existing callers are unaffected. The extended body
+    is recorded in `baseline/hand-catalog.json`, not in
+    `baseline/declared-additions.json`: a declaration covers a new property, not
+    an added enum value on an existing property.
+
 ## External CDP engines
 
 `GLADIUS_CDP_URL` attaches the browser domain to any CDP endpoint instead of the
