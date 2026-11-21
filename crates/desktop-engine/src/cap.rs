@@ -3,7 +3,7 @@
 use crate::target::{TargetError, TargetLock, TargetSpec};
 use crate::{cand_public, candidates, py_repr_str, py_round_half_even, py_round_n, Cand};
 use serde_json::{Map, Value};
-use windows_sys::Win32::Foundation::HWND;
+use windows_sys::Win32::Foundation::{HWND, POINT};
 use windows_sys::Win32::Graphics::Gdi::{
     BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDIBits,
     SelectObject, BITMAPINFO, BITMAPINFOHEADER, DIB_RGB_COLORS, SRCCOPY,
@@ -392,6 +392,71 @@ pub unsafe fn printwindow_grab(hwnd: HWND, w: i32, h: i32, flags: u32) -> Result
             Err(format!("PrintWindow refused (flags={flags:#x})"))
         }
     })
+}
+
+/// Honest occlusion signal. Sample the window's visible region by asking the
+/// OS which window is at five points inside its rect (`WindowFromPoint` walks
+/// the live z-order), then walk each answer to its root owner. A point that
+/// resolves to the target is uncovered; one that resolves elsewhere is
+/// covered by something on top. All covered means `Full` — the content is
+/// genuinely unreachable through a screen capture.
+///
+/// `DWMWA_CLOAKED` is not used: it reports cloaking (a suspended UWP owner),
+/// not occlusion. `GetDC` + `GetClipBox` was tried first and measured WRONG on
+/// this DWM-composited desktop: it reported `unoccluded` while a verified
+/// topmost opaque window covered the fixture. `WindowFromPoint` reported the
+/// cover correctly, so it is the signal used here. No window is moved,
+/// activated or repainted by the read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Occlusion {
+    Unoccluded,
+    Partial,
+    Full,
+    Unknown,
+}
+
+/// Read the visibility-region occlusion signal for `rect` (screen pixels,
+/// `[l, t, r, b]`) of `hwnd`. `Unknown` when the OS cannot answer any sample,
+/// so a failed read is never reported as a verdict.
+pub fn occlusion_of(hwnd: HWND, rect: [i32; 4]) -> Occlusion {
+    if hwnd.is_null() || rect[2] <= rect[0] || rect[3] <= rect[1] {
+        return Occlusion::Unknown;
+    }
+    const GA_ROOT: u32 = 2;
+    let (l, t, r, b) = (rect[0], rect[1], rect[2], rect[3]);
+    let xs = [l + (r - l) / 4, l + (r - l) / 2, l + 3 * (r - l) / 4];
+    let ys = [t + (b - t) / 4, t + (b - t) / 2, t + 3 * (b - t) / 4];
+    let points = [
+        (xs[1], ys[1]),
+        (xs[0], ys[0]),
+        (xs[2], ys[0]),
+        (xs[0], ys[2]),
+        (xs[2], ys[2]),
+    ];
+    let target_root = unsafe { GetAncestor(hwnd, GA_ROOT) };
+    let mut visible = 0usize;
+    let mut answered = 0usize;
+    for (x, y) in points {
+        unsafe {
+            let at = WindowFromPoint(POINT { x, y });
+            if at.is_null() {
+                continue;
+            }
+            answered += 1;
+            if at == hwnd || GetAncestor(at, GA_ROOT) == target_root {
+                visible += 1;
+            }
+        }
+    }
+    if answered == 0 {
+        Occlusion::Unknown
+    } else if visible == 0 {
+        Occlusion::Full
+    } else if visible == answered {
+        Occlusion::Unoccluded
+    } else {
+        Occlusion::Partial
+    }
 }
 
 pub fn bitblt_grab(l: i32, t: i32, w: i32, h: i32) -> Result<Img, String> {

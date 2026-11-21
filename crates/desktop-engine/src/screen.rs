@@ -664,7 +664,7 @@ pub fn screenshot_window(a: &ShotArgs) -> String {
     cur.insert("y".to_string(), Value::from(cury));
     cmap.insert("cursor".to_string(), Value::from(cur));
     let mut capt = Map::new();
-    capt.insert("backend".to_string(), Value::from(cap.backend));
+    capt.insert("backend".to_string(), Value::from(cap.backend.clone()));
     capt.insert("ms".to_string(), Value::from(py_round_n(cap.ms, 3)));
     capt.insert("rect_source".to_string(), Value::from(cap.rect_source));
     capt.insert(
@@ -678,6 +678,22 @@ pub fn screenshot_window(a: &ShotArgs) -> String {
     );
     capt.insert("detector".to_string(), Value::from(cap.detector));
     capt.insert("blank_check".to_string(), Value::from(cap.blank_check));
+    capt.insert(
+        "occluded".to_string(),
+        Value::from(matches!(
+            cap.occluded,
+            crate::cap::Occlusion::Full | crate::cap::Occlusion::Partial
+        )),
+    );
+    capt.insert(
+        "occlusion".to_string(),
+        Value::from(match cap.occluded {
+            crate::cap::Occlusion::Unoccluded => "unoccluded",
+            crate::cap::Occlusion::Partial => "partial",
+            crate::cap::Occlusion::Full => "full",
+            crate::cap::Occlusion::Unknown => "unknown",
+        }),
+    );
     capt.insert("stale".to_string(), Value::from(cap.stale));
     // A confirmed-stale frame still returns its pixels: verify and diff need
     // an unchanged frame to report `effect: unchanged` / `identical: true`.
@@ -700,6 +716,14 @@ pub fn screenshot_window(a: &ShotArgs) -> String {
         capt.insert("print_flags".to_string(), Value::from(pf));
     }
     cmap.insert("capture".to_string(), Value::from(capt));
+    cmap.insert(
+        "captureMethod".to_string(),
+        Value::from(if cap.backend.starts_with("desktop-crop") {
+            "desktop-crop"
+        } else {
+            "printwindow"
+        }),
+    );
     cmap.insert("formula".to_string(), Value::from(FORMULA));
     let warnings = warnings_of(a.quality, q, &f);
     if !warnings.is_empty() {
@@ -1056,13 +1080,14 @@ pub fn screenshot_desktop(a: &ShotArgs) -> String {
     cur.insert("y".to_string(), Value::from(cury));
     cmap.insert("cursor".to_string(), Value::from(cur));
     let mut capt = Map::new();
-    capt.insert("backend".to_string(), Value::from(backend));
+    capt.insert("backend".to_string(), Value::from(backend.clone()));
     capt.insert("ms".to_string(), Value::from(py_round_n(cap_ms, 3)));
     capt.insert("blank_check".to_string(), Value::from(blank_check));
     if let Some(n) = note {
         capt.insert("note".to_string(), Value::from(n));
     }
     cmap.insert("capture".to_string(), Value::from(capt));
+    cmap.insert("captureMethod".to_string(), Value::from(backend.as_str()));
     for (k, v) in witness.proof(0) {
         cmap.insert(k, v);
     }

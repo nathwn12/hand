@@ -37,6 +37,8 @@ pub struct CapOk {
     pub exe: String,
     pub title: String,
     pub cloaked: i64,
+    /// Visibility-region occlusion measured on this call, not DWM cloaking.
+    pub occluded: crate::cap::Occlusion,
     pub note: Option<String>,
 }
 
@@ -121,6 +123,17 @@ unsafe fn render_frame(hwnd: HWND, ww: i32, wh: i32) -> Result<(Img, u32), Strin
     Err(last_err)
 }
 
+/// The typed code for a capture that produced no pixels. `occluded_unavailable`
+/// is reserved for a window whose content is genuinely unreachable — fully
+/// covered on the visible desktop — and is never emitted for a capture that
+/// worked or for a refusal with another cause.
+pub(crate) fn capture_failure_code(occlusion: crate::cap::Occlusion) -> &'static str {
+    match occlusion {
+        crate::cap::Occlusion::Full => "occluded_unavailable",
+        _ => "capture_unavailable",
+    }
+}
+
 /// # Safety
 /// `hwnd` must be a live window handle; it is passed to the Win32 window APIs as a raw pointer.
 pub unsafe fn capture_window(hwnd: HWND, allow_crop_fallback: bool) -> Result<CapOk, String> {
@@ -166,6 +179,7 @@ unsafe fn capture_window_inner(hwnd: HWND, allow_crop_fallback: bool) -> Result<
         }
     };
     let mut dwm = [dwm_v[0], dwm_v[1], dwm_v[2], dwm_v[3]];
+    let occlusion = crate::cap::occlusion_of(hwnd, dwm);
     let (ww, wh) = (dwm[2] - dwm[0], dwm[3] - dwm[1]);
     if ww <= 0 || wh <= 0 {
         return Err("error: bad_window: zero-size".to_string());
@@ -311,6 +325,7 @@ unsafe fn capture_window_inner(hwnd: HWND, allow_crop_fallback: bool) -> Result<
             exe: exe_of_pid(pid),
             title,
             cloaked: cloak,
+            occluded: occlusion,
             note: Some(match translation_note {
                 Some(n) => format!("{n} {MODE_B_NOTE}"),
                 None => MODE_B_NOTE.to_string(),
@@ -359,21 +374,24 @@ unsafe fn capture_window_inner(hwnd: HWND, allow_crop_fallback: bool) -> Result<
                     exe: exe_of_pid(pid),
                     title,
                     cloaked: cloak,
+                    occluded: occlusion,
                     note: Some(format!(
                         "PrintWindow refused ({last_err}); foreground-only desktop crop to dwm_rect. {MODE_B_NOTE}"
                     )),
                 });
             }
             Err(e) => {
+                let code = capture_failure_code(occlusion);
                 return Err(format!(
-                    "error: capture_unavailable: crop fallback failed: {e}"
+                    "error: {code}: crop fallback failed ({e}); occlusion={occlusion:?}"
                 ));
             }
         }
     }
+    let code = capture_failure_code(occlusion);
     let why = format!("PrintWindow refused ({last_err})");
     Err(format!(
-        "error: capture_unavailable: PrintWindow refused ({why}); refusing an occlusion-prone desktop crop (the window is not foreground, or allow_crop_fallback is false). Capture without activation does not fall back to the foreground. {MODE_B_NOTE}"
+        "error: {code}: PrintWindow refused ({why}); refusing an occlusion-prone desktop crop (the window is not foreground, or allow_crop_fallback is false). Capture without activation does not fall back to the foreground. occlusion={occlusion:?}. {MODE_B_NOTE}"
     ))
 }
 
@@ -680,6 +698,18 @@ pub fn elements_block(hwnd: HWND) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The typed code is earned by a fully covered window only. A partial
+    /// cover, a clear window and an unreadable signal keep the generic code;
+    /// a capture that worked never reaches this decision at all.
+    #[test]
+    fn occluded_unavailable_is_only_for_unreachable_content() {
+        use crate::cap::Occlusion;
+        assert_eq!(capture_failure_code(Occlusion::Full), "occluded_unavailable");
+        assert_eq!(capture_failure_code(Occlusion::Partial), "capture_unavailable");
+        assert_eq!(capture_failure_code(Occlusion::Unoccluded), "capture_unavailable");
+        assert_eq!(capture_failure_code(Occlusion::Unknown), "capture_unavailable");
+    }
 
     /// A full Win32-fallback-style entry, keyed exactly as
     /// `win32_element_list` builds one (`win` + `hwnd` identifiers plus

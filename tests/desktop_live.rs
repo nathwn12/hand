@@ -192,3 +192,308 @@ fn desktop_enumerates_and_inspects_a_background_window_without_stealing() {
     );
     assert!(c["screens"].is_array(), "monitor rects are reported: {c}");
 }
+
+// ---- D5: live occluded capture ----
+
+/// Compile the controlled fixture program with plain rustc, as the other
+/// desktop suites do. GUI subsystem: it shows itself without activation.
+fn build_fixture_app() -> std::path::PathBuf {
+    use std::process::Command;
+    let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("desktop_fixture")
+        .join("fixture_app.rs");
+    let tmp = std::env::temp_dir();
+    let dir = tmp.join(format!(
+        "hand-occluded-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    std::fs::create_dir_all(&dir).expect("temp dir is creatable");
+    let exe = dir.join("hand_fixture.exe");
+    let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string());
+    let out = Command::new(&rustc)
+        .args(["--edition", "2021", "-A", "warnings", "-o"])
+        .arg(&exe)
+        .arg(&src)
+        .output()
+        .expect("rustc runs");
+    assert!(
+        out.status.success(),
+        "fixture build failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    exe
+}
+
+#[repr(C)]
+struct CoverClass {
+    style: u32,
+    wnd_proc: Option<
+        unsafe extern "system" fn(*mut core::ffi::c_void, u32, usize, isize) -> isize,
+    >,
+    cls_extra: i32,
+    wnd_extra: i32,
+    instance: *mut core::ffi::c_void,
+    icon: *mut core::ffi::c_void,
+    cursor: *mut core::ffi::c_void,
+    background: *mut core::ffi::c_void,
+    menu_name: *const u16,
+    class_name: *const u16,
+}
+
+unsafe extern "system" fn cover_proc(
+    hwnd: *mut core::ffi::c_void,
+    msg: u32,
+    w: usize,
+    l: isize,
+) -> isize {
+    DefWindowProcW(hwnd, msg, w, l)
+}
+
+#[link(name = "user32")]
+extern "system" {
+    fn FindWindowW(class: *const u16, title: *const u16) -> *mut core::ffi::c_void;
+    fn RegisterClassW(class: *const CoverClass) -> u16;
+    fn CreateWindowExW(
+        ex: u32,
+        class: *const u16,
+        title: *const u16,
+        style: u32,
+        x: i32,
+        y: i32,
+        w: i32,
+        h: i32,
+        parent: *mut core::ffi::c_void,
+        menu: *mut core::ffi::c_void,
+        instance: *mut core::ffi::c_void,
+        param: *const core::ffi::c_void,
+    ) -> *mut core::ffi::c_void;
+    fn ShowWindow(hwnd: *mut core::ffi::c_void, cmd: i32) -> i32;
+    fn SetWindowPos(
+        hwnd: *mut core::ffi::c_void,
+        after: *mut core::ffi::c_void,
+        x: i32,
+        y: i32,
+        cx: i32,
+        cy: i32,
+        flags: u32,
+    ) -> i32;
+    fn PostMessageW(hwnd: *mut core::ffi::c_void, msg: u32, w: usize, l: isize) -> i32;
+    fn UpdateWindow(hwnd: *mut core::ffi::c_void) -> i32;
+    fn WindowFromPoint(pt: CursorPoint) -> *mut core::ffi::c_void;
+    fn DefWindowProcW(
+        hwnd: *mut core::ffi::c_void,
+        msg: u32,
+        w: usize,
+        l: isize,
+    ) -> isize;
+}
+
+#[link(name = "gdi32")]
+extern "system" {
+    fn CreateSolidBrush(color: u32) -> *mut core::ffi::c_void;
+    fn DeleteObject(obj: *mut core::ffi::c_void) -> i32;
+}
+
+fn screenshot(hwnd: i64) -> serde_json::Value {
+    desktop_engine::call_tool(
+        json!(1),
+        "1",
+        json!({
+            "name": "screenshot",
+            "arguments": {
+                "target": {"hwnd": hwnd},
+                "fmt": "png",
+                "max_px": null
+            }
+        }),
+    )
+    .expect("screenshot answered")
+}
+
+fn result(frame: &serde_json::Value) -> &serde_json::Value {
+    &frame["result"]
+}
+
+fn image_data(frame: &serde_json::Value) -> String {
+    frame["result"]["content"][0]["data"]
+        .as_str()
+        .expect("image data block")
+        .to_string()
+}
+
+/// The controlled fixture app on the OWNER desktop, with its window handle.
+/// Drop closes it; nothing here moves the pointer or the foreground.
+struct LiveFixture {
+    child: std::process::Child,
+    dir: std::path::PathBuf,
+    hwnd: i64,
+}
+
+impl LiveFixture {
+    fn launch() -> Self {
+        let exe = build_fixture_app();
+        let dir = exe.parent().expect("fixture dir").to_path_buf();
+        let journal = dir.join("journal.txt");
+        let child = std::process::Command::new(&exe)
+            .arg(&journal)
+            .spawn()
+            .expect("fixture app launches on the owner desktop");
+        let class = "HandDesktopFixture\0".encode_utf16().collect::<Vec<_>>();
+        let mut found = std::ptr::null_mut();
+        for _ in 0..100 {
+            found = unsafe { FindWindowW(class.as_ptr(), std::ptr::null()) };
+            if !found.is_null() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        assert!(!found.is_null(), "fixture app window appeared");
+        Self {
+            child,
+            dir,
+            hwnd: found as i64,
+        }
+    }
+}
+
+impl Drop for LiveFixture {
+    fn drop(&mut self) {
+        unsafe {
+            PostMessageW(self.hwnd as *mut core::ffi::c_void, 0x0010, 0, 0); // WM_CLOSE
+        }
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+        let _ = std::fs::remove_dir_all(&self.dir);
+    }
+}
+
+/// Runtime red line: the capture result names the method that produced the
+/// pixels. On the pre-fix binary `captureMethod` is absent.
+#[test]
+fn screenshot_reports_capture_method() {
+    let f = LiveFixture::launch();
+    let frame = screenshot(f.hwnd);
+    assert_eq!(
+        result(&frame)["isError"], json!(false),
+        "fixture capture failed: {}",
+        text_of(&frame)
+    );
+    let sc = &result(&frame)["structuredContent"];
+    assert_eq!(
+        sc["captureMethod"].as_str(),
+        Some("printwindow"),
+        "a window capture must name PrintWindow as its method: {sc}"
+    );
+}
+
+/// D5 live proof. The controlled fixture app is covered by an opaque window
+/// of ours; PrintWindow still returns the fixture's OWN pixels (the baseline
+/// and occluded images are byte-identical), and the no-steal evidence reports
+/// foregroundUnchanged. A BitBlt/DXGI screen crop would return the cover.
+#[test]
+fn occluded_live_window_captures_with_foreground_unchanged() {
+    let f = LiveFixture::launch();
+    let fg_before = foreground_now();
+    let fixture = f.hwnd as *mut core::ffi::c_void;
+
+    // HWND_TOP + SWP_NOACTIVATE: place the fixture on top without stealing.
+    const SWP_NOACTIVATE: u32 = 0x0010;
+    unsafe {
+        SetWindowPos(fixture, std::ptr::null_mut(), 200, 200, 420, 320, SWP_NOACTIVATE);
+    }
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    let hwnd = f.hwnd;
+    let baseline = screenshot(hwnd);
+    assert_eq!(result(&baseline)["isError"], json!(false), "baseline capture: {}", text_of(&baseline));
+    let baseline_img = image_data(&baseline);
+
+    // An opaque cover, larger than the fixture, on top with no activation.
+    let cover_class = "HandOcclusionCover\0".encode_utf16().collect::<Vec<_>>();
+    let brush = unsafe { CreateSolidBrush(0x0028_28_28) };
+    let mut wc: CoverClass = unsafe { std::mem::zeroed() };
+    wc.wnd_proc = Some(cover_proc);
+    wc.background = brush;
+    wc.class_name = cover_class.as_ptr();
+    assert_ne!(unsafe { RegisterClassW(&wc) }, 0, "cover class registered");
+    let cover = unsafe {
+        CreateWindowExW(
+            0,
+            cover_class.as_ptr(),
+            std::ptr::null(),
+            0x8000_0000 | 0x1000_0000, // WS_POPUP | WS_VISIBLE
+            195,
+            195,
+            440,
+            340,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null(),
+        )
+    };
+    assert!(!cover.is_null(), "cover window created");
+    unsafe {
+        ShowWindow(cover, 4); // SW_SHOWNOACTIVATE
+        // HWND_TOPMOST (-1) and a synchronous paint: the test thread has no
+        // message pump, so UpdateWindow is what actually puts pixels up.
+        SetWindowPos(
+            cover,
+            (-1isize) as *mut core::ffi::c_void,
+            195,
+            195,
+            440,
+            340,
+            SWP_NOACTIVATE,
+        );
+        UpdateWindow(cover);
+    }
+    std::thread::sleep(std::time::Duration::from_millis(250));
+    let at_centre = unsafe {
+        WindowFromPoint(CursorPoint {
+            x: 400,
+            y: 360,
+        })
+    };
+    assert_ne!(
+        at_centre, fixture,
+        "the cover must really be on top of the fixture at the sample point"
+    );
+
+    let occluded = screenshot(hwnd);
+    assert_eq!(result(&occluded)["isError"], json!(false), "occluded capture: {}", text_of(&occluded));
+    let sc = &result(&occluded)["structuredContent"];
+    assert_eq!(
+        sc["captureMethod"].as_str(),
+        Some("printwindow"),
+        "an occluded window must still be captured through PrintWindow: {sc}"
+    );
+    assert_eq!(
+        sc["foregroundUnchanged"].as_bool(),
+        Some(true),
+        "capture must not change the foreground: {sc}"
+    );
+    assert_eq!(
+        image_data(&occluded),
+        baseline_img,
+        "the occluded capture must return the fixture's own pixels, byte for byte"
+    );
+    assert_eq!(
+        sc["capture"]["occluded"].as_bool(),
+        Some(true),
+        "the visibility-region signal must report the fixture as covered: {sc}"
+    );
+
+    unsafe {
+        DeleteObject(brush);
+    }
+    assert_eq!(
+        foreground_now(),
+        fg_before,
+        "the test itself must not move the foreground"
+    );
+}
