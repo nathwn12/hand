@@ -29,7 +29,8 @@ jobs:
         shell: pwsh
         run: |
           $v = (Get-Content npm/package.json -Raw | ConvertFrom-Json).version
-          if (git tag --list "v$v") { Write-Host "tag v$v already exists"; exit 0 }
+          $remote = git ls-remote --tags origin "refs/tags/v$v"
+          if ($remote) { Write-Host "tag v$v already exists"; exit 0 }
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag "v$v"
