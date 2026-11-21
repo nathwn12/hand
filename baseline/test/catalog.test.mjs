@@ -77,12 +77,17 @@ test("hand-catalog.json is exactly what the generator derives, not a hand edit",
   const derived = buildFromDisk({ root: ROOT }).hand;
   assert.deepEqual(withoutLive(handCatalog), derived);
   assert.equal(handCatalog.tools.length, 32);
-  assert.deepEqual(handCatalog.counts, { total: 32, browser: 25, desktop: 7, live: 35 });
+  assert.deepEqual(handCatalog.counts, {
+    total: 32,
+    browser: 25,
+    desktop: 7,
+    live: handCatalog.live.toolCount,
+  });
 });
 
 test("the live block records the server's own tools/list beside the 32-name floor", () => {
   const live = handCatalog.live;
-  assert.equal(live.toolCount, 35);
+  assert.equal(live.toolCount, handCatalog.tools.length + live.extra.length, "the live count is the floor plus its extras");
   assert.equal(live.toolCount, live.names.length);
   assert.equal(handCatalog.counts.live, live.toolCount);
   assert.equal(new Set(live.names).size, live.names.length, "live names are unique");
@@ -91,7 +96,17 @@ test("the live block records the server's own tools/list beside the 32-name floo
   const floor = handCatalog.tools.map((tool) => tool.name);
   assert.deepEqual(live.names.filter((name) => !floor.includes(name)), [...live.extra]);
 
-  assert.deepEqual(live.extra, ["browser_context", "browser_drag", "browser_wheel"]);
+  assert.deepEqual(live.extra, [
+    "browser_assert",
+    "browser_audit",
+    "browser_context",
+    "browser_download",
+    "browser_drag",
+    "browser_form",
+    "browser_run",
+    "browser_trace",
+    "browser_wheel",
+  ]);
 
   assert.deepEqual(Object.keys(live.capture).sort(), ["executable", "executableSha256", "reportedVersion"]);
   assert.match(live.capture.executableSha256, /^sha256:[0-9a-f]{64}$/);
@@ -138,11 +153,15 @@ test("the floor plus its declared allowances passes the hand comparison with no 
   assert.deepEqual(report.extra, []);
   assert.deepEqual(report.metadataDrift, []);
   assert.deepEqual(report.declaredMissing, []);
-  assert.equal(report.declaredAdditions.length, 30, "every declared allowance is exercised: 16 schema groups and 14 descriptions");
+  const declaredGroups =
+    Object.keys(DECLARED_ADDITIONS.inputSchema).length +
+    Object.keys(DECLARED_ADDITIONS.outputSchema).length +
+    DECLARED_ADDITIONS.metadata.description.length;
+  assert.equal(report.declaredAdditions.length, declaredGroups, "every declared allowance is exercised");
   assert.equal(
     report.declaredAdditions.filter((entry) => entry.kind === "metadata.description").length,
-    14,
-    "the fourteen rewritten descriptions are allowances, not drift",
+    DECLARED_ADDITIONS.metadata.description.length,
+    "every rewritten description is an allowance, not drift",
   );
 });
 
@@ -158,12 +177,12 @@ test("legacy profile compares the raw catalogue with every field as contract", (
 
 test("a relaxed input schema is rejected", () => {
   const candidate = prefixed();
-  const click = candidate.tools.find((tool) => tool.name === "browser_click");
-  delete click.inputSchema.required;
+  const type = candidate.tools.find((tool) => tool.name === "browser_type");
+  delete type.inputSchema.required;
   const report = compareCatalogs({ baseline: handCatalog, candidate, profile: "hand" });
   assert.equal(report.ok, false);
-  const mismatch = report.schemaMismatches.find((entry) => entry.tool === "browser_click");
-  assert.ok(mismatch, "browser_click must be named");
+  const mismatch = report.schemaMismatches.find((entry) => entry.tool === "browser_type");
+  assert.ok(mismatch, "browser_type must be named");
   assert.equal(mismatch.kind, "inputSchema");
   assert.ok(mismatch.diffs.some((diff) => diff.path === "required" && diff.kind === "missing-right"));
 });

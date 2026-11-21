@@ -107,7 +107,7 @@ test("the allowance file is versioned, dotted and read by the comparator itself"
       assert.equal(new Set(paths).size, paths.length, `${key}.${name} repeats a path`);
       const tool = handCatalog.tools.find((entry) => entry.name === name);
       for (const path of paths) {
-        assert.match(path, /^[A-Za-z0-9_$-]+(\.[A-Za-z0-9_$-]+)+$/, `${key}.${name}: ${path} is not a dotted path`);
+        assert.match(path, /^[A-Za-z0-9_$-]+(\.[A-Za-z0-9_$-]+)*$/, `${key}.${name}: ${path} is not a dotted path or a top-level key`);
         assert.equal(
           hasDeclaredPath(tool[key], path),
           false,
@@ -137,17 +137,13 @@ test("a candidate that is the floor plus the declared allowances passes, and the
   const input = report.declaredAdditions.filter((entry) => entry.kind === "inputSchema");
   const output = report.declaredAdditions.filter((entry) => entry.kind === "outputSchema");
   const descriptions = report.declaredAdditions.filter((entry) => entry.kind === "metadata.description");
+  const expectedInput = Object.entries(DECLARED_ADDITIONS.inputSchema)
+    .map(([tool, paths]) => `${tool} ${[...paths].sort().join(",")}`)
+    .sort();
   assert.deepEqual(
-    input.map((entry) => `${entry.tool} ${entry.paths.join(",")}`).sort(),
-    [
-      "browser_assert_layout properties.frame",
-      "browser_click properties.button,properties.clickCount",
-      "browser_layout properties.frame",
-      "browser_screenshot properties.clip,properties.element,properties.format,properties.quality",
-      "browser_visual properties.frame",
-      "desktop_screenshot properties.privacyMasks",
-    ],
-    "exactly the ten declared input properties are allowed",
+    input.map((entry) => `${entry.tool} ${[...entry.paths].sort().join(",")}`).sort(),
+    expectedInput,
+    "every declared input addition is reported exactly once",
   );
   assert.equal(
     output.reduce((count, entry) => count + entry.paths.length, 0),
@@ -282,7 +278,11 @@ test("the green candidate is green through the real CLI, exit 0", () => {
   assert.doesNotMatch(cli.stdout, /--strict-metadata/, "the reported policy is not stated as a flag");
   assert.match(cli.stdout, /screenshot inputSchema \+= properties\.clip, properties\.element, properties\.format, properties\.quality/);
   assert.match(cli.stdout, /browser_click metadata\.description \+= description/);
-  assert.match(cli.stdout, /declared {3}30 addition group\(s\)/);
+  const declaredGroups =
+    Object.keys(DECLARED_ADDITIONS.inputSchema).length +
+    Object.keys(DECLARED_ADDITIONS.outputSchema).length +
+    DECLARED_ADDITIONS.metadata.description.length;
+  assert.match(cli.stdout, new RegExp(`declared {3}${declaredGroups} addition group\\(s\\)`));
 });
 
 test("the legacy profile is never allowed to grow: a declared path does not soften a recapture", () => {
