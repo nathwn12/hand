@@ -5,12 +5,6 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.1] - 2026-11-20
-
-### Added
-
-- Initial public release: 38 tools over the pinned, credited Gladius browser engine and Puppet desktop engine. Quiet by default; typed errors; a compact published catalog (instructions 1,301 B to 725 B, `tools/list` 74,054 B to 61,560 B).
-
 ## [0.3.0] - 2026-11-22
 
 ### Added
@@ -21,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `initialize.instructions` carries a generated parameter line per tool: required keys first, then optional keys, built from the same prefixed catalog the server publishes (2772 bytes at 41 tools).
 - Owned Chromium launches pin 1440x900 (window flag plus device-metrics override); an attached engine keeps its owner's viewport. Navigate, snapshot and screenshot echo the live `{width,height}`.
 - Screenshot `freeze` pauses running animations and videos, injects a pause style and restores them; `motion` names residual sources, `paused` names what was acted on. `waitForStable` polls checksums and refuses an unsettled page unless `force` accepts the last frame with an `unfrozen` verdict.
-- Screenshot `scale` (0.1..1) scales the CDP clip; `size` is now read from jpeg SOF and webp RIFF chunks as well as png IHDR. Measured on the 320x200 noise fixture: jpeg q80 40392 bytes, png 89983 bytes; scale 0.5 reported 160x100.
+- Screenshot `scale` (0.1..1) scales the CDP clip; `size` is read from png IHDR and jpeg SOF; webp RIFF parsing is implemented but not live-measured. Measured on the 320x200 noise fixture: jpeg q80 40392 bytes, png 89983 bytes; scale 0.5 reported 160x100.
 
 ### Changed
 
@@ -55,3 +49,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The server instructions omitted `audit` and `trace`.
 - The `ERR_ABORTED` startup race is retried in every test binary's first navigation, not only the lane-owned ones.
 - Two dead counter increments in the desktop burst path and a deprecated atomic rename are cleared; the release build compiles warning-free.
+
+## [0.1.1] - 2026-11-20
+
+### Added
+
+- Initial public release: 38 tools over the pinned, credited Gladius browser engine and Puppet desktop engine. Quiet by default; typed errors; a compact published catalog (instructions 1,301 B to 725 B, `tools/list` 74,054 B to 61,560 B).

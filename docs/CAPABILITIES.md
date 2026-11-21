@@ -26,7 +26,7 @@ The smaller `chrome-headless-shell` is an opt-in fallback selected with `GLADIUS
 | Browser backend identity and availability | `initialize_identifies_version_platform_and_both_engines`: `gladius` pin, `puppet` pin, platform, counts, instructions |
 | Live headless browser inspect → act → verify | `tests/browser_live.rs`: loopback fixture; navigate, AX snapshot, click by `@eN`, DOM effect proven by evaluate, type into a labelled field and read back |
 | Deterministic browser screenshot | same test: `deterministic:true`, PNG > 1000 bytes, checksum present |
-| 0.3.0 field bar on the live MCP route | `tests/browser_live.rs`: `selector` alias click and typed `ambiguous_target` on both keys; `void 0` returns `value:null` with `void:true` while `null` has no flag; owned launch reports 1440x900 in evaluate/navigate/snapshot/screenshot; CSS-animation page names `spin` in `motion`, `freeze` empties residual motion and names it in `paused`, `waitForStable` refuses an unsettled page and `force` accepts the last frame; jpeg/webp carry `size`, scale 0.5 halves it, jpeg q80 40392 B vs png 89983 B on the noise fixture; `browser_run` returns three step verdicts and honours continueOnError |
+| 0.3.0 field bar on the live MCP route | `tests/browser_live.rs`: `selector` alias click and typed `ambiguous_target` on both keys; `void 0` returns `value:null` with `void:true` while `null` has no flag; owned launch reports 1440x900 in evaluate/navigate/snapshot/screenshot; CSS-animation page names `spin` in `motion`, `freeze` empties residual motion and names it in `paused`, `waitForStable` refuses an unsettled page and `force` accepts the last frame; jpeg and png carry `size` (webp parsing implemented, not live-measured), scale 0.5 halves it, jpeg q80 40392 B vs png 89983 B on the noise fixture; `browser_run` returns three step verdicts and honours continueOnError |
 | Navigation invalidates refs; stale ref refused | same test: old ref after navigation returns typed `stale_ref` (prose names staleness), engine stays healthy |
 | Pointer completeness: right/middle click, double click, wheel with read-back, drag | `tests/pointer_frames.rs`: right click raises the page's own `contextmenu` and the menu appears as `menu`/`menuitem` nodes in the next snapshot; `clickCount:2` raises exactly one `dblclick`; a 400 px wheel scrolls (`scrollY` 400) and the reply reports the measured offset, `moved:false` over a page that cannot scroll; a drag reorders the DOM with `isTrusted:true` pointer events (no synthetic DragEvent) and dispatches one positioning move, press, the moves and the release |
 | Element and clip screenshot, format passthrough | same test: `element` captures the element's border box (PNG IHDR width equals `browser_layout`'s box width), two `deterministic:true` captures share a checksum, `jpeg`/`webp` with `quality` answer their own `mimeType`, `png` + `quality` is refused by name, an unknown ref is typed `stale_ref` |
@@ -192,3 +192,15 @@ existing target takes precedence over the hidden-launch request.
   hand adds only the prefix and the modern `resultType` marker.
 - The engine's `visual` tool keeps its own strict/tolerance behavior; hand did
   not add or change it and this slice did not exercise it.
+
+### Known limits
+
+- WebP screenshot `size` parsing is implemented but not live-measured; JPEG and
+  PNG are.
+- The 500 KB target for a 2560-wide JPEG q80 shot is page-dependent. On the
+  seeded-noise fixture, JPEG q80 is 40,392 B against PNG 89,983 B.
+- The desktop test suite serializes its live tests inside one binary. An
+  external pointer or foreground actor can still flake a no-steal assertion;
+  the attribution engine, not a raw flag, remains the gate.
+- The browser-only visual-QA lane that drove this release did not exercise the
+  desktop tools. They remain Unverified by that lane, not faulty.

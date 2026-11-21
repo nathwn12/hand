@@ -95,7 +95,7 @@ await desktop_do({ hwnd: windows[0].hwnd, action: "invoke", name: "Install" });
 
 hand serves 41 tools: 34 browser tools (25 mapped one-to-one from Gladius plus `browser_context`, `browser_wheel`, `browser_drag`, `browser_form`, `browser_download`, `browser_assert`, `browser_audit`, `browser_trace`, `browser_run`) and Puppet's 7 desktop tools. Names are prefixed, bodies are the pins'. A client migrating from either engine has a one-to-one mapping. Intentional differences, fourteen description rewrites included, are declared in `baseline/declared-additions.json`; `tests/discovery.rs` asserts them against the committed floor and `baseline/scripts/compare-catalog.mjs` recaptures it independently.
 
-0.3.0 adds `selector` as an alias for `element`, a `void` flag on `browser_evaluate`, a generated parameter index in `initialize.instructions`, a 1440x900 owned-launch viewport echoed by navigate/snapshot/screenshot, screenshot `freeze`, `waitForStable`, `force` and `scale` with motion evidence and jpeg/webp `size`, and the `browser_run` ordered batch. `format`, `quality` and `fullPage` already existed in 0.2.0; discovery was the gap.
+0.3.0 adds `selector` as an alias for `element`, a `void` flag on `browser_evaluate`, a generated parameter index in `initialize.instructions`, a 1440x900 owned-launch viewport echoed by navigate/snapshot/screenshot, screenshot `freeze`, `waitForStable`, `force` and `scale` with motion evidence and jpeg/webp `size`, and the `browser_run` ordered batch. `format`, `quality` and `fullPage` already existed in 0.2.0; discovery was the gap. Known limits are named in `docs/CAPABILITIES.md`.
 
 Engines: Gladius 0.8.0 (`59c6d77`) and Puppet 8.0.0 (`0f790be`), MIT, credited in `THIRD-PARTY-NOTICES.md`.
 

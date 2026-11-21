@@ -14,7 +14,7 @@
 npx hand-mcp
 ```
 
-The binary ships inside the package: about 6.4 MB packed, 19.4 MB unpacked. No install script downloads anything and no compiler is needed. Pin an exact version (`npx hand-mcp@<version>`) when you need reproducibility.
+The binary ships inside the package: about 6.4 MB packed, 18.9 MB unpacked (18.0 MiB). No install script downloads anything and no compiler is needed. Pin an exact version (`npx hand-mcp@<version>`) when you need reproducibility.
 
 A global install is not supported on purpose: the server belongs in the client's own process tree, not on `PATH`. `npx hand-mcp` needs none.
 
@@ -68,6 +68,13 @@ The first browser call provisions the pinned `chrome-headless-shell` into a per-
 - Windows 10 or 11, x64. The manifest declares `os: win32` and `cpu: x64`.
 - Node 22.14.0 or newer, to run the launcher.
 - An MCP client that speaks stdio.
+
+## Known limits
+
+- WebP screenshot `size` parsing ships but is not live-measured; JPEG and PNG are.
+- The 500 KB target for a 2560-wide JPEG q80 shot is page-dependent: on the seeded-noise fixture, JPEG q80 is 40,392 B against PNG 89,983 B.
+- The desktop test suite serializes its live tests inside one binary; an external pointer or foreground actor can still flake a no-steal assertion.
+- The browser-only visual-QA lane that drove this release did not exercise the desktop tools; they remain Unverified by that lane, not faulty.
 
 ## Status
 
