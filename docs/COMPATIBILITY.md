@@ -262,12 +262,15 @@ total.
      jpeg/webp encoding and its quality). A call that passes none of them is the
      historic call. `browser_click`, `browser_type`, `browser_select`,
      `browser_hover`, `browser_upload` and `browser_screenshot` also add
-     `properties.selector` and an `anyOf` naming `element` and `selector`:
-     `selector` is an alias for the canonical `element` target, so a client that
-     prunes undeclared keys can still name a target. `element` stays in each
-     schema and in each `required` list, so an old call is unchanged; the
-     dispatcher refuses a call that passes both keys with a typed
-     `invalid_args`/`ambiguous_target` error.
+     `properties.selector`: `selector` is an alias for the canonical `element`
+     target, so a client that prunes undeclared keys can still name a target.
+     `element` stays in each schema. The five action tools add an `anyOf`
+     naming `element` and `selector` and drop `element` from `required`, so a
+     selector-only call is valid for a validating client while an old `element`
+     call stays valid; `browser_type` still requires `text` and `browser_upload`
+     still requires `paths`. `browser_screenshot` never required a target and
+     has no `anyOf`. The dispatcher refuses a call that passes both keys with a
+     typed `invalid_args`/`ambiguous_target` error.
    - `metadata.description`: `browser_click`, `browser_type`, `browser_upload`,
      `browser_hover`, `browser_select`, `browser_snapshot` and
      `browser_screenshot` have a rewritten description, because each one now

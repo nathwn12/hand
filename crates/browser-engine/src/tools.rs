@@ -88,7 +88,7 @@ pub fn list() -> Value {
          "annotations": {"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}},
         {"name": "click", "title": "Click",
          "description": "Click an element by CSS selector (first match) or AX ref (@eN from snapshot; exact). AX selector forms are also accepted and are uniqueness-mandatory: role=<role>, role=<role>[name=\"<accessible name>\"], name=\"<accessible name>\", text=\"<text>\" (exact visible text inside one element; when nested elements contain exactly that text the innermost one is the match) and label=\"<label text>\" (form control by its associated <label>). They are resolved fresh at action time on the accessibility tree browser_snapshot renders for the page itself (like a CSS selector, so a re-rendered element keeps answering while a snapshot-bound @eN would go stale; iframe content is not part of that tree - pass frame= to search inside a frame); names and text are whitespace-normalised and compared case-insensitively, and text= reads visible text while name=/label= read the accessible name. Zero matches is invalid_target/not_found naming the selector; more than one is invalid_target/ambiguous listing every candidate as @eN plus role and name - the first match is never taken. Every reply adds resolved {selector, ref, role, name}, where ref is that element's @eN in the current snapshot (null when the snapshot holds none). resolved.name is the name browser_snapshot prints for it (capped at 80 characters, or the fallback name of an unlabeled control), so a name copied out of a snapshot resolves. resolved.name is the name browser_snapshot prints for it (capped at 80 characters, or the fallback name of an unlabeled control). role= takes an ARIA role string such as button, generic, StaticText or Iframe (capital I), never a tag name; quote values with double quotes and escape an inner double quote as \". The click is exactly two CDP events at the element's exact float box centre: mousePressed then mouseReleased - no mouseMoved, no hover, no movement loop, no interpolation (with frame= pointing at a cross-process OOPIF, ONE positioning mouseMoved precedes the press, because the browser routes pointer input to a child renderer only after a move at that position; that is routing, not hover). hoverFirst:true sends ONE mouseMoved at that same point first, for pages whose handlers read hover state; the default is false. frame=<CDP frameId> from targets scopes to that iframe (same-process CSS selectors; a frame-scoped AX selector is resolved inside that frame's own accessibility tree and never against the page; a ref is actionable only in the frame whose own snapshot minted it (main-frame refs stay main-frame); an out-of-process frame with no mapped session is a typed error, never a main-frame click. button=left (default)|right|middle chooses the pointer button; a right click raises the engine's own contextmenu, and the page's menu (a DOM node it shows) is what the next snapshot reports. clickCount (default 1) is passed to the engine: 2 is a DOUBLE click, so the engine raises dblclick on the second press - no synthetic DOM event, no second-guessing. Existing calls are unchanged: no button and no clickCount is exactly the historic press+release pair with left/1)",
-         "inputSchema": {"type": "object", "properties": {"element": {"type": "string"}, "frame": {"type": "string"}, "hoverFirst": {"type": "boolean"}, "button": {"type": "string", "enum": ["left", "right", "middle"], "default": "left"}, "clickCount": {"type": "integer", "minimum": 1, "maximum": 3, "default": 1}}, "required": ["element"], "additionalProperties": false},
+         "inputSchema": {"type": "object", "properties": {"element": {"type": "string"}, "frame": {"type": "string"}, "hoverFirst": {"type": "boolean"}, "button": {"type": "string", "enum": ["left", "right", "middle"], "default": "left"}, "clickCount": {"type": "integer", "minimum": 1, "maximum": 3, "default": 1}}, "additionalProperties": false},
          "outputSchema": {"type": "object",
             "properties": {"ok": {"type": "boolean"}, "dialog": {"type": "object"}, "note": {"type": "string"}, "actionability": {"type": "object"},
                 "resolved": {"type": "object",
@@ -101,7 +101,7 @@ pub fn list() -> Value {
          "description": "Type text into an element by CSS selector (first match) or AX ref (@eN from snapshot; exact). AX selector forms are also accepted and are uniqueness-mandatory: role=<role>, role=<role>[name=\"<accessible name>\"], name=\"<accessible name>\", text=\"<text>\" (exact visible text inside one element; when nested elements contain exactly that text the innermost one is the match) and label=\"<label text>\" (form control by its associated <label>). They are resolved fresh at action time on the accessibility tree browser_snapshot renders for the page itself (like a CSS selector, so a re-rendered element keeps answering while a snapshot-bound @eN would go stale; iframe content is not part of that tree - pass frame= to search inside a frame); names and text are whitespace-normalised and compared case-insensitively, and text= reads visible text while name=/label= read the accessible name. Zero matches is invalid_target/not_found naming the selector; more than one is invalid_target/ambiguous listing every candidate as @eN plus role and name - the first match is never taken. Every reply adds resolved {selector, ref, role, name}, where ref is that element's @eN in the current snapshot (null when the snapshot holds none). resolved.name is the name browser_snapshot prints for it (capped at 80 characters, or the fallback name of an unlabeled control), so a name copied out of a snapshot resolves. resolved.name is the name browser_snapshot prints for it (capped at 80 characters, or the fallback name of an unlabeled control). role= takes an ARIA role string such as button, generic, StaticText or Iframe (capital I), never a tag name; quote values with double quotes and escape an inner double quote as \". frame=<CDP frameId> from targets scopes to that iframe (same-process CSS selectors; a frame-scoped AX selector is resolved inside that frame's own accessibility tree and never against the page; refs are main-frame only - with frame= use a CSS or AX selector; OOPIF without a mapped target is a typed error, never a main-frame type)",
          "inputSchema": {"type": "object", "properties": {
              "element": {"type": "string"}, "text": {"type": "string"}, "submit": {"type": "boolean"}, "frame": {"type": "string"}},
-             "required": ["element", "text"], "additionalProperties": false},
+             "required": ["text"], "additionalProperties": false},
          "outputSchema": {"type": "object",
             "properties": {"ok": {"type": "boolean"}, "valueLength": {"type": "integer", "minimum": 0}, "note": {"type": "string"}, "actionability": {"type": "object"},
                 "resolved": {"type": "object",
@@ -189,7 +189,7 @@ pub fn list() -> Value {
          "description": "Set files on an <input type=file> by CSS selector (first match) or AX ref (@eN from snapshot; exact). AX selector forms are also accepted and are uniqueness-mandatory: role=<role>, role=<role>[name=\"<accessible name>\"], name=\"<accessible name>\", text=\"<text>\" (exact visible text; the innermost element wins when nested ones contain it) and label=\"<label text>\" (form control by its associated <label>), resolved fresh at action time on the accessibility tree of the page itself (iframe content is not in that tree - pass frame= to search inside a frame) with whitespace-normalised, case-insensitive comparison; zero matches is invalid_target/not_found, more than one is invalid_target/ambiguous with every candidate as @eN plus role and name, and the reply adds resolved {selector, ref, role, name}. resolved.name is the name browser_snapshot prints for it (capped at 80 characters, or the fallback name of an unlabeled control). role= takes an ARIA role string such as button, generic, StaticText or Iframe (capital I), never a tag name; quote values with double quotes and escape an inner double quote as \". paths[] must exist locally. frame=<CDP frameId> from targets scopes to that iframe (same-process CSS selectors; a frame-scoped AX selector is resolved inside that frame's own accessibility tree and never against the page; refs are main-frame only - with frame= use a CSS or AX selector; OOPIF without a mapped target is a typed error, never a main-frame upload)",
          "inputSchema": {"type": "object", "properties": {
              "element": {"type": "string"}, "paths": {"type": "array", "items": {"type": "string"}, "minItems": 1}, "frame": {"type": "string"}},
-             "required": ["element", "paths"], "additionalProperties": false},
+             "required": ["paths"], "additionalProperties": false},
          "outputSchema": {"type": "object",
             "properties": {"ok": {"type": "boolean"}, "files": {"type": "integer"},
                 "resolved": {"type": "object",
@@ -207,7 +207,7 @@ pub fn list() -> Value {
          "annotations": {"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": true}},
         {"name": "hover", "title": "Hover",
          "description": "Hover over an element by CSS selector (first match) or AX ref (@eN from snapshot; exact). AX selector forms are also accepted and are uniqueness-mandatory: role=<role>, role=<role>[name=\"<accessible name>\"], name=\"<accessible name>\", text=\"<text>\" (exact visible text inside one element; when nested elements contain exactly that text the innermost one is the match) and label=\"<label text>\" (form control by its associated <label>), resolved fresh at action time on the accessibility tree of the page itself (iframe content is not in that tree - pass frame= to search inside a frame) with whitespace-normalised, case-insensitive comparison; zero matches is invalid_target/not_found, more than one is invalid_target/ambiguous with every candidate as @eN plus role and name, and the reply adds resolved {selector, ref, role, name}. resolved.name is the name browser_snapshot prints for it (capped at 80 characters, or the fallback name of an unlabeled control). role= takes an ARIA role string such as button, generic, StaticText or Iframe (capital I), never a tag name; quote values with double quotes and escape an inner double quote as \". frame=<CDP frameId> from targets scopes to that iframe (same-process CSS selectors; a frame-scoped AX selector is resolved inside that frame's own accessibility tree and never against the page; refs are main-frame only - with frame= use a CSS or AX selector; OOPIF without a mapped target is a typed error, never a main-frame hover)",
-         "inputSchema": {"type": "object", "properties": {"element": {"type": "string"}, "frame": {"type": "string"}}, "required": ["element"], "additionalProperties": false},
+         "inputSchema": {"type": "object", "properties": {"element": {"type": "string"}, "frame": {"type": "string"}}, "additionalProperties": false},
          "outputSchema": {"type": "object",
             "properties": {"ok": {"type": "boolean"}, "resolved": {"type": "object",
                 "properties": {"selector": {"type": "string"}, "ref": {"type": ["string", "null"]},
@@ -219,7 +219,7 @@ pub fn list() -> Value {
          "description": "Choose a <select> option by value (preferred) or visible text; element is a CSS selector or AX ref (@eN). AX selector forms are also accepted and are uniqueness-mandatory: role=<role>, role=<role>[name=\"<accessible name>\"], name=\"<accessible name>\", text=\"<text>\" (exact visible text; the innermost element wins when nested ones contain it) and label=\"<label text>\", resolved fresh at action time on the accessibility tree of the page itself (iframe content is not in that tree - pass frame= to search inside a frame) with whitespace-normalised, case-insensitive comparison; zero matches is invalid_target/not_found, more than one is invalid_target/ambiguous with every candidate as @eN plus role and name, and the reply adds resolved {selector, ref, role, name}. resolved.name is the name browser_snapshot prints for it (capped at 80 characters, or the fallback name of an unlabeled control). role= takes an ARIA role string such as button, generic, StaticText or Iframe (capital I), never a tag name; quote values with double quotes and escape an inner double quote as \". frame=<CDP frameId> from targets scopes to that iframe (same-process CSS selectors; a frame-scoped AX selector is resolved inside that frame's own accessibility tree and never against the page; refs are main-frame only - with frame= use a CSS or AX selector; OOPIF without a mapped target is a typed error, never a main-frame select)",
          "inputSchema": {"type": "object", "properties": {
              "element": {"type": "string"}, "value": {"type": "string"}, "text": {"type": "string"}, "frame": {"type": "string"}},
-             "required": ["element"], "additionalProperties": false},
+             "additionalProperties": false},
          "outputSchema": {"type": "object",
             "properties": {"ok": {"type": "boolean"}, "actionability": {"type": "object"}, "resolved": {"type": "object",
                 "properties": {"selector": {"type": "string"}, "ref": {"type": ["string", "null"]},
@@ -448,10 +448,10 @@ pub fn list() -> Value {
         "annotations": {"readOnlyHint": false, "destructiveHint": true, "idempotentHint": false, "openWorldHint": true}
     }));
     for tool in listed["tools"].as_array_mut().expect("tools") {
-        let Some(name) = tool.get("name").and_then(|n| n.as_str()) else {
+        let Some(name) = tool.get("name").and_then(|n| n.as_str()).map(str::to_string) else {
             continue;
         };
-        if !matches!(name, "click" | "type" | "select" | "hover" | "upload" | "screenshot") {
+        if !matches!(name.as_str(), "click" | "type" | "select" | "hover" | "upload" | "screenshot") {
             continue;
         }
         let Some(schema) = tool.get_mut("inputSchema").and_then(|s| s.as_object_mut()) else {
@@ -460,10 +460,15 @@ pub fn list() -> Value {
         if let Some(props) = schema.get_mut("properties").and_then(|p| p.as_object_mut()) {
             props.insert("selector".to_string(), json!({"type": "string"}));
         }
-        schema.insert(
-            "anyOf".to_string(),
-            json!([{"required": ["element"]}, {"required": ["selector"]}]),
-        );
+        // Screenshot's element target is optional (no element/clip captures the
+        // whole page), so it must stay free of both required and anyOf. The
+        // five action tools require one of the two target forms.
+        if name != "screenshot" {
+            schema.insert(
+                "anyOf".to_string(),
+                json!([{"required": ["element"]}, {"required": ["selector"]}]),
+            );
+        }
     }
     listed["tools"].as_array_mut().expect("tools").push(json!({
         "name": "form", "title": "Form",
@@ -3395,7 +3400,60 @@ fn unreadable_value(role: &str, ax_value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::unreadable_value;
+    use serde_json::json;
+
+    use super::{list, unreadable_value};
+
+    /// The `selector` alias makes element one of two alternatives. JSON Schema
+    /// ANDs `required` with `anyOf`, so leaving `element` in `required` makes a
+    /// selector-only call invalid for a validating client even though the
+    /// server itself never validates inputSchema. Screenshot's element target
+    /// was always optional, so it must stay free of both `required` and `anyOf`.
+    #[test]
+    fn selector_alias_tools_do_not_require_element() {
+        let tools = list();
+        let by_name = |name: &str| {
+            tools["tools"]
+                .as_array()
+                .expect("tools")
+                .iter()
+                .find(|t| t["name"] == name)
+                .unwrap_or_else(|| panic!("missing tool {name}"))["inputSchema"]
+                .clone()
+        };
+        for (name, other_required) in [
+            ("click", vec![]),
+            ("type", vec!["text"]),
+            ("select", vec![]),
+            ("hover", vec![]),
+            ("upload", vec!["paths"]),
+        ] {
+            let schema = by_name(name);
+            let required: Vec<&str> = schema["required"]
+                .as_array()
+                .map(|a| a.iter().filter_map(|v| v.as_str()).collect())
+                .unwrap_or_default();
+            assert!(
+                !required.contains(&"element"),
+                "{name} must not require element: {schema}"
+            );
+            for key in other_required {
+                assert!(required.contains(&key), "{name} must still require {key}: {schema}");
+            }
+            assert_eq!(
+                schema["anyOf"],
+                json!([{"required": ["element"]}, {"required": ["selector"]}]),
+                "{name} anyOf must name both target forms: {schema}"
+            );
+        }
+        let shot = by_name("screenshot");
+        assert!(shot.get("anyOf").is_none(), "screenshot must have no anyOf: {shot}");
+        assert!(
+            shot.get("required").is_none(),
+            "screenshot must have no required target: {shot}"
+        );
+        assert!(shot["properties"]["selector"].is_object(), "screenshot keeps selector");
+    }
 
     /// The unreadable fallback is the ONE branch where the value comes from
     /// the AX tree instead of the live element, so it cannot consult the

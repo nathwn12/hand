@@ -424,7 +424,6 @@ fn element_tools_publish_selector_alias_in_their_schema() {
         "browser_select",
         "browser_hover",
         "browser_upload",
-        "browser_screenshot",
     ] {
         let schema = &tool(&tools, name)["inputSchema"];
         assert!(
@@ -435,6 +434,11 @@ fn element_tools_publish_selector_alias_in_their_schema() {
             schema["properties"]["element"].is_object(),
             "{name} must keep element canonical: {schema}"
         );
+        let required = schema["required"].as_array().map(Vec::as_slice).unwrap_or(&[]);
+        assert!(
+            !required.iter().any(|k| k == "element"),
+            "{name} must not require element (anyAnd with anyOf would reject selector-only): {schema}"
+        );
         let any = schema["anyOf"]
             .as_array()
             .unwrap_or_else(|| panic!("{name} must require one target via anyOf: {schema}"));
@@ -444,6 +448,13 @@ fn element_tools_publish_selector_alias_in_their_schema() {
             "{name} anyOf must name element and selector: {rendered}"
         );
     }
+    // Screenshot's element target was always optional; it keeps both property
+    // names but has no anyOf and no required target.
+    let shot = &tool(&tools, "browser_screenshot")["inputSchema"];
+    assert!(shot["properties"]["selector"].is_object(), "screenshot selector");
+    assert!(shot["properties"]["element"].is_object(), "screenshot element");
+    assert!(shot.get("anyOf").is_none(), "screenshot has no anyOf: {shot}");
+    assert!(shot.get("required").is_none(), "screenshot has no required target: {shot}");
 }
 
 #[test]
