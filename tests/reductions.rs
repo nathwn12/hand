@@ -1,0 +1,162 @@
+//! Flake reductions for 0.2.0: actionability verdict+delta, capture
+//! stability and failure evidence. One headless browser at a time; every
+//! assertion reads a real page observation and the tool's typed result.
+
+mod common;
+
+use common::{is_error, navigate_with_retry, structured, text_of, Session};
+use serde_json::{json, Value};
+use std::io::{Read, Write};
+use std::net::{TcpListener, TcpStream};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::thread::JoinHandle;
+use std::time::Duration;
+
+static ONE_BROWSER: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn serial() -> std::sync::MutexGuard<'static, ()> {
+    ONE_BROWSER.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// A target that is hidden and disabled at load, becomes visible and enabled
+/// 200 ms later, then moves for 500 ms before it settles. The old action
+/// fires (or refuses) at call time; the fix waits for a stable, enabled box.
+const LATE: &str = r#"<!doctype html><html><head><title>Late</title></head><body>
+<button id="late" disabled style="display:none;position:absolute;top:10px;left:0"
+  onclick="window.clicked=(window.clicked||0)+1">Late</button>
+<button id="never" disabled style="display:none">Never</button>
+<script>
+setTimeout(function () {
+  var b = document.getElementById('late');
+  b.style.display = 'block';
+  b.disabled = false;
+  var start = Date.now();
+  function step() {
+    var t = Date.now() - start;
+    if (t < 500) { b.style.left = (t % 2 < 1 ? 10 : 20) + 'px'; requestAnimationFrame(step); }
+    else { b.style.left = '30px'; window.settled = true; }
+  }
+  requestAnimationFrame(step);
+}, 200);
+</script></body></html>"#;
+
+struct Fixture {
+    base: String,
+    stop: Arc<AtomicBool>,
+    handles: Vec<JoinHandle<()>>,
+}
+
+impl Fixture {
+    fn start() -> Self {
+        let socket = TcpListener::bind("127.0.0.1:0").expect("bind loopback");
+        socket.set_nonblocking(true).expect("nonblocking");
+        let port = socket.local_addr().expect("addr").port();
+        let base = format!("http://127.0.0.1:{port}");
+        let stop = Arc::new(AtomicBool::new(false));
+        let flag = stop.clone();
+        let handles = vec![std::thread::spawn(move || {
+            while !flag.load(Ordering::SeqCst) {
+                match socket.accept() {
+                    Ok((stream, _)) => {
+                        std::thread::spawn(move || {
+                            let _ = serve(stream);
+                        });
+                    }
+                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        std::thread::sleep(Duration::from_millis(5));
+                    }
+                    Err(_) => break,
+                }
+            }
+        })];
+        Fixture { base, stop, handles }
+    }
+}
+
+impl Drop for Fixture {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::SeqCst);
+        for h in self.handles.drain(..) {
+            let _ = h.join();
+        }
+    }
+}
+
+fn serve(mut stream: TcpStream) -> std::io::Result<()> {
+    stream.set_nonblocking(false)?;
+    stream.set_read_timeout(Some(Duration::from_secs(5)))?;
+    let mut buf = [0u8; 4096];
+    let n = stream.read(&mut buf)?;
+    let request = String::from_utf8_lossy(&buf[..n]);
+    let path = request
+        .lines()
+        .next()
+        .and_then(|line| line.split_whitespace().nth(1))
+        .unwrap_or("/")
+        .to_string();
+    let (status, body): (&str, &str) = match path.as_str() {
+        "/late" => ("200 OK", LATE),
+        "/favicon.ico" => ("204 No Content", ""),
+        _ => ("404 Not Found", "missing"),
+    };
+    let response = format!(
+        "HTTP/1.1 {status}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\n\
+         Cache-Control: no-store\r\nConnection: close\r\n\r\n{body}",
+        body.len()
+    );
+    stream.write_all(response.as_bytes())?;
+    stream.flush()
+}
+
+fn evaluate(s: &mut Session, expr: &str) -> Value {
+    let r = s.call("browser_evaluate", json!({"expression": expr}));
+    assert!(!is_error(&r), "evaluate failed: {}", text_of(&r));
+    structured(&r)["value"].clone()
+}
+
+#[test]
+fn r1_click_waits_for_actionable_target_and_reports_delta() {
+    let _g = serial();
+    let fx = Fixture::start();
+    let mut s = Session::spawn();
+    let nav = navigate_with_retry(&mut s, &format!("{}/late", fx.base));
+    assert!(!is_error(&nav), "nav: {}", text_of(&nav));
+
+    let resp = s.call("browser_click", json!({"element": "#late"}));
+    assert!(
+        !is_error(&resp),
+        "late target must land after a bounded wait: {}",
+        text_of(&resp)
+    );
+    let sc = structured(&resp);
+    let a = &sc["actionability"];
+    assert_eq!(a["verdict"], "settled", "delta: {a}");
+    assert_eq!(a["mode"], "probed", "delta: {a}");
+    assert_eq!(a["boundMs"], 1500, "delta: {a}");
+    assert!(a["waitedMs"].as_u64().unwrap_or(0) >= 50, "delta: {a}");
+    assert!(a["polls"].as_u64().unwrap_or(0) >= 2, "delta: {a}");
+    assert_eq!(a["visible"], true, "delta: {a}");
+    assert_eq!(a["enabled"], true, "delta: {a}");
+    assert_eq!(a["stable"], true, "delta: {a}");
+    assert_eq!(evaluate(&mut s, "window.clicked || 0"), json!(1));
+}
+
+#[test]
+fn r1_click_timeout_is_typed_with_delta() {
+    let _g = serial();
+    let fx = Fixture::start();
+    let mut s = Session::spawn();
+    let nav = navigate_with_retry(&mut s, &format!("{}/late", fx.base));
+    assert!(!is_error(&nav), "nav: {}", text_of(&nav));
+
+    let resp = s.call("browser_click", json!({"element": "#never"}));
+    assert!(is_error(&resp), "never-actionable target must fail typed");
+    let sc = structured(&resp);
+    assert_eq!(sc["code"], "timeout", "structured error: {sc}");
+    assert_eq!(sc["actionability"]["verdict"], "timeout", "structured error: {sc}");
+    assert!(
+        sc["actionability"]["waitedMs"].as_u64().unwrap_or(0) >= 1500,
+        "waited to the hard bound: {sc}"
+    );
+}

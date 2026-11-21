@@ -287,6 +287,19 @@ total.
     `baseline/declared-additions.json`: a declaration covers a new property, not
     an added enum value on an existing property.
 
+12. **Actionability verdict+delta on `browser_click`, `browser_type` and
+    `browser_select`.** Before dispatch these tools poll a CSS-selector target
+    for up to 1500 ms at a 50 ms cadence. The wait ends when the target is visible, enabled and its
+    box is unchanged across two consecutive samples. Every success result
+    adds `actionability` — `verdict`, `mode`, `waitedMs`, `polls`, `boundMs`,
+    `visible`, `enabled`, `stable`. AX selectors, `@eN` refs and frame-scoped
+    targets report `mode:"skipped"` because their own paths resolve them at
+    action time. A target still unready at the bound becomes a typed
+    `timeout`/`budget_exceeded` result carrying the same delta, never a silent
+    miss or a stale-element crash. No input schema changed; the new output
+    property is declared under `outputSchema` in
+    `baseline/declared-additions.json`.
+
 ## External CDP engines
 
 `GLADIUS_CDP_URL` attaches the browser domain to any CDP endpoint instead of the

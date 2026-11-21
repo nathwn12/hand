@@ -73,7 +73,7 @@ pub fn list() -> Value {
          "description": "Click an element by CSS selector (first match) or AX ref (@eN from snapshot; exact). AX selector forms are also accepted and are uniqueness-mandatory: role=<role>, role=<role>[name=\"<accessible name>\"], name=\"<accessible name>\", text=\"<text>\" (exact visible text inside one element; when nested elements contain exactly that text the innermost one is the match) and label=\"<label text>\" (form control by its associated <label>). They are resolved fresh at action time on the accessibility tree browser_snapshot renders for the page itself (like a CSS selector, so a re-rendered element keeps answering while a snapshot-bound @eN would go stale; iframe content is not part of that tree - pass frame= to search inside a frame); names and text are whitespace-normalised and compared case-insensitively, and text= reads visible text while name=/label= read the accessible name. Zero matches is invalid_target/not_found naming the selector; more than one is invalid_target/ambiguous listing every candidate as @eN plus role and name - the first match is never taken. Every reply adds resolved {selector, ref, role, name}, where ref is that element's @eN in the current snapshot (null when the snapshot holds none). resolved.name is the name browser_snapshot prints for it (capped at 80 characters, or the fallback name of an unlabeled control), so a name copied out of a snapshot resolves. resolved.name is the name browser_snapshot prints for it (capped at 80 characters, or the fallback name of an unlabeled control). role= takes an ARIA role string such as button, generic, StaticText or Iframe (capital I), never a tag name; quote values with double quotes and escape an inner double quote as \". The click is exactly two CDP events at the element's exact float box centre: mousePressed then mouseReleased - no mouseMoved, no hover, no movement loop, no interpolation (with frame= pointing at a cross-process OOPIF, ONE positioning mouseMoved precedes the press, because the browser routes pointer input to a child renderer only after a move at that position; that is routing, not hover). hoverFirst:true sends ONE mouseMoved at that same point first, for pages whose handlers read hover state; the default is false. frame=<CDP frameId> from targets scopes to that iframe (same-process CSS selectors; a frame-scoped AX selector is resolved inside that frame's own accessibility tree and never against the page; a ref is actionable only in the frame whose own snapshot minted it (main-frame refs stay main-frame); an out-of-process frame with no mapped session is a typed error, never a main-frame click. button=left (default)|right|middle chooses the pointer button; a right click raises the engine's own contextmenu, and the page's menu (a DOM node it shows) is what the next snapshot reports. clickCount (default 1) is passed to the engine: 2 is a DOUBLE click, so the engine raises dblclick on the second press - no synthetic DOM event, no second-guessing. Existing calls are unchanged: no button and no clickCount is exactly the historic press+release pair with left/1)",
          "inputSchema": {"type": "object", "properties": {"element": {"type": "string"}, "frame": {"type": "string"}, "hoverFirst": {"type": "boolean"}, "button": {"type": "string", "enum": ["left", "right", "middle"], "default": "left"}, "clickCount": {"type": "integer", "minimum": 1, "maximum": 3, "default": 1}}, "required": ["element"], "additionalProperties": false},
          "outputSchema": {"type": "object",
-            "properties": {"ok": {"type": "boolean"}, "dialog": {"type": "object"}, "note": {"type": "string"},
+            "properties": {"ok": {"type": "boolean"}, "dialog": {"type": "object"}, "note": {"type": "string"}, "actionability": {"type": "object"},
                 "resolved": {"type": "object",
                     "properties": {"selector": {"type": "string"}, "ref": {"type": ["string", "null"]},
                         "role": {"type": "string"}, "name": {"type": "string"}},
@@ -86,7 +86,7 @@ pub fn list() -> Value {
              "element": {"type": "string"}, "text": {"type": "string"}, "submit": {"type": "boolean"}, "frame": {"type": "string"}},
              "required": ["element", "text"], "additionalProperties": false},
          "outputSchema": {"type": "object",
-            "properties": {"ok": {"type": "boolean"}, "valueLength": {"type": "integer", "minimum": 0}, "note": {"type": "string"},
+            "properties": {"ok": {"type": "boolean"}, "valueLength": {"type": "integer", "minimum": 0}, "note": {"type": "string"}, "actionability": {"type": "object"},
                 "resolved": {"type": "object",
                     "properties": {"selector": {"type": "string"}, "ref": {"type": ["string", "null"]},
                         "role": {"type": "string"}, "name": {"type": "string"}},
@@ -204,7 +204,7 @@ pub fn list() -> Value {
              "element": {"type": "string"}, "value": {"type": "string"}, "text": {"type": "string"}, "frame": {"type": "string"}},
              "required": ["element"], "additionalProperties": false},
          "outputSchema": {"type": "object",
-            "properties": {"ok": {"type": "boolean"}, "resolved": {"type": "object",
+            "properties": {"ok": {"type": "boolean"}, "actionability": {"type": "object"}, "resolved": {"type": "object",
                 "properties": {"selector": {"type": "string"}, "ref": {"type": ["string", "null"]},
                     "role": {"type": "string"}, "name": {"type": "string"}},
                 "required": ["selector", "ref", "role", "name"], "additionalProperties": false}},
@@ -1075,6 +1075,15 @@ pub async fn call(name: &str, args: &Value, browser: &Browser) -> Value {
                     }
                 },
             };
+            let act = Box::pin(actionability_wait(browser, &el, frame.as_deref())).await;
+            if act["verdict"] == "timeout" {
+                return ToolErr::typed(
+                    format!("click: target not actionable within {ACTIONABILITY_BOUND_MS}ms"),
+                    json!({"code": ToolCode::Timeout.as_str(), "reason": ToolReason::BudgetExceeded.as_str(),
+                           "tool": "click", "actionability": act}),
+                )
+                .envelope();
+            }
             tool_click(
                 browser,
                 &el,
@@ -1084,6 +1093,7 @@ pub async fn call(name: &str, args: &Value, browser: &Browser) -> Value {
                 click_count,
             )
             .await
+            .map(|v| with_actionability(v, &act))
         }
         "wheel" => {
             if let Err(e) = check_unknown("wheel", args, &["deltaY", "deltaX", "x", "y"]) {
@@ -1247,7 +1257,18 @@ pub async fn call(name: &str, args: &Value, browser: &Browser) -> Value {
                 .get("frame")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
-            tool_type(browser, &el, &text, submit, frame.as_deref()).await
+            let act = Box::pin(actionability_wait(browser, &el, frame.as_deref())).await;
+            if act["verdict"] == "timeout" {
+                return ToolErr::typed(
+                    format!("type: target not actionable within {ACTIONABILITY_BOUND_MS}ms"),
+                    json!({"code": ToolCode::Timeout.as_str(), "reason": ToolReason::BudgetExceeded.as_str(),
+                           "tool": "type", "actionability": act}),
+                )
+                .envelope();
+            }
+            tool_type(browser, &el, &text, submit, frame.as_deref())
+                .await
+                .map(|v| with_actionability(v, &act))
         }
         "evaluate" => {
             if let Err(e) = check_unknown("evaluate", args, &["expression", "target", "frame"]) {
@@ -1422,14 +1443,19 @@ pub async fn call(name: &str, args: &Value, browser: &Browser) -> Value {
                 .get("text")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
-            tool_select(
-                browser,
-                &el,
-                value.as_deref(),
-                text.as_deref(),
-                args.get("frame").and_then(|v| v.as_str()),
-            )
-            .await
+            let frame = args.get("frame").and_then(|v| v.as_str());
+            let act = Box::pin(actionability_wait(browser, &el, frame)).await;
+            if act["verdict"] == "timeout" {
+                return ToolErr::typed(
+                    format!("select: target not actionable within {ACTIONABILITY_BOUND_MS}ms"),
+                    json!({"code": ToolCode::Timeout.as_str(), "reason": ToolReason::BudgetExceeded.as_str(),
+                           "tool": "select", "actionability": act}),
+                )
+                .envelope();
+            }
+            tool_select(browser, &el, value.as_deref(), text.as_deref(), frame)
+                .await
+                .map(|v| with_actionability(v, &act))
         }
         "key" => {
             if let Err(e) = check_unknown("key", args, &["key"]) {
@@ -4328,6 +4354,89 @@ pub(crate) fn shadow_closed(tool: &str, selector: &str) -> ToolErr {
 /// `<option>` has no layout box, so a pointer sequence cannot hit-test or land
 /// on it. That single case keeps the old in-page `el.click()`; every rendered
 /// element goes through the trusted CDP pointer sequence in `click_dispatch`.
+/// Fixed pre-action bound and cadence. No inputSchema change: every CSS/ref
+/// action pays this same bounded wait and reports the state it actually saw.
+const ACTIONABILITY_BOUND_MS: u64 = 1500;
+const ACTIONABILITY_POLL_MS: u64 = 50;
+
+/// Probe one CSS target in the page. The returned object is raw observable
+/// state; the Rust loop decides when it is settled.
+fn actionability_probe_js(sel: &str) -> String {
+    format!(
+        "(() => {{ const el = document.querySelector({sel}); if (!el) return JSON.stringify({{found:false}}); const cs = getComputedStyle(el); const r = el.getBoundingClientRect(); return JSON.stringify({{found:true, visible: cs.display !== 'none' && cs.visibility !== 'hidden' && cs.visibility !== 'collapse' && Number(cs.opacity) > 0 && r.width > 0 && r.height > 0, enabled: !el.disabled && el.getAttribute('aria-disabled') !== 'true', rect: {{x: r.left, y: r.top, w: r.width, h: r.height}}}}); }})()"
+    )
+}
+
+/// Verdict+delta for an action target: poll until it is visible, enabled and
+/// its box is unchanged across two consecutive samples, under a hard bound.
+/// AX selectors and frame-scoped targets resolve in their own realm at action
+/// time, so they are reported `skipped` rather than probed against the wrong
+/// document - an honest delta, never a false "settled".
+async fn actionability_wait(browser: &Browser, element: &str, frame: Option<&str>) -> Value {
+    let ax = ["role=", "name=", "text=", "label="]
+        .iter()
+        .any(|p| element.starts_with(p));
+    // Refs resolve through the snapshot's recorded object (including shadow
+    // roots and stale-ref detection); probing them by attribute would find a
+    // different element or hide the typed stale-ref. AX selectors and frames
+    // resolve in their own realm too. Report `skipped`, never a false wait.
+    if frame.is_some() || ax || parse_ref(element).is_some() {
+        return json!({"verdict":"settled","mode":"skipped","waitedMs":0,"polls":0,
+                      "boundMs":ACTIONABILITY_BOUND_MS,"visible":true,"enabled":true,
+                      "stable":true,"note":"resolved by its own path at action time"});
+    }
+    let sel = serde_json::to_string(element).unwrap_or_else(|_| "null".to_string());
+    if sel == "null" {
+        return json!({"verdict":"settled","mode":"skipped","waitedMs":0,"polls":0,
+                      "boundMs":ACTIONABILITY_BOUND_MS,"visible":true,"enabled":true,
+                      "stable":true,"note":"element not probeable"});
+    }
+    let expr = actionability_probe_js(&sel);
+    let started = std::time::Instant::now();
+    let mut last: Option<Value> = None;
+    let mut polls = 0u64;
+    loop {
+        polls += 1;
+        let state = browser
+            .eval(&expr)
+            .await
+            .ok()
+            .and_then(|v| v.as_str().and_then(|s| serde_json::from_str::<Value>(s).ok()))
+            .unwrap_or_else(|| json!({"found":false}));
+        let found = state["found"].as_bool().unwrap_or(false);
+        let visible = state["visible"].as_bool().unwrap_or(false);
+        let enabled = state["enabled"].as_bool().unwrap_or(false);
+        let rect = state.get("rect").cloned().unwrap_or(Value::Null);
+        let ready = found && visible && enabled && rect.is_object();
+        let stable = ready && last.as_ref() == Some(&rect);
+        let waited = started.elapsed().as_millis() as u64;
+        if stable {
+            return json!({"verdict":"settled","mode":"probed","waitedMs":waited,"polls":polls,
+                          "boundMs":ACTIONABILITY_BOUND_MS,"visible":visible,"enabled":enabled,
+                          "stable":true,"rect":rect});
+        }
+        last = if ready { Some(rect.clone()) } else { None };
+        if waited >= ACTIONABILITY_BOUND_MS {
+            return json!({"verdict":"timeout","mode":"probed","waitedMs":waited,"polls":polls,
+                          "boundMs":ACTIONABILITY_BOUND_MS,"visible":visible,"enabled":enabled,
+                          "stable":false,"lastRect":rect});
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(ACTIONABILITY_POLL_MS)).await;
+    }
+}
+
+/// Attach the actionability delta to a success reply's structuredContent.
+/// The text block is left byte-identical (envelope contract G1/G2b).
+fn with_actionability(mut reply: Value, a: &Value) -> Value {
+    if let Some(obj) = reply
+        .get_mut("structuredContent")
+        .and_then(|v| v.as_object_mut())
+    {
+        obj.insert("actionability".to_string(), a.clone());
+    }
+    reply
+}
+
 fn click_preflight_ref(id: &str) -> (String, String) {
     let rid = serde_json::to_string(id).unwrap_or_else(|_| "\"\"".to_string());
     let expr = format!(

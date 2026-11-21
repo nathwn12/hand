@@ -27,6 +27,7 @@
   },
   "outputSchema": {
     "browser_click": [
+      "properties.actionability",
       "properties.resolved"
     ],
     "browser_hover": [
@@ -41,9 +42,11 @@
       "properties.format"
     ],
     "browser_select": [
+      "properties.actionability",
       "properties.resolved"
     ],
     "browser_type": [
+      "properties.actionability",
       "properties.resolved"
     ],
     "browser_upload": [
