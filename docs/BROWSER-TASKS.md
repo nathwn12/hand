@@ -1,6 +1,6 @@
 # Browser 30-task sequence
 
-B13 in the 0.2.0 addendum. One command drives the whole loopback fixture
+Row B13 of the 0.2.0 bar. One command drives the whole loopback fixture
 sequence through hand's public MCP-over-stdio endpoint.
 
 ```powershell
@@ -26,15 +26,24 @@ running executable. The copy and its temp tree are removed when the run ends.
 One line per task, then a run summary and an overall summary:
 
 ```
-run 1/1  binary hand.exe sha256:63701b9aadea
+run 1/1  binary hand.exe sha256:515197715b2b
 [ 1/30] PASS  t01-navigate-title
-[13/30] PEND  t13-network-mock  waits for browser_network(action=mock)
-summary run 1/1: pass=21 pending=9 fail=0
-summary all runs: pass=21 pending=9 fail=0 exit=0
+...
+[30/30] PASS  t30-trace-har
+summary run 1/1: pass=30 pending=0 fail=0
+summary all runs: pass=30 pending=0 fail=0 exit=0
 ```
+
+A pending line is a named absence, not a failure. Before row B3 landed, the
+suite printed `[13/30] PEND  t13-network-mock  waits for browser_network(action=mock)`
+and exited 0.
 
 The exit code is 1 when any task is `fail` or the run aborts. `pending` does not
 raise the exit code; it names the tool or capability the build lacks.
+
+B13 receipt: `node fixtures/run-tasks.mjs --repeat 3` → `summary all runs:
+pass=90 pending=0 fail=0`, exit 0 — three consecutive clean runs from one
+binary (sha256:515197715b2b).
 
 ## Status contract
 

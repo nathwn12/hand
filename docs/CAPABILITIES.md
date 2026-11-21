@@ -41,7 +41,7 @@ The smaller `chrome-headless-shell` is an opt-in fallback selected with `GLADIUS
 | Desktop no-steal static, wire and gate checks | `tests/no_steal.rs`, 12 tests: banned APIs absent from all three source trees; target on every acting tool; zero `sendinput_calls`; focus refused with and without the flag; dead target typed; clipboard write refused while the burst continues |
 | Browser cancellation | `tests/cancel.rs`: typed `cancelled` immediately, no late second response, engine usable afterwards |
 | Desktop cancellation admission | `tests/cancel.rs`: token published before the worker, cancelled job stays silent (direct through the production wrapper) |
-| Vendored engine unit tests | `cargo test -p browser-engine`: 91/91 (includes the B6 literal-redaction and HAR-date checks, Chromium pin-drift and full-Chrome identity); `cargo test -p desktop-engine -- --skip live_`: 203/203 |
+| Vendored engine unit tests | `cargo test -p browser-engine`: 91/91 (includes the B6 literal-redaction and HAR-date checks, Chromium pin-drift and full-Chrome identity); `cargo test -p desktop-engine -- --skip live_`: 215/215 |
 | Clean EOF shutdown with a launched engine | `tests/lifecycle.rs`: exit 0, bounded; a manual probe observed 0.06 s, zero owned Chrome processes before and after, and the next start swept the previous run's stale owned profile |
 | Pinned browser artifact | File SHA-256 recomputed and equal to the manifest; `--version` reports 158.0.8127.36 |
 | Selector engine: `role=`, `role=…[name="…"]`, `name=`, `text=`, `label=` | `tests/selectors.rs` (17 tests), resolved on `Accessibility.getFullAXTree` and acted on by backend id. Uniqueness is enforced before acting: zero → `invalid_target`/`not_found`, many → `invalid_target`/`ambiguous` listing every candidate. Names match case-insensitively after whitespace normalisation, and the resolver accepts both the raw AX name and the name `browser_snapshot` prints. `text=` reads visible text with fragments concatenated, innermost owner first; `label=` accepts only `labelfor`/`labelwrapped` provenance. CSS keeps first-match, `@eN` stays snapshot-bound with typed stale refs. Measured on 158.0.8127.36: a frame's tree excludes iframe content (the iframe is one opaque node), so scope is one frame tree and the refusals say so. |
@@ -51,11 +51,14 @@ The smaller `chrome-headless-shell` is an opt-in fallback selected with `GLADIUS
 | Trusted drag with a data transfer | red-line-then-green test: a trusted drag carries a `dataTransfer` into the page's `dragover` and `drop` handlers. CDP has no `dragstart` dispatch, so the page's native `dragstart` sees an empty `DataTransfer`; the tool description states this and the test locks it |
 | Ordered form batches | red-line-then-green test: `browser_form` runs an ordered batch and reports a per-step status and verdict |
 | Browser download | red-line-then-green test: `browser_download` writes to a caller-supplied directory and reports SHA-256 and MIME; a cancelled download cleans up its partial file |
-| Browser assertions | red-line-then-green test: `browser_assert` covers `dom`, `text` and `url` with bounded polling; `ax` and `network` kinds answer a typed `not_implemented` |
+| Browser assertions | red-line-then-green test: `browser_assert` covers `dom`, `text`, `url` and `ax` with bounded polling (`ax` reads the same accessibility tree `browser_snapshot` prints); `network` answers a typed `not_implemented` |
 | Browser trace | red-line-then-green test: `browser_trace` writes a HAR 1.2 wrapping the existing CDP Network ring plus one deterministic step PNG, counts literal HAR redactions (no regex, no false detection), refuses a relative dir and a `video` request as typed errors, and cancel removes only owned artifacts |
 | Per-monitor v2 DPI awareness | the process sets per-monitor v2 DPI awareness and reads it back at startup; `doctor` reports it |
 | Typed capture codes for frame and no-steal faults | `blank_frame`, `stale_frame`, `too_large` and `no_steal_violation` are typed codes; `no_steal_violation` fails closed and returns no pixels |
-| Repeatable browser task suite | `node fixtures/run-tasks.mjs`: pass=30 pending=0 fail=0, exit 0, including t30 trace/HAR/cancel; t30 was red (`PEND waits for browser_trace`) before row B6 landed |
+| Repeatable browser task suite | `node fixtures/run-tasks.mjs`: pass=30 pending=0 fail=0, exit 0, including t30 trace/HAR/cancel; t30 was red (`PEND waits for browser_trace`) before row B6 landed; B13: `--repeat 3` → three consecutive clean runs, pass=90 pending=0 fail=0, exit 0 |
+| Network interception | red-line-then-green tests: `browser_network` `route`/`mock`/`abort`/`offline`/`restore` plus `blockedUrls`, state keyed per context and removed at every verified teardown point; a context's route dies with its context; t17/t18/t19 PASS; `net_rows` ten-run 10/0/0 |
+| Viewport audit | red-line-then-green test: `browser_audit` measures six viewports (360/390/768/1024/1440/2560) for overflow, WCAG 4.5:1 contrast with the relative-luminance formula shipped in each measurement, focus rings and target sizes; per-viewport and overall verdicts; viewports restored on success and failure; t29 PASS. Four measured checks - not a screen-reader verdict or a full WCAG audit |
+| Browser-focused test count | 104 by the spec's rule (`#[test]` in the browser-domain files): browser_contexts 25, browser_rows 16, reductions 14, selectors 17, determinism 10, net_rows 10, context_wire 4, pointer_frames 6, browser_live 1, navigation_blank 1 |
 
 Commands run (all exit 0):
 
@@ -78,8 +81,9 @@ These are not implemented, not exercised, or not safe to claim from this slice.
   Remaining limits, all stated in the tool's own `limits` and in
   `capability_info()`: storage partitioning inside one browser process, not a
   crash boundary; IndexedDB and HTTP-cache separation expected but unverified;
-  no per-context permissions; no dialog auto-handling in a context page; a hard
-  kill of hand is not a cleanup path for an attached engine.
+  context-scoped permissions are receipted by t23; no dialog auto-handling in
+  a context page; a hard kill of hand is not a cleanup path for an attached
+  engine.
 - Frame-scoped acting: `snapshot`, `click`, `evaluate`, `type`, `hover` and
   `select` cover same-process frames and mapped OOPIFs; `layout`,
   `assert_layout` and `visual` are frame-scoped as well (verified above). A
@@ -88,16 +92,12 @@ These are not implemented, not exercised, or not safe to claim from this slice.
   native `dragstart` sees an empty `DataTransfer`. Trusted `dragover`/`drop`
   with a `dataTransfer` is verified above; that empty `dragstart` is the stated
   limit, not a drop driven end to end from `dragstart`.
-- Network interception, mocks, failure injection, offline mode (row B3): a
-  scaffolded, hidden tool is present and returns a typed `not_implemented`
-  naming row B3. It is not advertised.
-- Deterministic clock, locale, per-context permissions, test-data reset.
-- Assertions: `browser_assert` covers `dom`, `text` and `url` with bounded
-  polling (verified above). Its `ax` and `network` kinds answer a typed
-  `not_implemented` and are not claimed.
-- Responsive viewport matrices (row B7), contrast/typography/focus-indicator
-  target-size evidence: a scaffolded, hidden tool is present and returns a
-  typed `not_implemented` naming row B7. It is not advertised.
+- Assertions: `browser_assert` covers `dom`, `text`, `url` and `ax` with
+  bounded polling (verified above). Its `network` kind answers a typed
+  `not_implemented` and is not claimed.
+- Responsive viewport audit (row B7) is landed and receipted above; its
+  remaining limit is named there: four measured checks, not a screen-reader
+  verdict or a full WCAG audit.
 - Opt-in traces/artifacts (row B6): `browser_trace` writes a HAR 1.2 over
   `browser.network_get`'s CDP ring and deterministic step captures into a
   caller's absolute directory; `redact[]` is literal and counted, never regex
@@ -113,13 +113,16 @@ These are not implemented, not exercised, or not safe to claim from this slice.
 - Semantic-tree paging past one page, menus/dialogs/lists navigation evidence.
 - Visual-change waits, window-lifecycle waits, cancellation of a long desktop
   flow.
-- Screenshot privacy masks and multi-monitor/DPI matrix evidence.
+- Screenshot privacy masks are receipted (uniform black, named, no cross
+  leak); the 14-case capture matrix landed with 8 passes at 0 px anchor error
+  and 6 Unverified-named on hardware (scales 125/150/200, a second monitor,
+  an elevated process, the UAC secure desktop).
 - Clipboard reads (unchanged engine surface; not exercised here) — clipboard
   writes remain prohibited.
-- Occlusion/minimized/elevated/secure-desktop reporting beyond what the engine
-  already returns (partially visible in `list_windows`, not systematically
-  tested). The typed codes `occluded_unavailable` and `secure_desktop` are
-  declared, but their detection is unverified.
+- Occluded capture is receipted (PrintWindow, byte-identical to the
+  unoccluded frame); a minimized window returns the typed
+  `window_minimized` and restores. The secure-desktop and elevated cases
+  stay Unverified on hardware and are never passed by omission.
 
 Hidden launches use a kill-on-close job assigned at process creation. The
 creation-time job attribute requires Windows 10 version 1607 or later and the
