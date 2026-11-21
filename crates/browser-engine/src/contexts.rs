@@ -501,7 +501,7 @@ impl ContextRegistry {
                 return Err(err(
                     ToolCode::InvalidArgs,
                     ToolReason::MissingArg,
-                    "context: missing required arg 'action' (create|list|show|select|open|close|destroy|destroy_all|eval|cookies)",
+                    "context: missing required arg 'action' (create|list|show|select|open|close|destroy|destroy_all|eval|cookies|clock|locale|permissions|reset)",
                 ))
             }
         };
@@ -516,12 +516,16 @@ impl ContextRegistry {
             "destroy_all" => &["action"],
             "eval" => &["action", "name", "page", "expression"],
             "cookies" => &["action", "name", "cookies"],
+            "clock" => &["action", "name", "clock", "iso"],
+            "locale" => &["action", "name", "locale", "timezone"],
+            "permissions" => &["action", "name", "permissions", "grant", "mode", "prompt"],
+            "reset" => &["action", "name"],
             other => {
                 return Err(err(
                     ToolCode::InvalidArgs,
                     ToolReason::UnknownAction,
                     format!(
-                        "context: unknown action '{other}' (create|list|show|select|open|close|destroy|destroy_all|eval|cookies)"
+                        "context: unknown action '{other}' (create|list|show|select|open|close|destroy|destroy_all|eval|cookies|clock|locale|permissions|reset)"
                     ),
                 ))
             }
@@ -531,6 +535,12 @@ impl ContextRegistry {
         let url = args.get("url").and_then(|v| v.as_str());
         let page = args.get("page").and_then(|v| v.as_str());
         let expression = args.get("expression").and_then(|v| v.as_str());
+        let iso = args.get("iso").and_then(|v| v.as_str());
+        let clock = args.get("clock").and_then(|v| v.as_str());
+        let locale = args.get("locale").and_then(|v| v.as_str());
+        let timezone = args.get("timezone").and_then(|v| v.as_str());
+        let mode = args.get("mode").and_then(|v| v.as_str());
+        let prompt = args.get("prompt").and_then(|v| v.as_bool()).unwrap_or(false);
 
         match action.as_str() {
             "create" => {
@@ -602,6 +612,14 @@ impl ContextRegistry {
                 };
                 self.cookies(want_name, set).await
             }
+            "clock" => self.clock(want_name, iso.or(clock)).await,
+            "locale" => self.locale(want_name, locale, timezone).await,
+            "permissions" => {
+                let raw = args.get("grant").or_else(|| args.get("permissions"));
+                let grants = string_array(raw)?;
+                self.permissions(want_name, &grants, mode, prompt).await
+            }
+            "reset" => self.reset(want_name).await,
             _ => unreachable!("action already validated against the closed set"),
         }
     }
@@ -1774,6 +1792,348 @@ impl ContextRegistry {
     }
 
 
+    /// The page an emulation acts on. No `name` is the LEGACY default page -
+    /// the same page `browser_navigate` and `browser_evaluate` use - so the
+    /// manifest can set a clock or locale and read it back through the legacy
+    /// tools. A name resolves to that context's tracked page.
+    async fn emulation_target(
+        &self,
+        st: &mut State,
+        want_name: Option<&str>,
+    ) -> Result<(Option<String>, Option<String>, String), ToolErr> {
+        let Some(raw) = want_name else {
+            return Ok((None, None, "legacy default page".to_string()));
+        };
+        let name = normalise_name(raw)?;
+        let rec = reconcile(&self.browser, st, false).await;
+        let idx = match entry_index(st, &name) {
+            Ok(i) => i,
+            Err(e) => return Err(reconcile_reason(&self.browser, &rec, e)),
+        };
+        if st.entries[idx].unverified.is_some() {
+            return Err(attached_unknown(&name));
+        }
+        if st.entries[idx].phase != Phase::Ready {
+            return Err(still_creating(&name));
+        }
+        let context_id = st
+            .entries[idx]
+            .id()
+            .map(str::to_string)
+            .ok_or_else(|| attached_unknown(&name))?;
+        let target_id = pick_page(&st.entries[idx], None)?.to_string();
+        let session = match ensure_attached(&self.browser, &mut st.entries[idx], &target_id).await {
+            Ok(s) => s,
+            Err(e) => {
+                self.reconcile_if_dead(&e).await;
+                return Err(ToolErr::from(e));
+            }
+        };
+        Ok((Some(session), Some(context_id), name))
+    }
+
+    /// Fixed clock. A preload script overrides `Date` BEFORE the page reloads,
+    /// so the page's own script computes the frozen instant; the tool then
+    /// removes the script so later documents keep the real clock. The value
+    /// returned is read back from the page, not echoed from the request.
+    async fn clock(&self, want_name: Option<&str>, instant: Option<&str>) -> Result<Value, ToolErr> {
+        let Some(instant) = instant else {
+            return Err(invalid(
+                "context: clock needs 'iso' (an RFC 3339 instant), or 'clock' with the same value",
+            ));
+        };
+        let mut st = self.state.lock().await;
+        let (session, _, label) = self.emulation_target(&mut st, want_name).await?;
+        drop(st);
+        let parsed = emulation_eval(
+            &self.browser,
+            session.as_deref(),
+            &format!("new Date({}).getTime()", json!(instant)),
+        )
+        .await
+        .map_err(ToolErr::from)?;
+        let Some(epoch) = parsed.as_i64() else {
+            return Err(invalid(format!(
+                "context: clock 'iso' is not a parseable instant: {instant}"
+            )));
+        };
+        let source = format!(
+            "(() => {{ const fixed = {epoch}; const RealDate = Date; \
+             function HandDate(...a) {{ return a.length ? new RealDate(...a) : new RealDate(fixed); }} \
+             HandDate.now = () => fixed; HandDate.parse = RealDate.parse; HandDate.UTC = RealDate.UTC; \
+             HandDate.prototype = RealDate.prototype; window.Date = HandDate; }})();"
+        );
+        emulation_send(&self.browser, session.as_deref(), "Page.enable", json!({}))
+            .await
+            .map_err(ToolErr::from)?;
+        let added = emulation_send(
+            &self.browser,
+            session.as_deref(),
+            "Page.addScriptToEvaluateOnNewDocument",
+            json!({"source": source}),
+        )
+        .await
+        .map_err(ToolErr::from)?;
+        let identifier = added
+            .get("identifier")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        if identifier.is_empty() {
+            return Err(err(
+                ToolCode::Error,
+                ToolReason::Unknown,
+                "context: clock: CDP did not return a script identifier, so no clock was installed",
+            ));
+        }
+        emulation_send(&self.browser, session.as_deref(), "Page.reload", json!({}))
+            .await
+            .map_err(ToolErr::from)?;
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            match emulation_eval(&self.browser, session.as_deref(), "document.readyState").await {
+                Ok(v) if v.as_str() == Some("complete") => break,
+                Ok(_) => {}
+                Err(e) => {
+                    let _ = emulation_send(
+                        &self.browser,
+                        session.as_deref(),
+                        "Page.removeScriptToEvaluateOnNewDocument",
+                        json!({"identifier": identifier}),
+                    )
+                    .await;
+                    return Err(ToolErr::from(e));
+                }
+            }
+            if Instant::now() >= deadline {
+                let _ = emulation_send(
+                    &self.browser,
+                    session.as_deref(),
+                    "Page.removeScriptToEvaluateOnNewDocument",
+                    json!({"identifier": identifier}),
+                )
+                .await;
+                return Err(err(
+                    ToolCode::Timeout,
+                    ToolReason::Unsettled,
+                    "context: clock: the page did not finish reloading within 10 s",
+                ));
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        let observed = emulation_eval(&self.browser, session.as_deref(), "Date.now()").await;
+        let _ = emulation_send(
+            &self.browser,
+            session.as_deref(),
+            "Page.removeScriptToEvaluateOnNewDocument",
+            json!({"identifier": identifier}),
+        )
+        .await;
+        let observed = observed.map_err(ToolErr::from)?;
+        if observed.as_i64() != Some(epoch) {
+            return Err(err(
+                ToolCode::Error,
+                ToolReason::Mismatch,
+                format!(
+                    "context: clock: the page read back {observed} but {epoch} was requested; no claim is made"
+                ),
+            ));
+        }
+        Ok(json!({
+            "ok": true, "action": "clock", "iso": instant, "epoch": epoch,
+            "observed": observed, "target": label,
+            "scope": if want_name.is_some() { "this context's page" } else { "the legacy default page" },
+            "limits": LIMITS,
+        }))
+    }
+
+    /// Locale and timezone overrides, read back from the page's own
+    /// `Intl.DateTimeFormat().resolvedOptions()`. CDP applies them to the page,
+    /// so a later `browser_evaluate` sees the same values.
+    async fn locale(
+        &self,
+        want_name: Option<&str>,
+        locale: Option<&str>,
+        timezone: Option<&str>,
+    ) -> Result<Value, ToolErr> {
+        if locale.is_none() && timezone.is_none() {
+            return Err(invalid("context: locale needs 'locale' and/or 'timezone'"));
+        }
+        let mut st = self.state.lock().await;
+        let (session, _, label) = self.emulation_target(&mut st, want_name).await?;
+        drop(st);
+        if let Some(locale) = locale {
+            emulation_send(
+                &self.browser,
+                session.as_deref(),
+                "Emulation.setLocaleOverride",
+                json!({"locale": locale}),
+            )
+            .await
+            .map_err(ToolErr::from)?;
+        }
+        if let Some(timezone) = timezone {
+            emulation_send(
+                &self.browser,
+                session.as_deref(),
+                "Emulation.setTimezoneOverride",
+                json!({"timezoneId": timezone}),
+            )
+            .await
+            .map_err(ToolErr::from)?;
+        }
+        let observed = emulation_eval(
+            &self.browser,
+            session.as_deref(),
+            "Intl.DateTimeFormat().resolvedOptions().locale + '|' + \
+             Intl.DateTimeFormat().resolvedOptions().timeZone",
+        )
+        .await
+        .map_err(ToolErr::from)?;
+        let observed = observed.as_str().unwrap_or("").to_string();
+        for want in [locale, timezone].into_iter().flatten() {
+            if !observed.split('|').any(|part| part == want) {
+                return Err(err(
+                    ToolCode::Error,
+                    ToolReason::Mismatch,
+                    format!("context: locale: the page read back {observed:?}, which does not contain {want:?}"),
+                ));
+            }
+        }
+        Ok(json!({
+            "ok": true, "action": "locale", "observed": observed,
+            "locale": locale, "timezone": timezone, "target": label,
+            "scope": if want_name.is_some() { "this context's page" } else { "the legacy default page" },
+            "limits": LIMITS,
+        }))
+    }
+
+    /// Programmatic permission grants only. A prompt - anything that would ask
+    /// a human through a UI - is a REJECT-class call: it is refused before any
+    /// CDP command is sent, with code invalid_args / reason rejected.
+    async fn permissions(
+        &self,
+        want_name: Option<&str>,
+        grants: &[String],
+        mode: Option<&str>,
+        prompt: bool,
+    ) -> Result<Value, ToolErr> {
+        if prompt || matches!(mode, Some("prompt") | Some("ask")) {
+            return Err(err(
+                ToolCode::InvalidArgs,
+                ToolReason::Rejected,
+                "context: permissions: prompts are REJECTED (never a UI prompt); grant programmatically with 'grant' instead",
+            ));
+        }
+        if grants.is_empty() {
+            return Err(invalid("context: permissions needs a non-empty 'grant' array"));
+        }
+        let mut st = self.state.lock().await;
+        let (session, context_id, label) = self.emulation_target(&mut st, want_name).await?;
+        drop(st);
+        let mut params = json!({"permissions": grants});
+        if let Some(id) = &context_id {
+            params.as_object_mut().expect("object").insert("browserContextId".into(), json!(id));
+        }
+        self.browser
+            .cdp_raw("Browser.grantPermissions", params, None)
+            .await
+            .map_err(ToolErr::from)?;
+        let checks = grants
+            .iter()
+            .map(|g| {
+                format!(
+                    "navigator.permissions.query({{name: {}}}).then(p => p.state)",
+                    json!(g)
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        let expr = if checks.len() == 1 {
+            checks
+        } else {
+            format!("Promise.all([{checks}]).then(a => a.join('|'))")
+        };
+        let observed = emulation_eval(&self.browser, session.as_deref(), &expr)
+            .await
+            .map_err(ToolErr::from)?;
+        let observed = observed.as_str().unwrap_or("").to_string();
+        if observed.split('|').any(|state| state != "granted") {
+            return Err(err(
+                ToolCode::Error,
+                ToolReason::Mismatch,
+                format!("context: permissions: the page read back {observed:?}, not all 'granted'"),
+            ));
+        }
+        Ok(json!({
+            "ok": true, "action": "permissions", "granted": grants,
+            "observed": observed, "target": label,
+            "browserContextId": context_id,
+            "scope": "Browser.grantPermissions for this context only; no prompt UI",
+            "limits": LIMITS,
+        }))
+    }
+
+    /// Test-data reset: clear cookies through CDP with the context's
+    /// browserContextId, clear local/session storage and IndexedDB on the
+    /// context's own page, then read the emptied state back from the document.
+    async fn reset(&self, want_name: Option<&str>) -> Result<Value, ToolErr> {
+        let mut st = self.state.lock().await;
+        let (session, context_id, label) = self.emulation_target(&mut st, want_name).await?;
+        drop(st);
+        let origin = emulation_eval(&self.browser, session.as_deref(), "location.origin")
+            .await
+            .map_err(ToolErr::from)?;
+        let origin = origin.as_str().unwrap_or("").to_string();
+        if origin.is_empty() || origin == "null" {
+            return Err(err(
+                ToolCode::InvalidTarget,
+                ToolReason::OpaqueOrigin,
+                "context: reset: the page has no usable origin to clear",
+            ));
+        }
+        let mut params = json!({});
+        if let Some(id) = &context_id {
+            params.as_object_mut().expect("object").insert("browserContextId".into(), json!(id));
+        }
+        self.browser
+            .cdp_raw("Storage.clearCookies", params, None)
+            .await
+            .map_err(ToolErr::from)?;
+        let clear = "localStorage.clear(); sessionStorage.clear(); \
+                     indexedDB.databases \
+                       ? indexedDB.databases().then(dbs => Promise.all(dbs.map(d => new Promise(r => { \
+                           const q = indexedDB.deleteDatabase(d.name); \
+                           q.onsuccess = r; q.onerror = r; q.onblocked = r; \
+                         })))).then(() => 1) \
+                       : 1";
+        emulation_eval(&self.browser, session.as_deref(), clear)
+            .await
+            .map_err(ToolErr::from)?;
+        let observed = emulation_eval(
+            &self.browser,
+            session.as_deref(),
+            "localStorage.length + '|' + sessionStorage.length + '|' + document.cookie",
+        )
+        .await
+        .map_err(ToolErr::from)?;
+        let observed = observed.as_str().unwrap_or("").to_string();
+        if !observed.starts_with("0|0|") {
+            return Err(err(
+                ToolCode::Error,
+                ToolReason::Mismatch,
+                format!("context: reset: storage still present after clearing: {observed:?}"),
+            ));
+        }
+        Ok(json!({
+            "ok": true, "action": "reset", "origin": origin,
+            "observed": observed, "target": label,
+            "browserContextId": context_id,
+            "scope": "this browser context only",
+            "limits": LIMITS,
+        }))
+    }
+
     /// The engine itself said this context does not exist. Retire THE acquisition
     /// that saw it (by token, never by name: a destroy + re-create of the same
     /// name must keep its successor and its successor's exclusion), release that
@@ -1879,7 +2239,7 @@ const SELECT_AFFECTS: &str =
     "browser_context actions that omit `name` only; legacy browser_* tools keep acting on the \
      legacy default page";
 
-const LIMITS: [&str; 11] = [
+const LIMITS: [&str; 13] = [
     "separate cookies/localStorage/sessionStorage per context in ONE browser process: storage partitioning, not a crash-isolation boundary",
     "legacy browser_* tools (snapshot/click/type/evaluate/storage/tabs/...) act on the legacy default page and never inside a context; realm-scoped evaluate and tabs select refuse a context page by name, while the raw cdp tool remains the advanced escape hatch",
     "a page's url and target membership come from CDP target info; the title of a created or opened page is a live document.title read when one answered (source: targetInfo+liveRead) and otherwise the engine's cached value (source: targetInfo, with titleNote saying why); `eval` is the live-evidence route, and a page's `session` field is hand bookkeeping, not a live probe",
@@ -1891,6 +2251,8 @@ const LIMITS: [&str; 11] = [
     "an acquisition is matched by its own token, never by name: destroying and re-creating a name cannot let a stale acquisition write into, or roll back, its successor; an id-less creation can always be destroyed (nothing is named) and its task disposes whatever it later creates",
     "create/open are committed by their own task: a cancelled call leaves tracked state behind (phase 'creating' when it cannot finish) instead of an invisible context, and shutdown reports what it could not dispose",
     "a set cookie is verified by name+domain+path plus the requested secure/httpOnly/sameSite attributes; expiry is echoed but not asserted, and an identical cookie that already existed is reported preexisting",
+    "clock/locale apply to one page: a preload script fixes Date before a reload and is removed once read back, while locale/timezone are CDP page overrides only; neither is a device or a real clock, and a different page needs its own call",
+    "permissions are programmatic Browser.grantPermissions only; a UI prompt is refused with code invalid_args / reason rejected, and grants are scoped by browserContextId with the page's own navigator.permissions state read back as proof",
 ];
 
 /// The `context` tool entry in the exact shape `tools::list()` uses. hand's
@@ -1919,14 +2281,21 @@ pub fn tool_schema() -> Value {
     context's page; typed js_error on a throw) | cookies (read this context's jar, or set cookies \
     and verify each by name+domain+path identity plus the requested attributes, with preexisting \
     reported; a cookie needs name+value and either url or domain, or the engine cannot tell which \
-    origin it belongs to and the tool refuses it). Limits: one browser process (partitioning, not \
+    origin it belongs to and the tool refuses it) | clock (iso=RFC 3339 instant; fixes the page's \
+    Date before a reload, reads the frozen instant back from the page and removes the preload script; \
+    with name it targets that context's page, without it the legacy default page) | locale (locale \
+    and/or timezone; CDP page overrides read back from Intl.DateTimeFormat().resolvedOptions()) | \
+    permissions (name + grant array; programmatic Browser.grantPermissions scoped to the context, a UI \
+    prompt REJECTED as invalid_args/rejected, and the page's own navigator.permissions state as proof) \
+    | reset (clears cookies by browserContextId and local/session storage plus IndexedDB on the \
+    page, then reads the emptied state back). Limits: one browser process (partitioning, not \
     crash isolation); a dialog in a \
     context page is not auto-handled; a page's url and target membership are target-info values, \
     while a created/opened page's title is a live document.title read labelled source \
     targetInfo+liveRead (targetInfo when the engine's cached value had to stand in, with titleNote \
     saying why); frame refs do not exist for context pages.",
         "inputSchema": {"type": "object", "properties": {
-            "action": {"type": "string", "enum": ["create", "list", "show", "select", "open", "close", "destroy", "destroy_all", "eval", "cookies"]},
+            "action": {"type": "string", "enum": ["create", "list", "show", "select", "open", "close", "destroy", "destroy_all", "eval", "cookies", "clock", "locale", "permissions", "reset"]},
             "name": {"type": "string", "maxLength": MAX_NAME_LEN},
             "url": {"type": "string", "format": "uri-reference"},
             "page": {"type": "string"},
@@ -1941,7 +2310,15 @@ pub fn tool_schema() -> Value {
                     "expires": {"type": "number"}},
                 "required": ["name", "value"],
                 "anyOf": [{"required": ["url"]}, {"required": ["domain"]}],
-                "additionalProperties": false}}
+                "additionalProperties": false}},
+            "iso": {"type": "string"},
+            "clock": {"type": "string"},
+            "locale": {"type": "string"},
+            "timezone": {"type": "string"},
+            "permissions": {"type": "array", "items": {"type": "string"}},
+            "grant": {"type": "array", "items": {"type": "string"}},
+            "mode": {"type": "string"},
+            "prompt": {"type": "boolean"}
             },
             "required": ["action"], "additionalProperties": false},
         "outputSchema": {"type": "object", "properties": {
@@ -1985,6 +2362,9 @@ pub fn tool_schema() -> Value {
             "lastError": {"type": "string"},
             "note": {"type": "string"},
             "scope": {"type": "string"},
+            "observed": {},
+            "epoch": {"type": "integer"},
+            "granted": {"type": "array"},
             "limits": {"type": "array"}},
             "required": ["ok"], "additionalProperties": false},
         "annotations": {"readOnlyHint": false, "destructiveHint": true, "idempotentHint": false, "openWorldHint": true}
@@ -2024,6 +2404,12 @@ pub fn capability_info() -> Value {
             "hardKillResidual": "a hard kill of hand sends no close frame, so disposeOnDetach cannot run: measured on the pinned build, an abrupt socket drop closed the context's pages but left the context object answering Storage.getCookies, so an attached engine may retain it until that engine exits; hand never reports a hard kill as a disposal and a hard kill is not a cleanup path",
             "cancellation": "create/open are committed by their own task; tracked state (phase 'creating') survives a cancelled call, and a lost owned engine is reported as no longer reachable instead of a fabricated disposal",
             "cookieVerification": "name+domain+path identity plus requested secure/httpOnly/sameSite; preexisting reported; expiry not asserted",
+            "determinism": {
+                "clock": "action clock with iso=RFC 3339 instant: a preload script fixes Date before a reload, the page's own Date.now() is read back, and the script is removed; no name targets the legacy default page, a name targets that context's page",
+                "locale": "action locale with locale and/or timezone: Emulation.setLocaleOverride / setTimezoneOverride on one page, verified from Intl.DateTimeFormat().resolvedOptions()",
+                "permissions": "action permissions with name + grant: programmatic Browser.grantPermissions scoped by browserContextId, verified from the page's navigator.permissions state; a UI prompt is REJECTED (invalid_args/rejected)",
+                "reset": "action reset: Storage.clearCookies scoped by browserContextId plus localStorage/sessionStorage.clear() and indexedDB.deleteDatabase on the context's page, verified from the emptied document state"
+            },
             "disposeOnDetach": true,
             "limits": LIMITS,
         }
@@ -2786,6 +3172,49 @@ fn test_hook_attach_failure() -> bool {
 
 fn test_hook_skip_cookie_set() -> bool {
     hook_flag("HAND_CONTEXT_TEST_SKIP_COOKIE_SET")
+}
+
+/// Send a CDP command to an emulation target: the engine's tracked active page
+/// when no context name was given, or an explicit context page session.
+async fn emulation_send(
+    browser: &Browser,
+    session: Option<&str>,
+    method: &str,
+    params: Value,
+) -> Result<Value, String> {
+    match session {
+        Some(s) => browser.cdp_raw(method, params, Some(s.to_string())).await,
+        None => browser.command(method, params, true).await,
+    }
+}
+
+/// Read a value back from the same page the emulation was applied to.
+async fn emulation_eval(
+    browser: &Browser,
+    session: Option<&str>,
+    expression: &str,
+) -> Result<Value, String> {
+    match session {
+        Some(s) => eval_in(browser, s, expression).await,
+        None => browser.eval(expression).await,
+    }
+}
+
+fn string_array(value: Option<&Value>) -> Result<Vec<String>, ToolErr> {
+    let Some(value) = value else {
+        return Ok(Vec::new());
+    };
+    let Some(items) = value.as_array() else {
+        return Err(invalid("context: expected an array of strings"));
+    };
+    items
+        .iter()
+        .map(|item| {
+            item.as_str()
+                .map(str::to_string)
+                .ok_or_else(|| invalid(format!("context: expected a string, got {item}")))
+        })
+        .collect()
 }
 
 /// Evaluate in one named page session. `Runtime.evaluate` needs no domain

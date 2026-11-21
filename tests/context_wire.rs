@@ -282,6 +282,7 @@ fn catalog_publishes_browser_context_with_its_closed_action_set() {
     assert_eq!(
         actions,
         vec![
+            "clock",
             "close",
             "cookies",
             "create",
@@ -289,12 +290,21 @@ fn catalog_publishes_browser_context_with_its_closed_action_set() {
             "destroy_all",
             "eval",
             "list",
+            "locale",
             "open",
+            "permissions",
+            "reset",
             "select",
             "show",
         ],
         "the published action set must be the dispatched one"
     );
+    for field in ["clock", "iso", "locale", "timezone", "permissions", "grant"] {
+        assert!(
+            input["properties"].get(field).is_some(),
+            "the manifest's requires field {field} must be in the published inputSchema"
+        );
+    }
 
     let output = &entry["outputSchema"];
     assert!(
@@ -877,4 +887,26 @@ fn shutdown_closes_only_the_contexts_hand_owns() {
         engine.child.try_wait().expect("try_wait engine").is_none(),
         "the engine must still be running after both clients detached"
     );
+}
+
+/// A UI permission prompt is a REJECT-class call: it is refused before any CDP
+/// command is sent, with code invalid_args and reason rejected.
+#[test]
+fn permission_prompt_is_a_rejected_call() {
+    let mut s = Session::spawn();
+    for args in [
+        json!({"action": "permissions", "name": "x", "grant": ["geolocation"], "prompt": true}),
+        json!({"action": "permissions", "name": "x", "grant": ["geolocation"], "mode": "prompt"}),
+    ] {
+        let (code, reason, text) = failed(&mut s, args);
+        assert_eq!(
+            (code.as_str(), reason.as_str()),
+            ("invalid_args", "rejected"),
+            "a prompt must be rejected, never opened: {text}"
+        );
+        assert!(
+            text.contains("prompt"),
+            "the refusal must name the rejected prompt: {text}"
+        );
+    }
 }
