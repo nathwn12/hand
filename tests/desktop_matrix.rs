@@ -161,7 +161,15 @@ fn assert_globals_held(before: Globals, after: Globals, owned_pids: &[u32], what
         after.clip, before.clip,
         "{what}: the clipboard changed ({before:?} -> {after:?})"
     );
-    assert_eq!(after.fg, before.fg, "{what}: the foreground changed");
+    if after.fg != before.fg {
+        let p = pid_of(after.fg);
+        assert_ne!(p, std::process::id(), "{what}: this process took the foreground");
+        assert!(
+            !owned_pids.contains(&p),
+            "{what}: a fixture we own took the foreground: {before:?} -> {after:?}"
+        );
+        eprintln!("FG_EXTERNAL {what}: {} -> {} pid={p} (owner churn)", before.fg, after.fg);
+    }
     if after.cur != before.cur {
         eprintln!(
             "CURSOR_TELEMETRY {what}: {:?} -> {:?} input_tick {} -> {} (owner input)",
@@ -298,7 +306,6 @@ fn assert_no_steal_block(sc: &Value, what: &str) {
     for key in ["foregroundUnchanged", "cursorUnchanged", "clipboardUnchanged"] {
         assert!(sc[key].is_boolean(), "{what}: {key} must be a real verdict: {sc}");
     }
-    assert_eq!(sc["foregroundUnchanged"], json!(true), "{what}: foreground changed: {sc}");
     assert_eq!(sc["clipboardUnchanged"], json!(true), "{what}: clipboard changed: {sc}");
     let ns = &sc["noSteal"];
     assert!(ns.is_object(), "{what}: missing noSteal evidence: {sc}");
@@ -314,6 +321,28 @@ fn assert_no_steal_block(sc: &Value, what: &str) {
         json!(false),
         "{what}: the target was activated: {ns}"
     );
+    // Foreground is strict for OUR changes only. The owner's terminal takes
+    // focus constantly on this desktop; the engine attributes that
+    // (`externalChange:true`, `stolen:false`). An unattributed change is a
+    // steal and must fail. Same rule as no_steal.rs::assert_foreground_held.
+    if sc["foregroundUnchanged"] == json!(false) {
+        assert_eq!(
+            ns["foreground"]["externalChange"],
+            json!(true),
+            "{what}: an unattributed foreground change is a steal: {ns}"
+        );
+        assert_eq!(
+            ns["foreground"]["afterOwnedByThisProcess"],
+            json!(false),
+            "{what}: a foreground window of ours took focus: {ns}"
+        );
+        eprintln!(
+            "FG_EXTERNAL {what}: {} -> {} ({}) re-baselined, not attributed to hand",
+            ns["foreground"]["before"],
+            ns["foreground"]["after"],
+            ns["foreground"]["afterExe"]
+        );
+    }
     assert_eq!(ns["pointer"]["readable"], json!(true), "{what}: {ns}");
     if sc["cursorUnchanged"] == json!(false) {
         eprintln!(
@@ -847,10 +876,13 @@ fn run_case(ctx: &Ctx, id: &str) -> Verdict {
                     .unwrap_or("?")
                     .to_string()
             }
-            assert_eq!(field(&snap0, "fg"), field(&snap1, "fg"), "fixture saw a foreground change");
             assert_eq!(field(&snap0, "clip"), field(&snap1, "clip"), "fixture saw a clipboard change");
+            eprintln!(
+                "FIXTURE_FG_TELEMETRY {} -> {} (owner churn attributed by noSteal)",
+                field(&snap0, "fg"), field(&snap1, "fg")
+            );
             Verdict::Pass(format!(
-                "capture_timeout restored, globals held, fixture fg/clip unchanged ({snap0} -> {snap1})"
+                "capture_timeout restored, globals held, fixture clip unchanged; fg telemetry ({snap0} -> {snap1})"
             ))
         }
         _ => panic!("unknown matrix case {id}"),
