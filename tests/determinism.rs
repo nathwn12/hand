@@ -20,6 +20,14 @@ const PAGE: &str = r#"<!doctype html><html><head><title>Determinism</title></hea
 <script>document.getElementById('clock').textContent = 'clock: ' + Date.now();</script>
 </body></html>"#;
 
+/// Concurrent browser launches flake on this machine (a navigate can answer
+/// net::ERR_ABORTED), so this binary runs one browser at a time.
+static ONE_BROWSER: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn serial() -> std::sync::MutexGuard<'static, ()> {
+    ONE_BROWSER.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 struct Fixture {
     base: String,
     stop: Arc<AtomicBool>,
@@ -67,13 +75,15 @@ fn serve(mut stream: TcpStream) -> std::io::Result<()> {
     stream.set_read_timeout(Some(Duration::from_secs(5)))?;
     let mut buf = [0u8; 4096];
     let n = stream.read(&mut buf)?;
-    let head = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n\
-                Cache-Control: no-store\r\nConnection: close\r\n\r\n";
-    stream.write_all(head.as_bytes())?;
-    stream.write_all(PAGE.as_bytes())?;
-    stream.flush()?;
     let _ = n;
-    Ok(())
+    let response = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\n\
+         Cache-Control: no-store\r\nConnection: close\r\n\r\n{}",
+        PAGE.len(),
+        PAGE
+    );
+    stream.write_all(response.as_bytes())?;
+    stream.flush()
 }
 
 fn value(resp: &Value, what: &str) -> Value {
@@ -81,11 +91,32 @@ fn value(resp: &Value, what: &str) -> Value {
     structured(resp)["value"].clone()
 }
 
+/// A freshly launched engine can still be committing its own about:blank
+/// navigation when the caller's first `browser_navigate` lands; Chrome then
+/// aborts one of them with net::ERR_ABORTED. Retry ONLY that transient, so a
+/// real navigate failure still fails the test.
+fn navigate(s: &mut Session, url: &str) -> Value {
+    let mut last = Value::Null;
+    for attempt in 0..3 {
+        let resp = s.call("browser_navigate", json!({"url": url}));
+        if !is_error(&resp) {
+            return resp;
+        }
+        last = resp;
+        if !text_of(&last).contains("ERR_ABORTED") {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(150 * (attempt + 1) as u64));
+    }
+    last
+}
+
 #[test]
 fn clock_is_read_back_from_the_page_after_override() {
+    let _serial = serial();
     let fixture = Fixture::start();
     let mut s = Session::spawn();
-    let nav = s.call("browser_navigate", json!({"url": format!("{}/", fixture.base)}));
+    let nav = navigate(&mut s, &format!("{}/", fixture.base));
     assert!(!is_error(&nav), "navigate failed: {}", text_of(&nav));
 
     let frozen = s.call(
@@ -111,9 +142,10 @@ fn clock_is_read_back_from_the_page_after_override() {
 
 #[test]
 fn locale_and_timezone_are_read_back_from_the_page() {
+    let _serial = serial();
     let fixture = Fixture::start();
     let mut s = Session::spawn();
-    let nav = s.call("browser_navigate", json!({"url": format!("{}/", fixture.base)}));
+    let nav = navigate(&mut s, &format!("{}/", fixture.base));
     assert!(!is_error(&nav), "navigate failed: {}", text_of(&nav));
 
     let set = s.call(
@@ -135,6 +167,7 @@ fn locale_and_timezone_are_read_back_from_the_page() {
 
 #[test]
 fn permission_grant_and_reset_are_read_back_from_the_context_page() {
+    let _serial = serial();
     let fixture = Fixture::start();
     let mut s = Session::spawn();
     let created = s.call(
@@ -176,4 +209,102 @@ fn permission_grant_and_reset_are_read_back_from_the_context_page() {
 
     let destroyed = s.call("browser_context", json!({"action": "destroy_all"}));
     assert!(!is_error(&destroyed), "destroy_all failed: {}", text_of(&destroyed));
+}
+
+#[test]
+fn state_exports_and_imports_across_two_contexts() {
+    let _serial = serial();
+    let fixture = Fixture::start();
+    let mut s = Session::spawn();
+    let url = format!("{}/", fixture.base);
+
+    let source = s.call(
+        "browser_context",
+        json!({"action": "create", "name": "src", "url": url}),
+    );
+    assert!(!is_error(&source), "create source failed: {}", text_of(&source));
+    let cookie = s.call(
+        "browser_context",
+        json!({"action": "cookies", "name": "src",
+               "cookies": [{"name": "sid", "value": "abc123", "url": url}]}),
+    );
+    assert!(!is_error(&cookie), "set cookie failed: {}", text_of(&cookie));
+    let seeded = s.call(
+        "browser_context",
+        json!({"action": "eval", "name": "src",
+               "expression": "localStorage.setItem('theme','dark'); localStorage.setItem('n','7'); 'ok'"}),
+    );
+    assert_eq!(value(&seeded, "seed localStorage"), json!("ok"));
+
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock")
+        .as_nanos();
+    let file = std::env::temp_dir().join(format!(
+        "hand-state-{}-{nanos}.json",
+        std::process::id()
+    ));
+    let path = file.to_string_lossy().to_string();
+
+    let exported = s.call(
+        "browser_context",
+        json!({"action": "export_state", "name": "src", "path": path}),
+    );
+    assert!(!is_error(&exported), "export failed: {}", text_of(&exported));
+    assert_eq!(structured(&exported)["cookies"], json!(1));
+    assert_eq!(structured(&exported)["localStorage"], json!(2));
+    assert!(file.is_file(), "the caller-supplied artifact must exist");
+
+    let fresh = s.call(
+        "browser_context",
+        json!({"action": "create", "name": "dst", "url": url}),
+    );
+    assert!(!is_error(&fresh), "create target failed: {}", text_of(&fresh));
+    let imported = s.call(
+        "browser_context",
+        json!({"action": "import_state", "name": "dst", "path": path}),
+    );
+    assert!(!is_error(&imported), "import failed: {}", text_of(&imported));
+    assert_eq!(structured(&imported)["verifiedCookies"], json!(1));
+    assert_eq!(structured(&imported)["verifiedLocalStorage"], json!(2));
+
+    let cookie_read = s.call(
+        "browser_context",
+        json!({"action": "eval", "name": "dst", "expression": "document.cookie"}),
+    );
+    assert!(
+        value(&cookie_read, "cookie read-back")
+            .as_str()
+            .unwrap_or("")
+            .contains("sid=abc123"),
+        "the session cookie must survive the export/import round trip"
+    );
+    let storage_read = s.call(
+        "browser_context",
+        json!({"action": "eval", "name": "dst",
+               "expression": "JSON.stringify(Object.entries(localStorage))"}),
+    );
+    let text = value(&storage_read, "storage read-back").as_str().unwrap_or("").to_string();
+    assert!(text.contains("theme") && text.contains("dark") && text.contains("n"));
+    assert!(text.contains("'7'") || text.contains("\"7\""), "the second item must round-trip: {text}");
+
+    let other = s.call(
+        "browser_context",
+        json!({"action": "create", "name": "other", "url": url}),
+    );
+    assert!(!is_error(&other), "create third context failed: {}", text_of(&other));
+    let untouched = s.call(
+        "browser_context",
+        json!({"action": "eval", "name": "other",
+               "expression": "document.cookie + '|' + localStorage.length"}),
+    );
+    assert_eq!(
+        value(&untouched, "isolation read-back"),
+        json!("|0"),
+        "a context that did not import must stay empty"
+    );
+
+    let destroyed = s.call("browser_context", json!({"action": "destroy_all"}));
+    assert!(!is_error(&destroyed), "destroy_all failed: {}", text_of(&destroyed));
+    let _ = std::fs::remove_file(&file);
 }

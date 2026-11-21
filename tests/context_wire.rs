@@ -289,6 +289,8 @@ fn catalog_publishes_browser_context_with_its_closed_action_set() {
             "destroy",
             "destroy_all",
             "eval",
+            "export_state",
+            "import_state",
             "list",
             "locale",
             "open",

@@ -103,6 +103,7 @@
 //!   site appears after the next `list`/`show`; frame-scoped refs are a
 //!   legacy-surface concept and do not exist for context pages.
 
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -501,7 +502,7 @@ impl ContextRegistry {
                 return Err(err(
                     ToolCode::InvalidArgs,
                     ToolReason::MissingArg,
-                    "context: missing required arg 'action' (create|list|show|select|open|close|destroy|destroy_all|eval|cookies|clock|locale|permissions|reset)",
+                    "context: missing required arg 'action' (create|list|show|select|open|close|destroy|destroy_all|eval|cookies|clock|locale|permissions|reset|export_state|import_state)",
                 ))
             }
         };
@@ -520,12 +521,14 @@ impl ContextRegistry {
             "locale" => &["action", "name", "locale", "timezone"],
             "permissions" => &["action", "name", "permissions", "grant", "mode", "prompt"],
             "reset" => &["action", "name"],
+            "export_state" => &["action", "name", "path"],
+            "import_state" => &["action", "name", "path"],
             other => {
                 return Err(err(
                     ToolCode::InvalidArgs,
                     ToolReason::UnknownAction,
                     format!(
-                        "context: unknown action '{other}' (create|list|show|select|open|close|destroy|destroy_all|eval|cookies|clock|locale|permissions|reset)"
+                        "context: unknown action '{other}' (create|list|show|select|open|close|destroy|destroy_all|eval|cookies|clock|locale|permissions|reset|export_state|import_state)"
                     ),
                 ))
             }
@@ -541,6 +544,7 @@ impl ContextRegistry {
         let timezone = args.get("timezone").and_then(|v| v.as_str());
         let mode = args.get("mode").and_then(|v| v.as_str());
         let prompt = args.get("prompt").and_then(|v| v.as_bool()).unwrap_or(false);
+        let state_path = args.get("path").and_then(|v| v.as_str());
 
         match action.as_str() {
             "create" => {
@@ -620,6 +624,18 @@ impl ContextRegistry {
                 self.permissions(want_name, &grants, mode, prompt).await
             }
             "reset" => self.reset(want_name).await,
+            "export_state" => {
+                let path = state_path.ok_or_else(|| {
+                    invalid("context: export_state needs 'path' (an absolute JSON file path)")
+                })?;
+                self.export_state(want_name, path).await
+            }
+            "import_state" => {
+                let path = state_path.ok_or_else(|| {
+                    invalid("context: import_state needs 'path' (an absolute JSON file path)")
+                })?;
+                self.import_state(want_name, path).await
+            }
             _ => unreachable!("action already validated against the closed set"),
         }
     }
@@ -2134,6 +2150,233 @@ impl ContextRegistry {
         }))
     }
 
+    /// Write one context's cookie jar and localStorage as one JSON artifact at
+    /// a caller-supplied ABSOLUTE path. Programmatic CDP and page reads only:
+    /// no UI, no clipboard, no implicit destination.
+    async fn export_state(&self, want_name: Option<&str>, path: &str) -> Result<Value, ToolErr> {
+        let target = PathBuf::from(path);
+        if !target.is_absolute() {
+            return Err(invalid(format!(
+                "context: export_state 'path' must be absolute, got '{path}'"
+            )));
+        }
+        let mut st = self.state.lock().await;
+        let (session, context_id, label) = self.emulation_target(&mut st, want_name).await?;
+        drop(st);
+        let Some(context_id) = context_id else {
+            return Err(invalid("context: export_state needs a named context"));
+        };
+        let jar = match live_jar(&self.browser, &context_id).await {
+            Some(Ok(j)) => j,
+            None => return Err(no_live_engine(&self.browser, "exporting cookies")),
+            Some(Err(e)) => return Err(ToolErr::from(e)),
+        };
+        let origin = emulation_eval(&self.browser, session.as_deref(), "location.origin")
+            .await
+            .map_err(ToolErr::from)?;
+        let origin = origin.as_str().unwrap_or("").to_string();
+        let listed = emulation_eval(
+            &self.browser,
+            session.as_deref(),
+            "JSON.stringify(Object.entries(localStorage))",
+        )
+        .await
+        .map_err(ToolErr::from)?;
+        let entries: Vec<Value> = serde_json::from_str(listed.as_str().unwrap_or("[]"))
+            .map_err(|e| invalid(format!("context: export_state cannot read localStorage: {e}")))?;
+        let artifact = json!({
+            "version": 1, "tool": "browser_context", "kind": "state",
+            "origin": origin, "cookies": jar, "localStorage": entries,
+        });
+        let bytes = serde_json::to_string_pretty(&artifact).map_err(|e| {
+            err(
+                ToolCode::Error,
+                ToolReason::Unreadable,
+                format!("context: export_state cannot serialize state: {e}"),
+            )
+        })?;
+        if let Some(parent) = target.parent() {
+            if let Err(e) = std::fs::create_dir_all(parent) {
+                return Err(err(
+                    ToolCode::InvalidArgs,
+                    ToolReason::Unreadable,
+                    format!("context: export_state cannot create '{}': {e}", parent.display()),
+                ));
+            }
+        }
+        if let Err(e) = std::fs::write(&target, bytes.as_bytes()) {
+            return Err(err(
+                ToolCode::InvalidArgs,
+                ToolReason::Unreadable,
+                format!("context: export_state cannot write '{path}': {e}"),
+            ));
+        }
+        Ok(json!({
+            "ok": true, "action": "export_state", "path": path, "name": label,
+            "browserContextId": context_id, "origin": origin,
+            "cookies": jar.len(), "localStorage": entries.len(),
+            "scope": "one JSON file; programmatic CDP and page reads, no UI or clipboard",
+            "limits": LIMITS,
+        }))
+    }
+
+    /// Import a previously exported artifact into a FRESH named context: the
+    /// jar must still be empty before import. Cookies are set with CDP under
+    /// that context's browserContextId and localStorage on its own page. Every
+    /// imported item is then read back from the target before success.
+    async fn import_state(&self, want_name: Option<&str>, path: &str) -> Result<Value, ToolErr> {
+        let target = PathBuf::from(path);
+        if !target.is_absolute() {
+            return Err(invalid(format!(
+                "context: import_state 'path' must be absolute, got '{path}'"
+            )));
+        }
+        let Some(raw) = want_name else {
+            return Err(invalid("context: import_state needs a named fresh context"));
+        };
+        let text = std::fs::read_to_string(&target).map_err(|e| {
+            err(
+                ToolCode::FileNotFound,
+                ToolReason::Unreadable,
+                format!("context: import_state cannot read '{path}': {e}"),
+            )
+        })?;
+        let artifact: Value = serde_json::from_str(&text)
+            .map_err(|e| invalid(format!("context: import_state bad JSON: {e}")))?;
+        if artifact["version"] != json!(1) || artifact["kind"] != json!("state") {
+            return Err(invalid(
+                "context: import_state needs an export_state artifact (version 1, kind state)",
+            ));
+        }
+        let cookies = artifact["cookies"]
+            .as_array()
+            .ok_or_else(|| invalid("context: import_state artifact has no cookies array"))?;
+        let entries = artifact["localStorage"]
+            .as_array()
+            .ok_or_else(|| invalid("context: import_state artifact has no localStorage array"))?;
+        let mut st = self.state.lock().await;
+        let (session, context_id, label) = self.emulation_target(&mut st, Some(raw)).await?;
+        drop(st);
+        let Some(context_id) = context_id else {
+            return Err(invalid("context: import_state needs a named context"));
+        };
+        let before = match live_jar(&self.browser, &context_id).await {
+            Some(Ok(j)) => j,
+            None => return Err(no_live_engine(&self.browser, "checking the target jar")),
+            Some(Err(e)) => return Err(ToolErr::from(e)),
+        };
+        if !before.is_empty() {
+            return Err(err(
+                ToolCode::InvalidArgs,
+                ToolReason::BadValue,
+                "context: import_state needs a FRESH context; the target jar is not empty",
+            ));
+        }
+        let occupied = emulation_eval(&self.browser, session.as_deref(), "localStorage.length")
+            .await
+            .map_err(ToolErr::from)?;
+        if occupied.as_u64().unwrap_or(0) != 0 {
+            return Err(err(
+                ToolCode::InvalidArgs,
+                ToolReason::BadValue,
+                "context: import_state needs a FRESH context; the target localStorage is not empty",
+            ));
+        }
+        if !cookies.is_empty() {
+            let specs: Vec<Value> = cookies
+                .iter()
+                .map(|c| {
+                    let mut spec = json!({
+                        "name": c.get("name").cloned().unwrap_or(Value::Null),
+                        "value": c.get("value").cloned().unwrap_or(Value::Null),
+                        "domain": c.get("domain").cloned().unwrap_or(Value::Null),
+                        "path": c.get("path").cloned().unwrap_or(Value::Null),
+                    });
+                    let obj = spec.as_object_mut().expect("object");
+                    for key in ["secure", "httpOnly", "sameSite"] {
+                        if let Some(v) = c.get(key) {
+                            obj.insert(key.to_string(), v.clone());
+                        }
+                    }
+                    spec
+                })
+                .collect();
+            let result = self
+                .browser
+                .cdp_if_live(
+                    "Storage.setCookies",
+                    json!({"cookies": specs, "browserContextId": context_id}),
+                    None,
+                )
+                .await;
+            match result {
+                None => return Err(no_live_engine(&self.browser, "importing cookies")),
+                Some(Err(e)) => return Err(ToolErr::from(e)),
+                Some(Ok(_)) => {}
+            }
+        }
+        if !entries.is_empty() {
+            let expr = format!(
+                "(function(items){{ items.forEach(function(p){{ localStorage.setItem(p[0], p[1]); }}); return items.length; }})({})",
+                json!(entries)
+            );
+            emulation_eval(&self.browser, session.as_deref(), &expr)
+                .await
+                .map_err(ToolErr::from)?;
+        }
+        let after = match live_jar(&self.browser, &context_id).await {
+            Some(Ok(j)) => j,
+            None => return Err(no_live_engine(&self.browser, "verifying imported cookies")),
+            Some(Err(e)) => return Err(ToolErr::from(e)),
+        };
+        let listed = emulation_eval(
+            &self.browser,
+            session.as_deref(),
+            "JSON.stringify(Object.entries(localStorage))",
+        )
+        .await
+        .map_err(ToolErr::from)?;
+        let after_entries: Vec<Value> = serde_json::from_str(listed.as_str().unwrap_or("[]"))
+            .map_err(|e| invalid(format!("context: import_state cannot read localStorage: {e}")))?;
+        for c in cookies {
+            let (name, value, domain, path) = (
+                c["name"].as_str().unwrap_or(""),
+                c["value"].as_str().unwrap_or(""),
+                c["domain"].as_str().unwrap_or(""),
+                c["path"].as_str().unwrap_or(""),
+            );
+            if !after.iter().any(|a| {
+                a["name"].as_str() == Some(name)
+                    && a["value"].as_str() == Some(value)
+                    && a["domain"].as_str() == Some(domain)
+                    && a["path"].as_str() == Some(path)
+            }) {
+                return Err(err(
+                    ToolCode::Error,
+                    ToolReason::Mismatch,
+                    format!("context: import_state: cookie {name} did not round-trip"),
+                ));
+            }
+        }
+        for pair in entries {
+            if !after_entries.iter().any(|a| a == pair) {
+                return Err(err(
+                    ToolCode::Error,
+                    ToolReason::Mismatch,
+                    format!("context: import_state: a localStorage item did not round-trip: {pair}"),
+                ));
+            }
+        }
+        Ok(json!({
+            "ok": true, "action": "import_state", "path": path, "name": label,
+            "browserContextId": context_id,
+            "cookies": after.len(), "localStorage": after_entries.len(),
+            "verifiedCookies": cookies.len(), "verifiedLocalStorage": entries.len(),
+            "scope": "target context only; programmatic CDP and page writes, no UI or clipboard",
+            "limits": LIMITS,
+        }))
+    }
+
     /// The engine itself said this context does not exist. Retire THE acquisition
     /// that saw it (by token, never by name: a destroy + re-create of the same
     /// name must keep its successor and its successor's exclusion), release that
@@ -2239,7 +2482,7 @@ const SELECT_AFFECTS: &str =
     "browser_context actions that omit `name` only; legacy browser_* tools keep acting on the \
      legacy default page";
 
-const LIMITS: [&str; 13] = [
+const LIMITS: [&str; 14] = [
     "separate cookies/localStorage/sessionStorage per context in ONE browser process: storage partitioning, not a crash-isolation boundary",
     "legacy browser_* tools (snapshot/click/type/evaluate/storage/tabs/...) act on the legacy default page and never inside a context; realm-scoped evaluate and tabs select refuse a context page by name, while the raw cdp tool remains the advanced escape hatch",
     "a page's url and target membership come from CDP target info; the title of a created or opened page is a live document.title read when one answered (source: targetInfo+liveRead) and otherwise the engine's cached value (source: targetInfo, with titleNote saying why); `eval` is the live-evidence route, and a page's `session` field is hand bookkeeping, not a live probe",
@@ -2253,6 +2496,7 @@ const LIMITS: [&str; 13] = [
     "a set cookie is verified by name+domain+path plus the requested secure/httpOnly/sameSite attributes; expiry is echoed but not asserted, and an identical cookie that already existed is reported preexisting",
     "clock/locale apply to one page: a preload script fixes Date before a reload and is removed once read back, while locale/timezone are CDP page overrides only; neither is a device or a real clock, and a different page needs its own call",
     "permissions are programmatic Browser.grantPermissions only; a UI prompt is refused with code invalid_args / reason rejected, and grants are scoped by browserContextId with the page's own navigator.permissions state read back as proof",
+    "state export/import are programmatic CDP plus page reads to one caller-supplied absolute JSON file; import requires a fresh context and verifies every cookie and localStorage item by reading it back, with no UI or clipboard",
 ];
 
 /// The `context` tool entry in the exact shape `tools::list()` uses. hand's
@@ -2288,14 +2532,16 @@ pub fn tool_schema() -> Value {
     permissions (name + grant array; programmatic Browser.grantPermissions scoped to the context, a UI \
     prompt REJECTED as invalid_args/rejected, and the page's own navigator.permissions state as proof) \
     | reset (clears cookies by browserContextId and local/session storage plus IndexedDB on the \
-    page, then reads the emptied state back). Limits: one browser process (partitioning, not \
+    page, then reads the emptied state back) | export_state (name + absolute path; one JSON file \
+    of this context's cookies and localStorage) | import_state (name + path; a FRESH context only, \
+    every item read back before success; no UI or clipboard). Limits: one browser process (partitioning, not \
     crash isolation); a dialog in a \
     context page is not auto-handled; a page's url and target membership are target-info values, \
     while a created/opened page's title is a live document.title read labelled source \
     targetInfo+liveRead (targetInfo when the engine's cached value had to stand in, with titleNote \
     saying why); frame refs do not exist for context pages.",
         "inputSchema": {"type": "object", "properties": {
-            "action": {"type": "string", "enum": ["create", "list", "show", "select", "open", "close", "destroy", "destroy_all", "eval", "cookies", "clock", "locale", "permissions", "reset"]},
+            "action": {"type": "string", "enum": ["create", "list", "show", "select", "open", "close", "destroy", "destroy_all", "eval", "cookies", "clock", "locale", "permissions", "reset", "export_state", "import_state"]},
             "name": {"type": "string", "maxLength": MAX_NAME_LEN},
             "url": {"type": "string", "format": "uri-reference"},
             "page": {"type": "string"},
@@ -2318,7 +2564,8 @@ pub fn tool_schema() -> Value {
             "permissions": {"type": "array", "items": {"type": "string"}},
             "grant": {"type": "array", "items": {"type": "string"}},
             "mode": {"type": "string"},
-            "prompt": {"type": "boolean"}
+            "prompt": {"type": "boolean"},
+            "path": {"type": "string"}
             },
             "required": ["action"], "additionalProperties": false},
         "outputSchema": {"type": "object", "properties": {
@@ -2365,6 +2612,10 @@ pub fn tool_schema() -> Value {
             "observed": {},
             "epoch": {"type": "integer"},
             "granted": {"type": "array"},
+            "path": {"type": "string"},
+            "localStorage": {"type": "array"},
+            "verifiedCookies": {"type": "integer", "minimum": 0},
+            "verifiedLocalStorage": {"type": "integer", "minimum": 0},
             "limits": {"type": "array"}},
             "required": ["ok"], "additionalProperties": false},
         "annotations": {"readOnlyHint": false, "destructiveHint": true, "idempotentHint": false, "openWorldHint": true}
@@ -2404,6 +2655,10 @@ pub fn capability_info() -> Value {
             "hardKillResidual": "a hard kill of hand sends no close frame, so disposeOnDetach cannot run: measured on the pinned build, an abrupt socket drop closed the context's pages but left the context object answering Storage.getCookies, so an attached engine may retain it until that engine exits; hand never reports a hard kill as a disposal and a hard kill is not a cleanup path",
             "cancellation": "create/open are committed by their own task; tracked state (phase 'creating') survives a cancelled call, and a lost owned engine is reported as no longer reachable instead of a fabricated disposal",
             "cookieVerification": "name+domain+path identity plus requested secure/httpOnly/sameSite; preexisting reported; expiry not asserted",
+            "stateTransfer": {
+                "export": "action export_state with name + absolute path: one JSON artifact with the context's cookies (Storage.getCookies by browserContextId) and localStorage (page read), no UI or clipboard",
+                "import": "action import_state with a fresh named context + path: Storage.setCookies under that browserContextId and localStorage on its page, each item read back before success"
+            },
             "determinism": {
                 "clock": "action clock with iso=RFC 3339 instant: a preload script fixes Date before a reload, the page's own Date.now() is read back, and the script is removed; no name targets the legacy default page, a name targets that context's page",
                 "locale": "action locale with locale and/or timezone: Emulation.setLocaleOverride / setTimezoneOverride on one page, verified from Intl.DateTimeFormat().resolvedOptions()",
