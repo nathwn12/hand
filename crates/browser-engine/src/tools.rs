@@ -3,6 +3,15 @@ use serde_json::{json, Value};
 use crate::browser::Browser;
 use crate::fetch::fetch_text;
 
+/// Browser tools a `run` batch may dispatch. `run` cannot spawn another batch
+/// and `close` cannot tear down the engine the batch is using.
+const RUN_TOOLS: &[&str] = &[
+    "navigate", "snapshot", "screenshot", "click", "type", "evaluate", "wait_for", "targets",
+    "dialog", "history", "network", "console", "storage", "tabs", "viewport", "select", "hover",
+    "key", "upload", "layout", "assert_layout", "visual", "cdp", "fetch_text", "context", "wheel",
+    "drag", "form", "download", "assert", "audit", "trace",
+];
+
 pub fn list() -> Value {
     let mut listed = json!({"tools": [
         {"name": "navigate", "title": "Navigate",
@@ -415,6 +424,29 @@ pub fn list() -> Value {
     listed["tools"].as_array_mut().expect("tools").push(crate::assert::schema());
     listed["tools"].as_array_mut().expect("tools").push(crate::audit::schema());
     listed["tools"].as_array_mut().expect("tools").push(crate::trace::schema());
+    listed["tools"].as_array_mut().expect("tools").push(json!({
+        "name": "run", "title": "Run",
+        "description": "Ordered browser batch. steps[] runs in order, 1..64 steps of {tool, args?}; tool is one of the browser tools except run and close. continueOnError (default false) stops at the first failing step; true keeps going. timeoutMs (default 30000) bounds each step. Every step reports {index, tool, status, ms, result?|error?} with the step's own structuredContent as evidence; aggregate ok, steps, failed and ms. No desktop tool is accepted.",
+        "inputSchema": {"type": "object", "properties": {
+            "steps": {"type": "array", "minItems": 1, "maxItems": 64, "items": {"type": "object",
+                "properties": {"tool": {"type": "string", "enum": json!(RUN_TOOLS)},
+                               "args": {"type": "object"}},
+                "required": ["tool"], "additionalProperties": false}},
+            "continueOnError": {"type": "boolean"},
+            "timeoutMs": {"type": "integer", "minimum": 1}},
+            "required": ["steps"], "additionalProperties": false},
+        "outputSchema": {"type": "object", "properties": {
+            "ok": {"type": "boolean"},
+            "steps": {"type": "array", "items": {"type": "object", "properties": {
+                "index": {"type": "integer"}, "tool": {"type": "string"},
+                "status": {"type": "string"}, "ms": {"type": "integer", "minimum": 0},
+                "result": {"type": "object"}, "error": {}},
+                "required": ["index", "tool", "status", "ms"], "additionalProperties": false}},
+            "failed": {"type": "integer", "minimum": 0},
+            "ms": {"type": "integer", "minimum": 0}},
+            "required": ["ok", "steps", "failed", "ms"], "additionalProperties": false},
+        "annotations": {"readOnlyHint": false, "destructiveHint": true, "idempotentHint": false, "openWorldHint": true}
+    }));
     for tool in listed["tools"].as_array_mut().expect("tools") {
         let Some(name) = tool.get("name").and_then(|n| n.as_str()) else {
             continue;
@@ -1331,6 +1363,7 @@ pub async fn call(name: &str, args: &Value, browser: &Browser) -> Value {
             .await
         }
         "form" => Box::pin(tool_form(browser, args)).await,
+        "run" => Box::pin(tool_run(browser, args)).await,
         "type" => {
             if let Err(e) = check_unknown("type", args, &["element", "selector", "text", "submit", "frame"]) {
                 return e.envelope();
@@ -5447,6 +5480,96 @@ async fn step_evidence(browser: &Browser, field: &str) -> Value {
         "console": write_evidence(&dir, &format!("{stamp}-console.log"), &console),
         "network": write_evidence(&dir, &format!("{stamp}-network.log"), &network),
     })
+}
+
+/// Ordered browser batch with per-step evidence. Each step dispatches through
+/// the same `call` a standalone tool uses, so gating, envelopes and typed
+/// errors are shared rather than reimplemented here. The boxed future breaks
+/// the `call -> tool_run -> call` async recursion.
+async fn tool_run(browser: &Browser, args: &Value) -> Result<Value, ToolErr> {
+    check_unknown("run", args, &["steps", "continueOnError", "timeoutMs"])?;
+    let steps = match args.get("steps").and_then(|v| v.as_array()) {
+        Some(a) if !a.is_empty() && a.len() <= 64 => a,
+        _ => {
+            return Err(ToolErr::typed(
+                "run: 'steps' must hold 1 to 64 steps".to_string(),
+                json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "run", "arg": "steps"}),
+            ))
+        }
+    };
+    let continue_on_error = args
+        .get("continueOnError")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let timeout_ms = match args.get("timeoutMs") {
+        None => 30_000u64,
+        Some(v) => match v.as_u64() {
+            Some(n) if n >= 1 => n,
+            _ => {
+                return Err(ToolErr::typed(
+                    "run: 'timeoutMs' must be an integer >= 1".to_string(),
+                    json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "run", "arg": "timeoutMs"}),
+                ))
+            }
+        },
+    };
+    let started = std::time::Instant::now();
+    let mut results = Vec::with_capacity(steps.len());
+    let mut failed = 0usize;
+    for (i, step) in steps.iter().enumerate() {
+        let tool = step.get("tool").and_then(|v| v.as_str()).unwrap_or("");
+        if !RUN_TOOLS.contains(&tool) {
+            return Err(ToolErr::typed(
+                format!("run: step {} names a tool this batch cannot dispatch: '{tool}'", i + 1),
+                json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::UnknownTool.as_str(), "tool": "run", "step": i + 1, "arg": "tool"}),
+            ));
+        }
+        let step_args = match step.get("args") {
+            None => json!({}),
+            Some(v) if v.is_object() => v.clone(),
+            Some(_) => {
+                return Err(ToolErr::typed(
+                    format!("run: step {} 'args' must be an object", i + 1),
+                    json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "run", "step": i + 1, "arg": "args"}),
+                ))
+            }
+        };
+        let begun = std::time::Instant::now();
+        let reply = tokio::time::timeout(
+            std::time::Duration::from_millis(timeout_ms),
+            Box::pin(call(tool, &step_args, browser)),
+        )
+        .await;
+        let ms = begun.elapsed().as_millis() as i64;
+        let entry = match reply {
+            Ok(env) => {
+                let is_error = env.get("isError").and_then(|v| v.as_bool()).unwrap_or(false);
+                let evidence = env.get("structuredContent").cloned().unwrap_or(Value::Null);
+                if is_error {
+                    failed += 1;
+                    json!({"index": i + 1, "tool": tool, "status": "error", "ms": ms, "error": evidence})
+                } else {
+                    json!({"index": i + 1, "tool": tool, "status": "ok", "ms": ms, "result": evidence})
+                }
+            }
+            Err(_) => {
+                failed += 1;
+                json!({"index": i + 1, "tool": tool, "status": "error", "ms": ms,
+                       "error": {"code": ToolCode::Timeout.as_str(), "reason": ToolReason::BudgetExceeded.as_str(), "tool": tool}})
+            }
+        };
+        let stopped = entry["status"] == "error" && !continue_on_error;
+        results.push(entry);
+        if stopped {
+            break;
+        }
+    }
+    let ok = failed == 0 && results.len() == steps.len();
+    Ok(ok_text(
+        json!({"ok": ok, "steps": results, "failed": failed,
+               "ms": started.elapsed().as_millis() as i64})
+            .to_string(),
+    ))
 }
 
 async fn tool_form(browser: &Browser, args: &Value) -> Result<Value, ToolErr> {

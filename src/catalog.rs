@@ -17,7 +17,7 @@ pub const DESKTOP_PREFIX: &str = "desktop_";
 /// `assert` (B2: bounded DOM, AX, text and URL assertions),
 /// `audit` (B7: measured viewport audit) and
 /// `trace` (B6: opt-in HAR/screenshot bundle with counted redaction).
-pub const BROWSER_TOOLS: [&str; 33] = [
+pub const BROWSER_TOOLS: [&str; 34] = [
     "navigate",
     "snapshot",
     "screenshot",
@@ -51,6 +51,7 @@ pub const BROWSER_TOOLS: [&str; 33] = [
     "assert",
     "audit",
     "trace",
+    "run",
 ];
 
 /// The 7 Puppet tools, in catalog order.

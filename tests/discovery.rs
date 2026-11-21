@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use common::{text_of, tool, Session};
 use serde_json::{json, Value};
 
-const BROWSER_TOOLS: [&str; 33] = [
+const BROWSER_TOOLS: [&str; 34] = [
     "navigate",
     "snapshot",
     "screenshot",
@@ -48,6 +48,7 @@ const BROWSER_TOOLS: [&str; 33] = [
     "assert",
     "audit",
     "trace",
+    "run",
 ];
 
 const DESKTOP_TOOLS: [&str; 7] = [

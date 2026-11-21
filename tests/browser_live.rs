@@ -372,6 +372,44 @@ fn browser_inspect_act_verify_and_stale_ref_refusal() {
         json!({"width": 160, "height": 100}),
         "scale 0.5 halves the captured box: {scaled}"
     );
+
+    let batch = s.call("browser_run", json!({"steps": [
+        {"tool": "navigate", "args": {"url": format!("{}/", fixture.base)}},
+        {"tool": "screenshot"},
+        {"tool": "evaluate", "args": {"expression": "document.title"}}
+    ]}));
+    assert!(!is_error(&batch), "batch failed: {}", text_of(&batch));
+    let batch_sc = structured(&batch);
+    assert_eq!(batch_sc["ok"], json!(true), "{batch_sc}");
+    assert_eq!(batch_sc["failed"], json!(0), "{batch_sc}");
+    let verdicts = batch_sc["steps"].as_array().expect("batch verdicts");
+    assert_eq!(verdicts.len(), 3, "{batch_sc}");
+    assert_eq!(verdicts[0]["tool"].as_str(), Some("navigate"));
+    assert_eq!(verdicts[1]["tool"].as_str(), Some("screenshot"));
+    assert_eq!(verdicts[2]["tool"].as_str(), Some("evaluate"));
+    assert!(verdicts.iter().all(|v| v["status"] == json!("ok")), "{batch_sc}");
+
+    let failing = |cont: bool| json!({
+        "continueOnError": cont,
+        "steps": [
+            {"tool": "evaluate", "args": {"expression": "throw new Error('batch-stop')"}},
+            {"tool": "evaluate", "args": {"expression": "1 + 1"}}
+        ]
+    });
+    let stopped = s.call("browser_run", failing(false));
+    assert!(!is_error(&stopped), "batch envelope failed: {}", text_of(&stopped));
+    let stopped_sc = structured(&stopped);
+    assert_eq!(stopped_sc["ok"], json!(false), "{stopped_sc}");
+    assert_eq!(stopped_sc["failed"], json!(1), "{stopped_sc}");
+    assert_eq!(stopped_sc["steps"].as_array().map(Vec::len), Some(1), "{stopped_sc}");
+    assert_eq!(stopped_sc["steps"][0]["status"], json!("error"), "{stopped_sc}");
+
+    let continued = s.call("browser_run", failing(true));
+    assert!(!is_error(&continued), "batch envelope failed: {}", text_of(&continued));
+    let continued_sc = structured(&continued);
+    assert_eq!(continued_sc["failed"], json!(1), "{continued_sc}");
+    assert_eq!(continued_sc["steps"].as_array().map(Vec::len), Some(2), "{continued_sc}");
+    assert_eq!(continued_sc["steps"][1]["status"], json!("ok"), "{continued_sc}");
 }
 
 /// `selector` is a published alias: a client that prunes undeclared keys must
