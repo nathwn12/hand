@@ -2531,7 +2531,9 @@ pub fn tool_schema() -> Value {
     tabs; on destroy the pages it closes fire `pagehide` but never `beforeunload` or `unload` \
     (measured on Chrome 158; pagehide cannot be suppressed from CDP) - so use close when a page \
     must run its own teardown handlers) | destroy_all | eval (expression in the \
-    context's page; typed js_error on a throw) | cookies (read this context's jar, or set cookies \
+    context's page; typed js_error on a throw. A valueless expression is INTENTIONALLY strict here: \
+    it stays a typed js_error/undefined_result refusal. Only browser_evaluate mints void:true; use \
+    it when a valueless result must be a success) | cookies (read this context's jar, or set cookies \
     and verify each by name+domain+path identity plus the requested attributes, with preexisting \
     reported; a cookie needs name+value and either url or domain, or the engine cannot tell which \
     origin it belongs to and the tool refuses it) | clock (iso=RFC 3339 instant; fixes the page's \

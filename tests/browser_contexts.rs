@@ -878,6 +878,40 @@ fn context_arguments_and_unknown_names_are_typed_refusals() {
     });
 }
 
+/// Decision, published in the tool description: context eval is intentionally
+/// strict. A valueless expression stays a typed js_error/undefined_result; only
+/// browser_evaluate mints void:true. Locked here so it cannot become silent.
+#[test]
+fn context_eval_keeps_valueless_result_strict_and_visible() {
+    let _serial = serial();
+    require_owned_browser();
+    block_on(async {
+        let rig = Rig::start();
+        let created = rig.call(json!({"action": "create", "name": "strict"})).await;
+        assert!(!is_error(&created), "create failed: {}", text_of(&created));
+
+        let void = rig
+            .call(json!({"action": "eval", "name": "strict", "expression": "undefined"}))
+            .await;
+        assert!(
+            is_error(&void),
+            "a valueless result must be a typed refusal: {}",
+            text_of(&void)
+        );
+        assert_eq!(
+            typed_code(&void),
+            ("js_error".into(), "undefined_result".into()),
+            "{void}"
+        );
+        assert!(
+            text_of(&void).contains("no value"),
+            "the prose must name the reason: {}",
+            text_of(&void)
+        );
+        rig.close().await;
+    });
+}
+
 /// Measured teardown semantics: disposing a context fires `pagehide` on each
 /// page but never `beforeunload` or `unload`. Chrome 158 full Chrome fires
 /// `pagehide` on `Target.disposeBrowserContext` and CDP cannot suppress it, so
