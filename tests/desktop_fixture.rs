@@ -57,6 +57,23 @@ extern "system" {
         l: isize,
     ) -> i32;
     fn GetClassNameW(hwnd: *mut c_void, buf: *mut u16, max: i32) -> i32;
+    fn GetLastInputInfo(info: *mut LastInputInfo) -> i32;
+}
+
+#[repr(C)]
+struct LastInputInfo {
+    cb_size: u32,
+    tick: u32,
+}
+
+/// Last session-input tick: a pointer delta with a moving tick is the owner's
+/// input, not hand's. Same rule as `no_steal.rs`.
+fn input_tick() -> Option<u32> {
+    let mut info = LastInputInfo {
+        cb_size: std::mem::size_of::<LastInputInfo>() as u32,
+        tick: 0,
+    };
+    (unsafe { GetLastInputInfo(&mut info) } != 0).then_some(info.tick)
 }
 
 #[repr(C)]
@@ -660,6 +677,7 @@ fn hidden_desktop_uia_text_entry_reports_verified_effect() {
     let mut s = Session::spawn();
     let fg_before = foreground_now();
     let cursor_before = cursor_now();
+    let input_before = input_tick();
     let journal = app.dir.join("journal-text.txt").to_string_lossy().into_owned();
 
     let response = s.call(
@@ -690,10 +708,16 @@ fn hidden_desktop_uia_text_entry_reports_verified_effect() {
         Value::from(true),
         "the owner's foreground must not move: {sc}"
     );
-    assert_eq!(
-        sc["cursorUnchanged"],
-        Value::from(true),
-        "the owner's pointer must not move: {sc}"
+    // `cursorUnchanged` is a raw before/after sample, not a verdict: the owner
+    // can move the mouse during the 4-second hidden-desktop launch. Attribute
+    // any delta with GetLastInputInfo, the same rule no_steal.rs uses. A move
+    // with a fresh input tick is the owner's; a move with no input is a defect.
+    let input_after = input_tick();
+    assert!(
+        sc["cursorUnchanged"].as_bool() == Some(true)
+            || matches!((input_before, input_after), (Some(a), Some(b)) if a != b),
+        "a pointer delta with no owner input is a defect: before={input_before:?} after={input_after:?} delta={}",
+        sc["owner_cursor_delta"]
     );
     let results = sc["results"].as_array().expect("results array");
     assert_eq!(results.len(), 2, "both actions report: {sc}");
