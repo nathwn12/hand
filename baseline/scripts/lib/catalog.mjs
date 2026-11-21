@@ -213,6 +213,29 @@ export function applyHand020Extensions(catalog) {
   return catalog;
 }
 
+/**
+ * 0.3.0: `selector` became an alias for `element` on five action tools. The
+ * published schemas add anyOf[element|selector] and DROP `element` from
+ * required (JSON Schema ANDs the two, so leaving it there rejects a
+ * selector-only call). Screenshot's target was always optional and has no
+ * anyOf, so it is untouched. Human record: docs/COMPATIBILITY.md item 9.
+ */
+export const HAND_030_ALIAS_TOOLS = [
+  "browser_click", "browser_type", "browser_select", "browser_hover", "browser_upload",
+];
+
+export function applyHand030SelectorAlias(catalog) {
+  for (const name of HAND_030_ALIAS_TOOLS) {
+    const tool = catalog.tools?.find((entry) => entry.name === name);
+    const required = tool?.inputSchema?.required;
+    if (!Array.isArray(required)) continue;
+    const next = required.filter((key) => key !== "element");
+    if (next.length === 0) delete tool.inputSchema.required;
+    else tool.inputSchema.required = next;
+  }
+  return catalog;
+}
+
 export function buildHandCatalog({ gladius, puppet, provenance }) {
   const groups = [
     { domain: "browser", source: "gladius", captured: gladius },
@@ -233,7 +256,7 @@ export function buildHandCatalog({ gladius, puppet, provenance }) {
   }
   const catalog = {
     $comment:
-      "Derived baseline for hand. Tools are the pinned legacy catalogues with the documented browser_/desktop_ prefix; no schema, description, annotation or ordering was changed, except the one 0.2.0 browser_network extension in applyHand020Extensions. Regenerate with: node baseline/scripts/build-hand-catalog.mjs",
+      "Derived baseline for hand. Tools are the pinned legacy catalogues with the documented browser_/desktop_ prefix; no schema, description, annotation or ordering was changed, except the 0.2.0 browser_network extension (applyHand020Extensions) and the 0.3.0 selector-alias required change (applyHand030SelectorAlias). Regenerate with: node baseline/scripts/build-hand-catalog.mjs",
     spec: "docs/SPEC.md: the 32-tool floor is in 'Initial public surface and lifecycle'; tools beyond it are additions, not violations.",
     provenance,
     counts: {
@@ -243,7 +266,7 @@ export function buildHandCatalog({ gladius, puppet, provenance }) {
     },
     tools,
   };
-  return applyHand020Extensions(catalog);
+  return applyHand030SelectorAlias(applyHand020Extensions(catalog));
 }
 
 export function validateHandCatalog(catalog) {
