@@ -737,6 +737,9 @@ impl ContextRegistry {
             }
         };
         self.browser.exclude_browser_context(&context_id, name);
+        // Row B3: bind the name so a route armed against it is removed when
+        // this context is torn down. No engine contact, no claim about state.
+        crate::net::bind_context(&self.browser, name, &context_id).await;
         {
             let mut st = self.state.lock().await;
             match st.entry_by_token_mut(token) {
@@ -943,6 +946,7 @@ impl ContextRegistry {
         let proven_gone = engine_gone && matches!(self.browser.ownership(), EngineOwnership::Owned)
             || disposed.is_ok();
         if proven_gone {
+            crate::net::on_context_gone(&self.browser, context_id).await;
             st.entries.retain(|e| e.token != token);
             self.browser.include_browser_context(context_id);
         } else if let Some(e) = st.entry_by_token_mut(token) {
@@ -1437,6 +1441,7 @@ impl ContextRegistry {
         };
         match dispose_verified(&self.browser, &context_id).await {
             Ok((by, evidence)) => {
+                crate::net::on_context_gone(&self.browser, &context_id).await;
                 st.entries.retain(|e| e.token != token);
                 if st.selected.as_deref() == Some(name.as_str()) {
                     st.selected = None;
@@ -1456,6 +1461,7 @@ impl ContextRegistry {
             }
             Err(e) if is_engine_dead(&e) => match self.browser.ownership() {
                 EngineOwnership::Owned => {
+                    crate::net::on_context_gone(&self.browser, &context_id).await;
                     st.entries.retain(|e| e.token != token);
                     if st.selected.as_deref() == Some(name.as_str()) {
                         st.selected = None;
@@ -2424,6 +2430,9 @@ impl ContextRegistry {
         if let Some(entry) = st.entries.iter().find(|e| e.token == token) {
             if let Some(id) = entry.id() {
                 let id = id.to_string();
+                // Row B3: a route lives on this context and dies with it. The
+                // removal is verified state work, not a claim about the engine.
+                crate::net::on_context_gone(&self.browser, &id).await;
                 self.browser.include_browser_context(&id);
             }
         }
@@ -3130,6 +3139,7 @@ async fn reconcile(browser: &Browser, st: &mut State, allow_reconnect: bool) -> 
             EntryFate::Gone => {
                 let entry = st.entries.remove(idx);
                 if let Some(id) = entry.id() {
+                    crate::net::on_context_gone(browser, id).await;
                     browser.include_browser_context(id);
                 }
                 if selected_here {
@@ -3153,6 +3163,7 @@ async fn reconcile(browser: &Browser, st: &mut State, allow_reconnect: bool) -> 
                     }
                     Probe::Gone => {
                         st.entries.remove(idx);
+                        crate::net::on_context_gone(browser, &id).await;
                         browser.include_browser_context(&id);
                         if selected_here {
                             st.selected = None;

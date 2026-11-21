@@ -142,7 +142,8 @@ pub fn list() -> Value {
         {"name": "network", "title": "Network",
          "description": "Observable network: captured requests/responses (method, url, status, resource type, timing) since the Network domain was first enabled, cap 500. action get (default)|drain|clear; filter is a plain substring matched against the url; limit caps returned (default 100).",
          "inputSchema": {"type": "object", "properties": {
-             "action": {"type": "string", "enum": ["get", "drain", "clear"]}, "filter": {"type": "string"}, "limit": {"type": "integer"}},
+             "action": {"type": "string", "enum": ["get", "drain", "clear", "route", "mock", "abort", "offline", "restore"]}, "filter": {"type": "string"}, "limit": {"type": "integer"},
+             "blockedUrls": {"type": "array", "items": {"type": "string"}}},
              "additionalProperties": false},
          "outputSchema": {"type": "object",
             "properties": {"entries": {"type": "array"}, "count": {"type": "integer"},
@@ -3240,21 +3241,35 @@ mod tests {
         );
     }
 
-    /// The five interception actions must reach the B3 stub, not fall through
-    /// to `network: unknown action`. Anything else keeps the ring action error.
+    /// The five interception actions must reach the implemented net module,
+    /// not fall through to `network: unknown action`. With no live engine the
+    /// four arming actions refuse at the engine boundary; `restore` is a typed
+    /// success because nothing was armed. The retired B3 stub must be gone.
     #[tokio::test]
-    async fn network_interception_actions_reach_the_b3_stub() {
+    async fn network_interception_actions_reach_the_net_module() {
         use serde_json::json;
 
         use crate::browser::Browser;
 
         let browser = Browser::new();
-        for action in ["route", "mock", "abort", "offline", "restore"] {
-            let env = super::call("network", &json!({"action": action}), &browser).await;
-            assert_eq!(env["structuredContent"]["code"], "not_implemented", "{action}: {env}");
-            assert_eq!(env["structuredContent"]["tool"], "browser_network");
+        let restored = super::call("network", &json!({"action": "restore"}), &browser).await;
+        assert_eq!(restored["structuredContent"]["ok"].as_bool(), Some(true), "{restored}");
+        assert_eq!(restored["structuredContent"]["action"], "restore", "{restored}");
+        assert_eq!(restored["structuredContent"]["removed"], 0, "{restored}");
+        assert!(restored.get("isError").is_none(), "{restored}");
+
+        for (action, args) in [
+            ("route", json!({"action": "route", "pattern": "*/x.json"})),
+            ("mock", json!({"action": "mock", "url": "*/x.json", "body": {"value": "mocked"}})),
+            ("abort", json!({"action": "abort", "url": "*/x.json"})),
+            ("offline", json!({"action": "offline"})),
+        ] {
+            let env = super::call("network", &args, &browser).await;
+            assert_eq!(env["structuredContent"]["tool"], "network", "{action}: {env}");
+            assert_eq!(env["isError"], true, "{action}: {env}");
             let text = env["content"][0]["text"].as_str().unwrap_or("");
-            assert!(text.contains("B3"), "{action}: {text}");
+            assert!(text.contains("no live engine"), "{action}: {text}");
+            assert!(!text.contains("not implemented"), "{action}: {text}");
         }
 
         let unknown = super::call("network", &json!({"action": "bogus"}), &browser).await;

@@ -245,6 +245,12 @@ struct Shared {
     /// download's events.
     downloads: AsyncMutex<HashMap<String, Value>>,
     download_notify: Arc<tokio::sync::Notify>,
+    /// `Fetch.requestPaused` events captured by the reader for row B3's
+    /// interception consumer. The full CDP envelope is kept (not just params):
+    /// the reply MUST go back on the event's own `sessionId`, and dropping that
+    /// field would pause a request for ever. Drained by `CdpSender`.
+    fetch_events: AsyncMutex<VecDeque<Value>>,
+    fetch_notify: Arc<tokio::sync::Notify>,
     /// Dialog policy applied by the reader when a JS dialog opens
     /// (auto-accept is the default, matching the pre-policy behavior).
     dialog_policy: AsyncMutex<DialogPolicy>,
@@ -435,6 +441,8 @@ fn new_shared(sink: WsSink, excluded_contexts: Arc<Mutex<HashMap<String, String>
         nav_obs: AsyncMutex::new(NavObs::default()),
         downloads: AsyncMutex::new(HashMap::new()),
         download_notify: Arc::new(tokio::sync::Notify::new()),
+        fetch_events: AsyncMutex::new(VecDeque::new()),
+        fetch_notify: Arc::new(tokio::sync::Notify::new()),
         dialog_policy: AsyncMutex::new(DialogPolicy::default()),
         extra_sessions: AsyncMutex::new(HashMap::new()),
         capture: Arc::new(AsyncMutex::new(())),
@@ -580,6 +588,10 @@ impl Drop for DragInterceptGuard {
 }
 
 pub struct Browser {
+    /// Stable identity for this `Browser`. Network interception state lives in
+    /// `crate::net`'s registry keyed by this id, so a fresh `Browser` can never
+    /// inherit a route from a dropped one whose memory address was reused.
+    id: u64,
     state: AsyncMutex<Option<Inner>>,
     pid: Mutex<Option<u32>>,
     /// Serialises launches and recoveries: exactly one task may build an
@@ -607,9 +619,41 @@ pub struct Browser {
     generation: AtomicU64,
 }
 
+/// A clonable, live-only CDP sender for row B3's background consumer.
+#[derive(Clone)]
+pub(crate) struct CdpSender {
+    shared: Arc<Shared>,
+}
+
+impl CdpSender {
+    pub(crate) async fn send(
+        &self,
+        method: &str,
+        params: Value,
+        session: Option<String>,
+    ) -> Result<Value, String> {
+        if self.shared.dead.load(Ordering::SeqCst) {
+            return Err(format!("cdp: engine connection closed before {method}"));
+        }
+        send_raw(&self.shared, method, params, session).await
+    }
+
+    /// Drain the paused requests the reader has queued since the last call.
+    pub(crate) async fn take_fetch_events(&self) -> Vec<Value> {
+        let mut q = self.shared.fetch_events.lock().await;
+        q.drain(..).collect()
+    }
+
+    pub(crate) fn fetch_notify(&self) -> Arc<tokio::sync::Notify> {
+        self.shared.fetch_notify.clone()
+    }
+}
+
 impl Browser {
     pub fn new() -> Self {
+        static NEXT_BROWSER_ID: AtomicU64 = AtomicU64::new(1);
         Browser {
+            id: NEXT_BROWSER_ID.fetch_add(1, Ordering::SeqCst),
             state: AsyncMutex::new(None),
             pid: Mutex::new(None),
             launch_lock: AsyncMutex::new(()),
@@ -623,6 +667,11 @@ impl Browser {
             excluded_contexts: no_excluded_contexts(),
             generation: AtomicU64::new(0),
         }
+    }
+
+    /// Stable identity for network-interception state (`crate::net`).
+    pub fn id(&self) -> u64 {
+        self.id
     }
 
     /// Engine generation: bumped once per successful launch. Browser contexts
@@ -718,6 +767,65 @@ impl Browser {
             }
         };
         Some(send_raw(&shared, method, params, session).await)
+    }
+
+    /// A clonable, live-only CDP sender for row B3's background consumer. It
+    /// holds the connection's `Shared` half, not the `Browser`, so the task can
+    /// outlive the call that armed interception without keeping the whole
+    /// engine handle alive.
+    pub(crate) async fn cdp_sender(&self) -> Option<CdpSender> {
+        let shared = {
+            let guard = self.state.lock().await;
+            match guard.as_ref() {
+                Some(inner) if !inner.shared.dead.load(Ordering::SeqCst) => inner.shared.clone(),
+                _ => return None,
+            }
+        };
+        Some(CdpSender { shared })
+    }
+
+    /// Send a CDP command on the ACTIVE page session and return the session
+    /// used. `Fetch` and `Network` emulation are page-session scoped: a
+    /// browser-level send would never pause the page's own `fetch()`.
+    pub(crate) async fn cdp_session(
+        &self,
+        method: &str,
+        params: Value,
+    ) -> Result<(String, Value), String> {
+        if !self.is_live().await {
+            return Err("network: no live engine; nothing was intercepted".to_string());
+        }
+        let shared = self.shared().await?;
+        send_session(&shared, method, params).await
+    }
+
+    /// Attach a session to a page of one named isolated browser context. The
+    /// legacy `ensure_session` never selects those pages, so context-scoped
+    /// interception must attach by `browserContextId` explicitly.
+    pub(crate) async fn session_for_context(&self, context_id: &str) -> Result<String, String> {
+        if !self.is_live().await {
+            return Err("network: no live engine; nothing was intercepted".to_string());
+        }
+        let shared = self.shared().await?;
+        let r = send_raw(&shared, "Target.getTargets", json!({}), None).await?;
+        let infos = r
+            .get("targetInfos")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+        for t in infos {
+            if t.get("type").and_then(|v| v.as_str()) != Some("page") {
+                continue;
+            }
+            if t.get("browserContextId").and_then(|v| v.as_str()) != Some(context_id) {
+                continue;
+            }
+            let target_id = t.get("targetId").and_then(|v| v.as_str()).unwrap_or("");
+            return attach_to(&shared, target_id).await;
+        }
+        Err(format!(
+            "network: no page in browser context {context_id} to intercept"
+        ))
     }
 
     /// Name of the isolated browser context (`crate::contexts`) that owns
@@ -3812,6 +3920,14 @@ async fn reader_loop(mut stream: WsReader, shared: Arc<Shared>) {
             }
             continue;
         }
+        if v.get("method").and_then(|m| m.as_str()) == Some("Fetch.requestPaused") {
+            // Row B3: queue the whole envelope. The interception consumer
+            // replies with fulfill/fail/continue on the SAME session; a paused
+            // request left unanswered freezes the page's fetch for ever.
+            shared.fetch_events.lock().await.push_back(v.clone());
+            shared.fetch_notify.notify_waiters();
+            continue;
+        }
         if v.get("method").and_then(|m| m.as_str()) == Some("Page.loadEventFired") {
             shared.load_notify.notify_waiters();
             continue;
@@ -5255,6 +5371,7 @@ mod tests {
             reader,
         };
         let browser = Browser {
+            id: 0, // test rig: no interception state is keyed by this id
             state: AsyncMutex::new(Some(inner)),
             pid: Mutex::new(Some(pid)),
             launch_lock: AsyncMutex::new(()),
@@ -5389,6 +5506,7 @@ mod tests {
             reader,
         };
         let browser = Browser {
+            id: 0, // test rig: no interception state is keyed by this id
             state: AsyncMutex::new(Some(inner)),
             pid: Mutex::new(Some(pid)),
             launch_lock: AsyncMutex::new(()),
@@ -6443,6 +6561,7 @@ mod tests {
 
     fn wrap_attached(inner: Inner) -> Browser {
         Browser {
+            id: 0, // test rig: no interception state is keyed by this id
             state: AsyncMutex::new(Some(inner)),
             pid: Mutex::new(None),
             launch_lock: AsyncMutex::new(()),
