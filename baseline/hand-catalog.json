@@ -1,5 +1,5 @@
 {
-  "$comment": "Derived baseline for hand. Tools are the pinned legacy catalogues with the documented browser_/desktop_ prefix; no schema, description, annotation or ordering was changed, except the one 0.2.0 browser_network extension in applyHand020Extensions. Regenerate with: node baseline/scripts/build-hand-catalog.mjs",
+  "$comment": "Derived baseline for hand. Tools are the pinned legacy catalogues with the documented browser_/desktop_ prefix; no schema, description, annotation or ordering was changed, except the 0.2.0 browser_network extension (applyHand020Extensions) and the 0.3.0 selector-alias required change (applyHand030SelectorAlias). Regenerate with: node baseline/scripts/build-hand-catalog.mjs",
   "blockers": [],
   "counts": {
     "browser": 25,
@@ -10,8 +10,8 @@
   "live": {
     "capture": {
       "executable": "Q:\\PROJECTS\\PERSONAL\\hand\\target\\debug\\hand.exe",
-      "executableSha256": "sha256:1fc762e2ff7ceec9783904f472ac72fdf9c8297b5d2889493b1e18344feff4ff",
-      "reportedVersion": "hand 0.3.0 (994d9c075cc524848970e7b1d8887fbcd9748920; debug)"
+      "executableSha256": "sha256:ae83bd330dd4cb0d262fe6bba8a419ef9572608e3658f9cc2367e881ab1cd647",
+      "reportedVersion": "hand 0.3.0 (ce55d94b3dc3fd68cac5e341f50d43df1ff5e52f; debug)"
     },
     "extra": [
       "browser_assert",
@@ -493,9 +493,6 @@
             "type": "boolean"
           }
         },
-        "required": [
-          "element"
-        ],
         "type": "object"
       },
       "legacyName": "click",
@@ -551,7 +548,6 @@
           }
         },
         "required": [
-          "element",
           "text"
         ],
         "type": "object"
@@ -1078,7 +1074,6 @@
           }
         },
         "required": [
-          "element",
           "paths"
         ],
         "type": "object"
@@ -1177,9 +1172,6 @@
             "type": "string"
           }
         },
-        "required": [
-          "element"
-        ],
         "type": "object"
       },
       "legacyName": "hover",
@@ -1228,9 +1220,6 @@
             "type": "string"
           }
         },
-        "required": [
-          "element"
-        ],
         "type": "object"
       },
       "legacyName": "select",
