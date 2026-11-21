@@ -3,6 +3,7 @@
 //   node npm/release.mjs              # all three, in order: initial, publish, trust
 //   node npm/release.mjs --initial    # npm login only (visible window; passkey)
 //   node npm/release.mjs --publish    # gate, build, pack, handshake, publish, registry read-back
+//                                     # --publish runs npm login itself when the session is absent
 //   node npm/release.mjs --trust      # bind GitHub Actions as npm trusted publisher
 // publish is idempotent: a version already on the registry is a skip, never a second publish.
 import { execFileSync, spawn } from 'node:child_process';
@@ -103,8 +104,14 @@ async function publishMode() {
   if (ci) {
     console.log('publish: OIDC trusted publishing (no user token)');
   } else {
-    const user = npmUser();
-    if (!user) fail('publish', `not logged in. Run: ${visibleWindow('--initial')}`);
+    let user = npmUser();
+    if (!user) {
+      if (!process.stdin.isTTY) fail('publish', `not logged in. Run: ${visibleWindow('--publish')}`);
+      console.log('publish: npm login first (complete the browser passkey)');
+      step('publish', () => npmExec(['login', '--auth-type=web'], { cwd: here, stdio: ['inherit', 'inherit', 'inherit'] }));
+      user = npmUser();
+      if (!user) fail('publish', 'npm login finished but npm whoami still fails');
+    }
     console.log(`publish: authenticated as ${user}`);
   }
 
