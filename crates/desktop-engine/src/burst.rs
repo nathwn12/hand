@@ -2273,6 +2273,78 @@ fn wait_state_change(hwnd: i64, path: &str, before: &str) -> bool {
     element_state(hwnd, path).is_some_and(|now| now != before)
 }
 
+/// D3: the readable state a UIA pattern act can actually change. Text and the
+/// enabled bit are deliberately absent: Invoke, Toggle, Select and SetValue do
+/// not move them, so counting them would report a false `unchanged`. `None`
+/// means the control exposes no such state, which is `pattern-returned`, never
+/// a guessed `verified`.
+fn action_state(hwnd: i64, path: &str) -> Option<String> {
+    let mut parts: Vec<String> = Vec::new();
+    if let Ok(s) = crate::uia::uia_expand_state(hwnd, path) {
+        parts.push(format!("expand={}", crate::uia::expand_state_name(s)));
+    }
+    if let Ok(v) = crate::uia::uia_value(hwnd, path) {
+        parts.push(format!("value={v}"));
+    }
+    if let Ok(v) = crate::uia::uia_range_value(hwnd, path) {
+        parts.push(format!("range={v}"));
+    }
+    if let Ok(s) = crate::uia::uia_toggle_state(hwnd, path) {
+        parts.push(format!("toggle={s}"));
+    }
+    if let Ok(s) = crate::uia::uia_is_selected(hwnd, path) {
+        parts.push(format!("selected={s}"));
+    }
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join(";"))
+    }
+}
+
+/// Pure D3 classifier, kept separate so the three effects have a unit test.
+/// Readable-and-moved is `verified`; unreadable on either side is
+/// `pattern-returned`; readable-and-still is `unchanged`.
+fn effect_of(before: Option<String>, after: Option<String>) -> &'static str {
+    match (before, after) {
+        (None, _) | (Some(_), None) => "pattern-returned",
+        (Some(b), Some(a)) if b == a => "unchanged",
+        (Some(_), Some(_)) => "verified",
+    }
+}
+
+/// Bounded readback after a UIA pattern act. Providers apply synchronously;
+/// the poll covers the ones that post to their own loop. `before` must come
+/// from `action_state` BEFORE the pattern fired.
+fn effect_after(hwnd: i64, path: &str, before: Option<String>) -> &'static str {
+    let Some(b) = before else {
+        return "pattern-returned";
+    };
+    let t0 = Instant::now();
+    let mut after = action_state(hwnd, path);
+    while after.as_deref() == Some(b.as_str()) && t0.elapsed() < Duration::from_millis(400) {
+        std::thread::sleep(Duration::from_millis(20));
+        after = action_state(hwnd, path);
+    }
+    effect_of(Some(b), after)
+}
+
+/// `unchanged` is a result, not an unproven success: ok:false with the typed
+/// policy code and the before-state named in the error.
+fn mark_unchanged(d: &mut Map<String, Value>, before: &str) {
+    d.insert("ok".to_string(), Value::from(false));
+    d.insert(
+        "code".to_string(),
+        Value::from(crate::gate::BACKGROUND_UNAVAILABLE),
+    );
+    d.insert(
+        "error".to_string(),
+        Value::from(format!(
+            "background_unavailable: the UIA pattern was accepted but the control's readable state did not change ({before}); nothing was verified"
+        )),
+    );
+}
+
 fn fail_since_flush(
     results: &mut [Map<String, Value>],
     marked: &mut Vec<usize>,
@@ -3344,8 +3416,9 @@ pub fn do_burst(args: &DoArgs) -> String {
                         d.insert("ms".to_string(), Value::from(elapsed_ms(&t0)));
                         return Ok(Some(d));
                     }
-                    let (ok_v, via, verr) =
-                        crate::uia::uia_set_value(tgt, &entry_str(&entry, "path"), &text);
+                    let path = entry_str(&entry, "path");
+                    let before = action_state(tgt, &path);
+                    let (ok_v, via, verr) = crate::uia::uia_set_value(tgt, &path, &text);
                     d.insert("ok".to_string(), Value::from(ok_v));
                     d.insert(
                         "via".to_string(),
@@ -3356,12 +3429,20 @@ pub fn do_burst(args: &DoArgs) -> String {
                         }),
                     );
                     d.insert("delivered".to_string(), Value::from("uia"));
-                    d.insert(
-                        "effect".to_string(),
-                        Value::from(if ok_v { "verified" } else { "unverified" }),
-                    );
+                    let effect = if ok_v {
+                        effect_after(tgt, &path, before.clone())
+                    } else {
+                        "unverified"
+                    };
+                    d.insert("effect".to_string(), Value::from(effect));
+                    if effect == "unchanged" {
+                        let b = before.unwrap_or_default();
+                        mark_unchanged(&mut d, &b);
+                    }
                     if let Some(e) = verr {
-                        d.insert("error".to_string(), Value::from(e));
+                        if !ok_v {
+                            d.insert("error".to_string(), Value::from(e));
+                        }
                     }
                     d.insert("ms".to_string(), Value::from(elapsed_ms(&t0)));
                     return Ok(Some(d));
@@ -3966,8 +4047,15 @@ pub fn do_burst(args: &DoArgs) -> String {
                 }
                 d.insert("element".to_string(), Value::from(element_pub_full(&entry)));
                 d.insert("resolution".to_string(), Value::from("found"));
+                let path = entry_str(&entry, "path");
+                let uia_act = model.backend == "uia";
+                let before = if uia_act {
+                    action_state(tgt, &path)
+                } else {
+                    None
+                };
                 let (ok_v, via, verr) = if let Some(want) = expand_req {
-                    if model.backend != "uia" {
+                    if !uia_act {
                         (
                             false,
                             "none".to_string(),
@@ -3978,11 +4066,11 @@ pub fn do_burst(args: &DoArgs) -> String {
                         )
                     } else {
                         let (ok_e, via_e, err_e) =
-                            crate::uia::uia_expand_collapse(tgt, &entry_str(&entry, "path"), want);
+                            crate::uia::uia_expand_collapse(tgt, &path, want);
                         (ok_e, via_e, err_e)
                     }
-                } else if model.backend == "uia" {
-                    crate::uia::uia_activate(tgt, &entry_str(&entry, "path"))
+                } else if uia_act {
+                    crate::uia::uia_activate(tgt, &path)
                 } else {
                     win32_activate(&entry)
                 };
@@ -3999,6 +4087,7 @@ pub fn do_burst(args: &DoArgs) -> String {
                     );
                     d.insert("error".to_string(), Value::from(refusal.text()));
                     d.insert("via".to_string(), Value::from("none"));
+                    d.insert("effect".to_string(), Value::from("unverified"));
                     d.insert("ms".to_string(), Value::from(elapsed_ms(&t0)));
                     return Ok(Some(d));
                 } else {
@@ -4018,7 +4107,19 @@ pub fn do_burst(args: &DoArgs) -> String {
                         d.insert("error".to_string(), Value::from(e));
                     }
                 }
-                if expand_req.is_some() && model.backend == "uia" {
+                if uia_act {
+                    let effect = if ok_now {
+                        effect_after(tgt, &path, before.clone())
+                    } else {
+                        "unverified"
+                    };
+                    d.insert("effect".to_string(), Value::from(effect));
+                    if effect == "unchanged" {
+                        let b = before.unwrap_or_default();
+                        mark_unchanged(&mut d, &b);
+                    }
+                }
+                if expand_req.is_some() && uia_act {
                     if let Ok(st) = crate::uia::uia_expand_state(tgt, &entry_str(&entry, "path")) {
                         d.insert(
                             "expand_state".to_string(),
@@ -4197,8 +4298,9 @@ pub fn do_burst(args: &DoArgs) -> String {
                         d.insert("ms".to_string(), Value::from(elapsed_ms(&t0)));
                         return Ok(Some(d));
                     }
-                    let (ok_v, via, verr) =
-                        crate::uia::uia_set_value(tgt, &entry_str(&entry, "path"), &text);
+                    let path = entry_str(&entry, "path");
+                    let before = action_state(tgt, &path);
+                    let (ok_v, via, verr) = crate::uia::uia_set_value(tgt, &path, &text);
                     d.insert(
                         "via".to_string(),
                         Value::from(if via.is_empty() {
@@ -4208,10 +4310,19 @@ pub fn do_burst(args: &DoArgs) -> String {
                         }),
                     );
                     d.insert("ok".to_string(), Value::from(ok_v));
+                    let effect = if ok_v {
+                        effect_after(tgt, &path, before.clone())
+                    } else {
+                        "unverified"
+                    };
+                    d.insert("effect".to_string(), Value::from(effect));
+                    if effect == "unchanged" {
+                        let b = before.unwrap_or_default();
+                        mark_unchanged(&mut d, &b);
+                    }
                     if ok_v {
                         d.insert("value_len".to_string(), Value::from(value_len));
-                        if let Ok(v) = crate::uia::uia_range_value(tgt, &entry_str(&entry, "path"))
-                        {
+                        if let Ok(v) = crate::uia::uia_range_value(tgt, &path) {
                             d.insert("value".to_string(), Value::from(v));
                         }
                     }
@@ -6794,6 +6905,38 @@ mod tests {
             assert_eq!(payload["sendinput_calls"], Value::from(0));
         }
         println!("SENDINPUT_DELIVERY_REFUSED_OK code=no_foreground_policy events=0");
+    }
+
+    /// D3 classifier: the three effects are exclusive and none assumes a
+    /// readback the control never exposed.
+    #[test]
+    fn uia_effect_classifier_three_states() {
+        assert_eq!(
+            super::effect_of(Some("value=alpha".into()), Some("value=beta".into())),
+            "verified",
+            "a readable state that moved is verified"
+        );
+        assert_eq!(
+            super::effect_of(Some("value=alpha".into()), Some("value=alpha".into())),
+            "unchanged",
+            "a readable state that stayed is unchanged"
+        );
+        assert_eq!(
+            super::effect_of(None, None),
+            "pattern-returned",
+            "no readable state is the provider accepting it, never verified"
+        );
+        assert_eq!(
+            super::effect_of(None, Some("value=beta".into())),
+            "pattern-returned",
+            "a state that only appeared after cannot prove the act"
+        );
+        assert_eq!(
+            super::effect_of(Some("value=alpha".into()), None),
+            "pattern-returned",
+            "a state that vanished after cannot prove the act"
+        );
+        println!("UIA_EFFECT_CLASSIFIER_OK verified|unchanged|pattern-returned");
     }
 
     /// LIVE: `verify:true` on a key that changes nothing visible reports

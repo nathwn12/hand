@@ -64,7 +64,13 @@ const IDX_AUTOMATION_ID: usize = 29;
 const IDX_BOUNDING_RECT: usize = 43;
 const IDX_PATTERN_FIRE: usize = 3;
 const IDX_VALUE_SET: usize = 3;
+const IDX_VALUE_CURRENT: usize = 4;
 const IDX_VALUE_IS_READONLY: usize = 5;
+/// TogglePattern: Toggle(3), CurrentToggleState(4), CachedToggleState(5).
+const IDX_TOGGLE_CURRENT_STATE: usize = 4;
+/// SelectionItemPattern: Select(3), AddToSelection(4), RemoveFromSelection(5),
+/// CurrentIsSelected(6), CurrentSelectionContainer(7). Slot 6, not 4.
+const IDX_SELECTION_IS_SELECTED: usize = 6;
 /// ExpandCollapse vtbl (see IID note): Expand(3), Collapse(4),
 /// CurrentExpandCollapseState(5).
 const IDX_EXPAND: usize = 3;
@@ -333,6 +339,60 @@ fn value_is_readonly(pat: &Iface) -> Option<bool> {
             None
         } else {
             Some(v != 0)
+        }
+    }
+}
+
+/// ValuePattern.CurrentValue(4) as a String. The out BSTR is length-prefixed
+/// (u32 byte count before the pointer); read that prefix instead of importing
+/// SysStringLen. Always SysFreeString'd, including the empty string.
+fn value_current(pat: &Iface) -> Result<String, HRESULT> {
+    unsafe {
+        type Gcv = unsafe extern "system" fn(*mut c_void, *mut *mut c_void) -> HRESULT;
+        let f: Gcv = pat.slot(IDX_VALUE_CURRENT);
+        let mut out: *mut c_void = std::ptr::null_mut();
+        let hr = f(pat.0, &mut out);
+        if hr != 0 {
+            return Err(hr);
+        }
+        if out.is_null() {
+            return Ok(String::new());
+        }
+        let nbytes = *(out as *const u32).offset(-1) as usize;
+        let units = std::slice::from_raw_parts(out as *const u16, nbytes / 2);
+        let s = String::from_utf16_lossy(units);
+        SysFreeString(out as *const u16);
+        Ok(s)
+    }
+}
+
+/// TogglePattern.CurrentToggleState(4) as the raw i32 (windows 0.61 enum:
+/// Indeterminate=0, On=1, Off=2).
+fn toggle_state_raw(pat: &Iface) -> Result<i32, HRESULT> {
+    unsafe {
+        type Gts = unsafe extern "system" fn(*mut c_void, *mut i32) -> HRESULT;
+        let f: Gts = pat.slot(IDX_TOGGLE_CURRENT_STATE);
+        let mut v: i32 = -1;
+        let hr = f(pat.0, &mut v);
+        if hr != 0 {
+            Err(hr)
+        } else {
+            Ok(v)
+        }
+    }
+}
+
+/// SelectionItemPattern.CurrentIsSelected(6) as a bool.
+fn selection_is_selected(pat: &Iface) -> Result<bool, HRESULT> {
+    unsafe {
+        type Gis = unsafe extern "system" fn(*mut c_void, *mut i32) -> HRESULT;
+        let f: Gis = pat.slot(IDX_SELECTION_IS_SELECTED);
+        let mut v: i32 = 0;
+        let hr = f(pat.0, &mut v);
+        if hr != 0 {
+            Err(hr)
+        } else {
+            Ok(v != 0)
         }
     }
 }
@@ -1099,6 +1159,77 @@ fn uia_expand_state_inner(hwnd: i64, path: &str) -> Result<i32, String> {
         .map_err(|hr| format!("uia-expand pattern call failed: {}", crate::hr_text(hr)))?;
     expand_state_raw(&pat)
         .map_err(|hr| format!("uia-expand state read failed: {}", crate::hr_text(hr)))
+}
+
+/// Read ValuePattern.CurrentValue for the UIA element at `path`.
+/// Read-only (no focus/input); Err on any COM failure or missing pattern.
+/// D3: this is the honest readback after a set_value/type act.
+pub fn uia_value(hwnd: i64, path: &str) -> Result<String, String> {
+    let p = path.to_string();
+    crate::deadline::bound(crate::deadline::Family::Uia, "uia_value", move || {
+        uia_value_inner(hwnd, &p)
+    })?
+}
+
+fn uia_value_inner(hwnd: i64, path: &str) -> Result<String, String> {
+    let auto = automation().map_err(|e| format!("UIA resolve failed: {e}"))?;
+    let el = element_from_handle(&auto, hwnd as HWND)
+        .map_err(|hr| format!("UIA resolve failed: {}", crate::hr_text(hr)))?;
+    let walker = raw_view_walker(&auto)
+        .map_err(|hr| format!("UIA resolve failed: {}", crate::hr_text(hr)))?;
+    let el = resolve_path_el(&walker, el, path)?;
+    let unk = el_get_pattern(&el, UIA_ValuePatternId)
+        .map_err(|_| "element has no ValuePattern".to_string())?;
+    let pat = unsafe { unk.query(&IID_VALUE_PATTERN) }
+        .map_err(|hr| format!("uia-value pattern call failed: {}", crate::hr_text(hr)))?;
+    value_current(&pat).map_err(|hr| format!("uia-value read failed: {}", crate::hr_text(hr)))
+}
+
+/// Read TogglePattern.CurrentToggleState for the UIA element at `path`.
+/// Read-only; Err when the control exposes no TogglePattern.
+pub fn uia_toggle_state(hwnd: i64, path: &str) -> Result<i32, String> {
+    let p = path.to_string();
+    crate::deadline::bound(crate::deadline::Family::Uia, "uia_toggle_state", move || {
+        uia_toggle_state_inner(hwnd, &p)
+    })?
+}
+
+fn uia_toggle_state_inner(hwnd: i64, path: &str) -> Result<i32, String> {
+    let auto = automation().map_err(|e| format!("UIA resolve failed: {e}"))?;
+    let el = element_from_handle(&auto, hwnd as HWND)
+        .map_err(|hr| format!("UIA resolve failed: {}", crate::hr_text(hr)))?;
+    let walker = raw_view_walker(&auto)
+        .map_err(|hr| format!("UIA resolve failed: {}", crate::hr_text(hr)))?;
+    let el = resolve_path_el(&walker, el, path)?;
+    let unk = el_get_pattern(&el, UIA_TogglePatternId)
+        .map_err(|_| "element has no TogglePattern".to_string())?;
+    let pat = unsafe { unk.query(&IID_TOGGLE_PATTERN) }
+        .map_err(|hr| format!("uia-toggle pattern call failed: {}", crate::hr_text(hr)))?;
+    toggle_state_raw(&pat).map_err(|hr| format!("uia-toggle state read failed: {}", crate::hr_text(hr)))
+}
+
+/// Read SelectionItemPattern.CurrentIsSelected for the UIA element at `path`.
+/// Read-only; Err when the control exposes no SelectionItemPattern.
+pub fn uia_is_selected(hwnd: i64, path: &str) -> Result<bool, String> {
+    let p = path.to_string();
+    crate::deadline::bound(crate::deadline::Family::Uia, "uia_is_selected", move || {
+        uia_is_selected_inner(hwnd, &p)
+    })?
+}
+
+fn uia_is_selected_inner(hwnd: i64, path: &str) -> Result<bool, String> {
+    let auto = automation().map_err(|e| format!("UIA resolve failed: {e}"))?;
+    let el = element_from_handle(&auto, hwnd as HWND)
+        .map_err(|hr| format!("UIA resolve failed: {}", crate::hr_text(hr)))?;
+    let walker = raw_view_walker(&auto)
+        .map_err(|hr| format!("UIA resolve failed: {}", crate::hr_text(hr)))?;
+    let el = resolve_path_el(&walker, el, path)?;
+    let unk = el_get_pattern(&el, UIA_SelectionItemPatternId)
+        .map_err(|_| "element has no SelectionItemPattern".to_string())?;
+    let pat = unsafe { unk.query(&IID_SELECTIONITEM_PATTERN) }
+        .map_err(|hr| format!("uia-select pattern call failed: {}", crate::hr_text(hr)))?;
+    selection_is_selected(&pat)
+        .map_err(|hr| format!("uia-select state read failed: {}", crate::hr_text(hr)))
 }
 
 /// Read RangeValue.CurrentValue for the UIA element at `path`.
