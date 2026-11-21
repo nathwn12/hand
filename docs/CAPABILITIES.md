@@ -10,9 +10,11 @@ not to be claimed.
 |---|---|
 | Host | `NECESSE`, Windows 11 Pro, x64, Ryzen 7 5800X, 31.9 GB |
 | Build | `cargo` 1.100.0, dev and release profiles, `hand 0.2.0` |
-| Browser | `chrome-headless-shell` 155.0.8059.84 (`Google Chrome for Testing`) |
-| Browser path | `%LOCALAPPDATA%\gladius\chromium\155.0.8059.84-5ca590a4\chrome-headless-shell-win64\chrome-headless-shell.exe` |
-| Browser SHA-256 | `64db9686dab042ba3282f7ab6fef98de266b015fd4d056c30760244425091d39` (matches `crates/browser-engine/scripts/chromium-manifest.json`) |
+| Browser | full `chrome` 158.0.8127.36 (`Google Chrome for Testing`) |
+| Browser path | `%LOCALAPPDATA%\gladius\chromium\158.0.8127.36-6a8ad290\chrome-win64\chrome.exe` |
+| Browser SHA-256 | `f304cbc534586babe4e1e49817ab6d562f3ac9bf7d0d49f8ebb15295997f8fd6` (matches `crates/browser-engine/scripts/chromium-manifest.json`) |
+
+The smaller `chrome-headless-shell` is an opt-in fallback selected with `GLADIUS_CHROMIUM`; full Chrome is the pinned default.
 
 ## Verified
 
@@ -39,10 +41,10 @@ not to be claimed.
 | Desktop no-steal static, wire and gate checks | `tests/no_steal.rs`, 12 tests: banned APIs absent from all three source trees; target on every acting tool; zero `sendinput_calls`; focus refused with and without the flag; dead target typed; clipboard write refused while the burst continues |
 | Browser cancellation | `tests/cancel.rs`: typed `cancelled` immediately, no late second response, engine usable afterwards |
 | Desktop cancellation admission | `tests/cancel.rs`: token published before the worker, cancelled job stays silent (direct through the production wrapper) |
-| Vendored engine unit tests | `cargo test -p browser-engine`: 69/69 (includes Chromium pin-drift check); `cargo test -p desktop-engine -- --skip live_`: 203/203 |
-| Clean EOF shutdown with a launched engine | `tests/lifecycle.rs`: exit 0, bounded; a manual probe observed 0.06 s, zero `chrome-headless-shell` processes before and after, and the next start swept the previous run's stale owned profile |
-| Pinned browser artifact | File SHA-256 recomputed and equal to the manifest; `--version` reports 155.0.8059.84 |
-| Selector engine: `role=`, `role=…[name="…"]`, `name=`, `text=`, `label=` | `tests/selectors.rs` (17 tests), resolved on `Accessibility.getFullAXTree` and acted on by backend id. Uniqueness is enforced before acting: zero → `invalid_target`/`not_found`, many → `invalid_target`/`ambiguous` listing every candidate. Names match case-insensitively after whitespace normalisation, and the resolver accepts both the raw AX name and the name `browser_snapshot` prints. `text=` reads visible text with fragments concatenated, innermost owner first; `label=` accepts only `labelfor`/`labelwrapped` provenance. CSS keeps first-match, `@eN` stays snapshot-bound with typed stale refs. Measured on 155.0.8059.84: a frame's tree excludes iframe content (the iframe is one opaque node), so scope is one frame tree and the refusals say so. |
+| Vendored engine unit tests | `cargo test -p browser-engine`: 80/80 (includes Chromium pin-drift and full-Chrome identity checks); `cargo test -p desktop-engine -- --skip live_`: 203/203 |
+| Clean EOF shutdown with a launched engine | `tests/lifecycle.rs`: exit 0, bounded; a manual probe observed 0.06 s, zero owned Chrome processes before and after, and the next start swept the previous run's stale owned profile |
+| Pinned browser artifact | File SHA-256 recomputed and equal to the manifest; `--version` reports 158.0.8127.36 |
+| Selector engine: `role=`, `role=…[name="…"]`, `name=`, `text=`, `label=` | `tests/selectors.rs` (17 tests), resolved on `Accessibility.getFullAXTree` and acted on by backend id. Uniqueness is enforced before acting: zero → `invalid_target`/`not_found`, many → `invalid_target`/`ambiguous` listing every candidate. Names match case-insensitively after whitespace normalisation, and the resolver accepts both the raw AX name and the name `browser_snapshot` prints. `text=` reads visible text with fragments concatenated, innermost owner first; `label=` accepts only `labelfor`/`labelwrapped` provenance. CSS keeps first-match, `@eN` stays snapshot-bound with typed stale refs. Measured on 158.0.8127.36: a frame's tree excludes iframe content (the iframe is one opaque node), so scope is one frame tree and the refusals say so. |
 | Installed server proven, not assumed | `scripts/verify-install.mjs`: the installed binary's stamp must equal HEAD and not be `-dirty`; `--loaded` additionally requires a running process on that exact file started after it was written. The binary name is read from `Cargo.toml`, so a rename cannot leave a stale path. |
 | Extended navigation result | red-line-then-green test: `browser_navigate` returns an `observed` object with `status`, `redirects` and `timings` |
 | Frame-scoped layout, layout assertion and visual | red-line-then-green test: `browser_layout`, `browser_assert_layout` and `browser_visual` accept `frame=` and act inside that frame's DOM |
