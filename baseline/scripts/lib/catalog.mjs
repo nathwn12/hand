@@ -53,7 +53,7 @@ function loadDeclaredAdditions(path) {
       }
       for (const dotted of paths) {
         const segments = typeof dotted === "string" ? dotted.split(".") : [];
-        if (segments.length < 2 || !segments.every((segment) => PATH_SEGMENT.test(segment))) {
+        if (segments.length < 1 || !segments.every((segment) => PATH_SEGMENT.test(segment))) {
           throw new Error(`${path}: ${key}.${tool} has a path that is not a dotted schema path: ${JSON.stringify(dotted)}`);
         }
       }

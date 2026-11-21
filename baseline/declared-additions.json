@@ -7,7 +7,13 @@
     ],
     "browser_click": [
       "properties.button",
-      "properties.clickCount"
+      "properties.clickCount",
+      "properties.selector",
+      "anyOf"
+    ],
+    "browser_hover": [
+      "properties.selector",
+      "anyOf"
     ],
     "browser_layout": [
       "properties.frame"
@@ -16,7 +22,21 @@
       "properties.clip",
       "properties.element",
       "properties.format",
-      "properties.quality"
+      "properties.quality",
+      "properties.selector",
+      "anyOf"
+    ],
+    "browser_select": [
+      "properties.selector",
+      "anyOf"
+    ],
+    "browser_type": [
+      "properties.selector",
+      "anyOf"
+    ],
+    "browser_upload": [
+      "properties.selector",
+      "anyOf"
     ],
     "browser_visual": [
       "properties.frame"

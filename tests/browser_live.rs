@@ -15,7 +15,7 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-use common::{is_error, navigate_with_retry, structured, text_of, Session};
+use common::{is_error, navigate_with_retry, structured, text_of, tool, Session};
 use serde_json::json;
 
 const INDEX: &str = r#"<!doctype html>
@@ -172,6 +172,20 @@ fn browser_inspect_act_verify_and_stale_ref_refusal() {
         "the delivered click must have produced the DOM effect"
     );
 
+    // `selector` aliases `element`; both together are refused, never guessed.
+    let by_selector = s.call("browser_click", json!({"selector": "#go"}));
+    assert!(
+        !is_error(&by_selector),
+        "click by selector failed: {}",
+        text_of(&by_selector)
+    );
+    assert_eq!(structured(&by_selector)["ok"].as_bool(), Some(true));
+    let both = s.call("browser_click", json!({"selector": "#go", "element": "#go"}));
+    assert!(is_error(&both), "both target keys must be refused: {both}");
+    let both_sc = structured(&both);
+    assert_eq!(both_sc["code"].as_str(), Some("invalid_args"), "{both_sc}");
+    assert_eq!(both_sc["reason"].as_str(), Some("ambiguous_target"), "{both_sc}");
+
     let typed = s.call(
         "browser_type",
         json!({"element": "#name", "text": "hello hand"}),
@@ -223,4 +237,72 @@ fn browser_inspect_act_verify_and_stale_ref_refusal() {
 
     let alive = s.call("browser_evaluate", json!({"expression": "document.title"}));
     assert_eq!(structured(&alive)["value"].as_str(), Some("Hand Next"));
+}
+
+/// `selector` is a published alias: a client that prunes undeclared keys must
+/// see it in the schema. `element` stays canonical and both are named in anyOf.
+#[test]
+fn element_tools_publish_selector_alias_in_their_schema() {
+    let mut s = Session::spawn();
+    let tools = s.list_tools();
+    for name in [
+        "browser_click",
+        "browser_type",
+        "browser_select",
+        "browser_hover",
+        "browser_upload",
+        "browser_screenshot",
+    ] {
+        let schema = &tool(&tools, name)["inputSchema"];
+        assert!(
+            schema["properties"]["selector"].is_object(),
+            "{name} must publish selector: {schema}"
+        );
+        assert!(
+            schema["properties"]["element"].is_object(),
+            "{name} must keep element canonical: {schema}"
+        );
+        let any = schema["anyOf"]
+            .as_array()
+            .unwrap_or_else(|| panic!("{name} must require one target via anyOf: {schema}"));
+        let rendered = serde_json::to_string(any).expect("anyOf serializes");
+        assert!(
+            rendered.contains("element") && rendered.contains("selector"),
+            "{name} anyOf must name element and selector: {rendered}"
+        );
+    }
+}
+
+#[test]
+fn unknown_arg_reports_the_bogus_key_and_sorted_received_keys() {
+    let mut s = Session::spawn();
+    let resp = s.call("browser_click", json!({"element": "#a", "bogus": 1, "aaa": 2}));
+    assert_eq!(resp["result"]["isError"], json!(true));
+    let sc = &resp["result"]["structuredContent"];
+    assert_eq!(sc["code"].as_str(), Some("invalid_args"));
+    assert_eq!(sc["reason"].as_str(), Some("unknown_arg"));
+    let received: Vec<&str> = sc["received"]
+        .as_array()
+        .expect("received keys on invalid_args")
+        .iter()
+        .filter_map(|v| v.as_str())
+        .collect();
+    assert_eq!(received, vec!["aaa", "bogus", "element"], "sorted keys");
+    assert!(text_of(&resp).contains("bogus"), "prose names the bogus key");
+}
+
+#[test]
+fn missing_arg_reports_sorted_received_keys() {
+    let mut s = Session::spawn();
+    let resp = s.call("browser_click", json!({"frame": "x"}));
+    assert_eq!(resp["result"]["isError"], json!(true));
+    let sc = &resp["result"]["structuredContent"];
+    assert_eq!(sc["reason"].as_str(), Some("missing_arg"));
+    let received: Vec<&str> = sc["received"]
+        .as_array()
+        .expect("received keys on missing_arg")
+        .iter()
+        .filter_map(|v| v.as_str())
+        .collect();
+    assert_eq!(received, vec!["frame"]);
 }

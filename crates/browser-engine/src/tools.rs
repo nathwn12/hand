@@ -407,6 +407,24 @@ pub fn list() -> Value {
     listed["tools"].as_array_mut().expect("tools").push(crate::assert::schema());
     listed["tools"].as_array_mut().expect("tools").push(crate::audit::schema());
     listed["tools"].as_array_mut().expect("tools").push(crate::trace::schema());
+    for tool in listed["tools"].as_array_mut().expect("tools") {
+        let Some(name) = tool.get("name").and_then(|n| n.as_str()) else {
+            continue;
+        };
+        if !matches!(name, "click" | "type" | "select" | "hover" | "upload" | "screenshot") {
+            continue;
+        }
+        let Some(schema) = tool.get_mut("inputSchema").and_then(|s| s.as_object_mut()) else {
+            continue;
+        };
+        if let Some(props) = schema.get_mut("properties").and_then(|p| p.as_object_mut()) {
+            props.insert("selector".to_string(), json!({"type": "string"}));
+        }
+        schema.insert(
+            "anyOf".to_string(),
+            json!([{"required": ["element"]}, {"required": ["selector"]}]),
+        );
+    }
     listed["tools"].as_array_mut().expect("tools").push(json!({
         "name": "form", "title": "Form",
         "description": "Ordered form batches. fields[] runs in order, each {field, action, value?}: field is a CSS selector, action is type (text in value), select (option value in value), check (click a checkbox) or click. Every step records {field, status: ok|error, error?}; a failing step does NOT stop the batch, so partial failure is reported rather than hidden. Optional submit is a CSS selector clicked after the fields and submitted reports whether that click succeeded. timeoutMs bounds each step. verdict is pass only when every step is ok and a requested submit succeeded, else fail. Every step rides the same trusted CDP path the type/select/click tools use.",
@@ -689,6 +707,8 @@ pub(crate) enum ToolReason {
     ClientCancelled,
     BudgetExceeded,
     MissingArg,
+    /// `element` and its `selector` alias were both passed for one action.
+    AmbiguousTarget,
     BadValue,
     BadIndex,
     UnknownAction,
@@ -742,6 +762,7 @@ impl ToolReason {
             Self::ClientCancelled => "client_cancelled",
             Self::BudgetExceeded => "budget_exceeded",
             Self::MissingArg => "missing_arg",
+            Self::AmbiguousTarget => "ambiguous_target",
             Self::BadValue => "bad_value",
             Self::BadIndex => "bad_index",
             Self::UnknownAction => "unknown_action",
@@ -791,6 +812,7 @@ impl ToolReason {
         Self::ClientCancelled,
         Self::BudgetExceeded,
         Self::MissingArg,
+        Self::AmbiguousTarget,
         Self::BadValue,
         Self::BadIndex,
         Self::UnknownAction,
@@ -845,12 +867,56 @@ pub(crate) fn check_unknown(tool: &str, args: &Value, allowed: &[&str]) -> Resul
             if !allowed.contains(&k.as_str()) {
                 return Err(ToolErr::typed(
                     format!("{tool}: unknown argument '{k}' (not in this tool's schema; rejected, not ignored)"),
-                    json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::UnknownArg.as_str(), "tool": tool, "arg": k}),
+                    with_received(
+                        json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::UnknownArg.as_str(), "tool": tool, "arg": k}),
+                        args,
+                    ),
                 ));
             }
         }
     }
     Ok(())
+}
+
+/// Attach the sorted keys the caller actually sent to an argument-error
+/// envelope. A client that prunes unknown keys needs to see what survived.
+fn with_received(mut sc: Value, args: &Value) -> Value {
+    let mut received: Vec<String> = args
+        .as_object()
+        .map(|obj| obj.keys().cloned().collect())
+        .unwrap_or_default();
+    received.sort();
+    if let Some(obj) = sc.as_object_mut() {
+        obj.insert("received".to_string(), json!(received));
+    }
+    sc
+}
+
+/// `selector` is a published alias for `element`. Both is a typed refusal,
+/// never a silent first match; neither is left to the caller's own error prose.
+fn alias_target(tool: &str, args: &Value) -> Result<Option<String>, ToolErr> {
+    let element = args.get("element").and_then(|v| v.as_str());
+    let selector = args.get("selector").and_then(|v| v.as_str());
+    if element.is_some() && selector.is_some() {
+        return Err(ToolErr::typed(
+            format!("{tool}: pass element or selector, not both"),
+            with_received(
+                json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::AmbiguousTarget.as_str(), "tool": tool}),
+                args,
+            ),
+        ));
+    }
+    Ok(element.or(selector).map(str::to_string))
+}
+
+fn missing_target(tool: &str, args: &Value, prose: &str) -> ToolErr {
+    ToolErr::typed(
+        prose.to_string(),
+        with_received(
+            json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::MissingArg.as_str(), "tool": tool}),
+            args,
+        ),
+    )
 }
 
 pub async fn call(name: &str, args: &Value, browser: &Browser) -> Value {
@@ -908,6 +974,7 @@ pub async fn call(name: &str, args: &Value, browser: &Browser) -> Value {
                     "width",
                     "height",
                     "element",
+                    "selector",
                     "clip",
                     "format",
                     "quality",
@@ -926,10 +993,10 @@ pub async fn call(name: &str, args: &Value, browser: &Browser) -> Value {
                 .unwrap_or(false);
             let width = args.get("width").and_then(|v| v.as_i64());
             let height = args.get("height").and_then(|v| v.as_i64());
-            let element = args
-                .get("element")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
+            let element = match alias_target("screenshot", args) {
+                Ok(target) => target,
+                Err(e) => return e.envelope(),
+            };
             let format = match args.get("format").and_then(|v| v.as_str()) {
                 None | Some("png") => crate::capture::Format::Png,
                 Some("jpeg") => crate::capture::Format::Jpeg,
@@ -1029,19 +1096,18 @@ pub async fn call(name: &str, args: &Value, browser: &Browser) -> Value {
             if let Err(e) = check_unknown(
                 "click",
                 args,
-                &["element", "frame", "hoverFirst", "button", "clickCount"],
+                &["element", "selector", "frame", "hoverFirst", "button", "clickCount"],
             ) {
                 return e.envelope();
             }
-            let el =
-                match args.get("element").and_then(|v| v.as_str()) {
-                    Some(e) => e.to_string(),
-                    None => return ToolErr::typed(
-                        "click: missing required arg 'element'".to_string(),
-                        json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::MissingArg.as_str(), "tool": "click"}),
-                    )
-                    .envelope(),
-                };
+            let el = match alias_target("click", args) {
+                Ok(Some(target)) => target,
+                Ok(None) => {
+                    return missing_target("click", args, "click: missing required arg 'element'")
+                        .envelope()
+                }
+                Err(e) => return e.envelope(),
+            };
             let frame = args
                 .get("frame")
                 .and_then(|v| v.as_str())
@@ -1234,21 +1300,19 @@ pub async fn call(name: &str, args: &Value, browser: &Browser) -> Value {
         }
         "form" => Box::pin(tool_form(browser, args)).await,
         "type" => {
-            if let Err(e) = check_unknown("type", args, &["element", "text", "submit", "frame"]) {
+            if let Err(e) = check_unknown("type", args, &["element", "selector", "text", "submit", "frame"]) {
                 return e.envelope();
             }
-            let (el, text) =
-                match (
-                    args.get("element").and_then(|v| v.as_str()),
-                    args.get("text").and_then(|v| v.as_str()),
-                ) {
-                    (Some(e), Some(t)) => (e.to_string(), t.to_string()),
-                    _ => return ToolErr::typed(
-                        "type: missing required args 'element'/'text'".to_string(),
-                        json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::MissingArg.as_str(), "tool": "type"}),
-                    )
-                    .envelope(),
-                };
+            const TYPE_MISSING: &str = "type: missing required args 'element'/'text'";
+            let el = match alias_target("type", args) {
+                Ok(Some(target)) => target,
+                Ok(None) => return missing_target("type", args, TYPE_MISSING).envelope(),
+                Err(e) => return e.envelope(),
+            };
+            let text = match args.get("text").and_then(|v| v.as_str()) {
+                Some(t) => t.to_string(),
+                None => return missing_target("type", args, TYPE_MISSING).envelope(),
+            };
             let submit = args
                 .get("submit")
                 .and_then(|v| v.as_bool())
@@ -1349,18 +1413,17 @@ pub async fn call(name: &str, args: &Value, browser: &Browser) -> Value {
             tool_console(browser, &action, limit).await
         }
         "upload" => {
-            if let Err(e) = check_unknown("upload", args, &["element", "paths", "frame"]) {
+            if let Err(e) = check_unknown("upload", args, &["element", "selector", "paths", "frame"]) {
                 return e.envelope();
             }
-            let el =
-                match args.get("element").and_then(|v| v.as_str()) {
-                    Some(e) => e.to_string(),
-                    None => return ToolErr::typed(
-                        "upload: missing required arg 'element'".to_string(),
-                        json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::MissingArg.as_str(), "tool": "upload"}),
-                    )
-                    .envelope(),
-                };
+            let el = match alias_target("upload", args) {
+                Ok(Some(target)) => target,
+                Ok(None) => {
+                    return missing_target("upload", args, "upload: missing required arg 'element'")
+                        .envelope()
+                }
+                Err(e) => return e.envelope(),
+            };
             let paths: Option<Vec<String>> =
                 args.get("paths").and_then(|v| v.as_array()).and_then(|a| {
                     let mut out = Vec::with_capacity(a.len());
@@ -1408,33 +1471,31 @@ pub async fn call(name: &str, args: &Value, browser: &Browser) -> Value {
             }
         }
         "hover" => {
-            if let Err(e) = check_unknown("hover", args, &["element", "frame"]) {
+            if let Err(e) = check_unknown("hover", args, &["element", "selector", "frame"]) {
                 return e.envelope();
             }
-            let el =
-                match args.get("element").and_then(|v| v.as_str()) {
-                    Some(e) => e.to_string(),
-                    None => return ToolErr::typed(
-                        "hover: missing required arg 'element'".to_string(),
-                        json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::MissingArg.as_str(), "tool": "hover"}),
-                    )
-                    .envelope(),
-                };
+            let el = match alias_target("hover", args) {
+                Ok(Some(target)) => target,
+                Ok(None) => {
+                    return missing_target("hover", args, "hover: missing required arg 'element'")
+                        .envelope()
+                }
+                Err(e) => return e.envelope(),
+            };
             tool_hover(browser, &el, args.get("frame").and_then(|v| v.as_str())).await
         }
         "select" => {
-            if let Err(e) = check_unknown("select", args, &["element", "value", "text", "frame"]) {
+            if let Err(e) = check_unknown("select", args, &["element", "selector", "value", "text", "frame"]) {
                 return e.envelope();
             }
-            let el =
-                match args.get("element").and_then(|v| v.as_str()) {
-                    Some(e) => e.to_string(),
-                    None => return ToolErr::typed(
-                        "select: missing required arg 'element'".to_string(),
-                        json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::MissingArg.as_str(), "tool": "select"}),
-                    )
-                    .envelope(),
-                };
+            let el = match alias_target("select", args) {
+                Ok(Some(target)) => target,
+                Ok(None) => {
+                    return missing_target("select", args, "select: missing required arg 'element'")
+                        .envelope()
+                }
+                Err(e) => return e.envelope(),
+            };
             let value = args
                 .get("value")
                 .and_then(|v| v.as_str())
