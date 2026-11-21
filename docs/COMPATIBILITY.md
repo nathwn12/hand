@@ -237,7 +237,13 @@ total.
      is a success with `value: null` and `void: true`, while an explicit
      `null` keeps `value: null` with no flag. The engine's internal eval
      helpers stay strict; only the public tool boundary reads the
-     `undefined_result` marker.
+     `undefined_result` marker. `browser_navigate` and `browser_snapshot` add
+     `properties.viewport`, the live `{width, height}` read-back from the active
+     page; `browser_screenshot` already published `viewport` in the pin and now
+     fills it on a plain capture too. An owned Chromium launch pins the window
+     to 1440x900, and the owned session replays a 1440x900 device-metrics
+     override so the page viewport matches; an attached engine has no override
+     and keeps its owner's viewport.
    - `inputSchema`: `browser_click` adds `properties.button` and
      `properties.clickCount` (right/middle button, double click) and
      `browser_screenshot` adds `properties.clip`, `properties.element`,

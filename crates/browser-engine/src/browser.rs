@@ -4283,6 +4283,10 @@ pub(crate) fn find_chromium() -> Result<std::path::PathBuf, String> {
 fn chromium_argv(port: u16, profile_dir: &std::path::Path) -> Vec<String> {
     vec![
         "--headless".to_string(),
+        // Owned launch only: Chromium's own default is 764x429, so pin the
+        // window size here. An attached engine keeps whatever viewport its
+        // owner chose; attach replays only an existing override.
+        "--window-size=1440,900".to_string(),
         format!("--remote-debugging-port={port}"),
         format!("--user-data-dir={}", profile_dir.display()),
         "--no-first-run".to_string(),
@@ -4617,6 +4621,13 @@ async fn launch_owned_chromium_once(
     let (sink, stream) = ws.split();
     let shared = new_shared(sink, excluded_contexts);
     shared.owned.store(true, Ordering::SeqCst);
+    // The window flag sizes the outer window; the page viewport is smaller by
+    // the browser chrome. Pin the page to the same 1440x900 through the device
+    // metrics override that every owned session replays. An attached engine
+    // has its own Shared with no override, so it keeps its owner's viewport.
+    *shared.viewport.lock().await = Some(json!({
+        "width": 1440, "height": 900, "deviceScaleFactor": 1, "mobile": false
+    }));
     let reader = tokio::spawn(reader_loop(stream, shared.clone()));
     debug_eprintln!("[gladius] browser ready pid={pid} (chromium)");
     let child = guard.child.take().expect("guard holds child");
@@ -6803,6 +6814,7 @@ mod tests {
         );
         for flag in [
             "--headless",
+            "--window-size=1440,900",
             "--no-first-run",
             "--no-default-browser-check",
             "--disable-popup-blocking",
@@ -6841,6 +6853,7 @@ mod tests {
         flags.sort_unstable();
         let mut want = vec![
             "--headless".to_string(),
+            "--window-size=1440,900".to_string(),
             "--no-default-browser-check".to_string(),
             "--no-first-run".to_string(),
             "--disable-popup-blocking".to_string(),

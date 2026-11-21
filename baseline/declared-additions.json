@@ -57,7 +57,11 @@
       "properties.resolved"
     ],
     "browser_navigate": [
-      "properties.observed"
+      "properties.observed",
+      "properties.viewport"
+    ],
+    "browser_snapshot": [
+      "properties.viewport"
     ],
     "browser_screenshot": [
       "properties.clip",

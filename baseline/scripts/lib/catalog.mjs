@@ -135,8 +135,10 @@ function withoutDeclaredPaths(schema, paths) {
         clone,
       );
       if (owner && Array.isArray(owner.required)) {
+        // Keep an empty required[]: the floor often publishes it explicitly,
+        // and deleting it here compares unequal for a declared property that
+        // was never in required to begin with.
         owner.required = owner.required.filter((name) => name !== key);
-        if (owner.required.length === 0) delete owner.required;
       }
     }
   }

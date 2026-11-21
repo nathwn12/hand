@@ -140,11 +140,30 @@ fn browser_inspect_act_verify_and_stale_ref_refusal() {
         Some(format!("{}/", fixture.base).as_str())
     );
     assert_eq!(nav_sc["title"].as_str(), Some("Hand Fixture"));
+    assert_eq!(
+        nav_sc["viewport"],
+        json!({"width": 1440, "height": 900}),
+        "an owned launch defaults to 1440x900: {nav_sc}"
+    );
+    let dims = s.call(
+        "browser_evaluate",
+        json!({"expression": "[innerWidth, innerHeight]"}),
+    );
+    assert_eq!(
+        structured(&dims)["value"],
+        json!([1440, 900]),
+        "the live page must report the default viewport: {dims}"
+    );
 
     let snap = s.call("browser_snapshot", json!({}));
     assert!(!is_error(&snap), "snapshot failed: {}", text_of(&snap));
     let snap_sc = structured(&snap);
     assert_eq!(snap_sc["title"].as_str(), Some("Hand Fixture"));
+    assert_eq!(
+        snap_sc["viewport"],
+        json!({"width": 1440, "height": 900}),
+        "snapshot echoes the live viewport: {snap_sc}"
+    );
     let nodes = snap_sc["nodes"].as_array().expect("snapshot nodes");
     let button = nodes
         .iter()
@@ -196,6 +215,18 @@ fn browser_inspect_act_verify_and_stale_ref_refusal() {
         json!({"expression": "document.querySelector('#name').value"}),
     );
     assert_eq!(structured(&value)["value"].as_str(), Some("hello hand"));
+
+    let plain_shot = s.call("browser_screenshot", json!({}));
+    assert!(
+        !is_error(&plain_shot),
+        "plain screenshot failed: {}",
+        text_of(&plain_shot)
+    );
+    assert_eq!(
+        structured(&plain_shot)["viewport"],
+        json!({"width": 1440, "height": 900}),
+        "a plain capture echoes the live viewport: {plain_shot}"
+    );
 
     let shot = s.call("browser_screenshot", json!({"deterministic": true}));
     assert!(!is_error(&shot), "screenshot failed: {}", text_of(&shot));

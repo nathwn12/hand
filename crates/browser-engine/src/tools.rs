@@ -10,6 +10,7 @@ pub fn list() -> Value {
          "inputSchema": {"type": "object", "properties": {"url": {"type": "string", "format": "uri"}}, "required": ["url"], "additionalProperties": false},
          "outputSchema": {"type": "object",
             "properties": {"url": {"type": "string"}, "title": {"type": "string"}, "warning": {"type": "string"},
+               "viewport": {"type": "object", "properties": {"width": {"type": "integer"}, "height": {"type": "integer"}}, "required": ["width", "height"]},
                "observed": {"type": "object", "properties": {
                    "status": {"type": ["integer", "null"]},
                    "redirects": {"type": "array", "items": {"type": "object"}},
@@ -37,7 +38,8 @@ pub fn list() -> Value {
                 "offset": {"type": "integer", "minimum": 0},
                 "totalLines": {"type": "integer", "minimum": 0},
                 "nextOffset": {"type": ["integer", "null"]},
-                "mode": {"type": "string"}, "text": {"type": "string"}},
+                "mode": {"type": "string"}, "text": {"type": "string"},
+                "viewport": {"type": "object", "properties": {"width": {"type": "integer"}, "height": {"type": "integer"}}, "required": ["width", "height"]}},
             "required": [], "additionalProperties": false,
             "anyOf": [{"required": ["url", "title", "truncated", "nodes", "snapshotId", "totalLines", "nextOffset"]}, {"required": ["mode", "text"]}]},
          "annotations": {"readOnlyHint": true, "destructiveHint": false, "idempotentHint": false, "openWorldHint": false}},
@@ -1749,10 +1751,14 @@ async fn tool_navigate(browser: &Browser, url: &str) -> Result<Value, ToolErr> {
             &format!("requested {url} but the document stayed on about:blank"),
         ));
     }
-    if !title.is_empty() || cur.is_empty() || cur == "about:blank" {
-        return Ok(ok_text(
-            json!({"url": cur, "title": title, "observed": observed}).to_string(),
-        ));
+    let titled = !title.is_empty();
+    let on_blank = cur.is_empty() || cur == "about:blank";
+    let mut reply = json!({"url": cur, "title": title, "observed": observed});
+    if let Ok((w, h, _)) = browser.viewport_readback().await {
+        reply["viewport"] = json!({"width": w, "height": h});
+    }
+    if titled || on_blank {
+        return Ok(ok_text(reply.to_string()));
     }
     let body_len = browser
         .eval("(((document.body && document.body.innerText) || '') + '').length")
@@ -1767,14 +1773,9 @@ async fn tool_navigate(browser: &Browser, url: &str) -> Result<Value, ToolErr> {
                 &format!("requested {url} but the document is empty"),
             ));
         }
-        Ok(ok_text(
-            json!({"url": cur, "title": title, "observed": observed.clone(),
-                   "warning": "possible blank-load race: committed URL with empty document (empty title and empty body text); re-navigate to confirm"})
-            .to_string(),
-        ))
-    } else {
-        Ok(ok_text(json!({"url": cur, "title": title, "observed": observed}).to_string()))
+        reply["warning"] = json!("possible blank-load race: committed URL with empty document (empty title and empty body text); re-navigate to confirm");
     }
+    Ok(ok_text(reply.to_string()))
 }
 
 /// Parse an AX ref arg (`@e3`) to its table id (`e3`). Selectors pass through
@@ -3027,6 +3028,21 @@ fn ok_snapshot(text: String, structured: Value) -> Value {
            "structuredContent": structured})
 }
 
+/// Add the live viewport to a snapshot's machine channel. The text block is
+/// the AX one-line tree, not JSON, so it is left byte-for-byte as the snapshot
+/// renderer wrote it.
+fn echo_viewport(mut envelope: Value, viewport: &Value) -> Value {
+    if let Some(sc) = envelope
+        .get_mut("structuredContent")
+        .and_then(|v| v.as_object_mut())
+    {
+        if !sc.contains_key("viewport") {
+            sc.insert("viewport".to_string(), viewport.clone());
+        }
+    }
+    envelope
+}
+
 async fn tool_snapshot(
     browser: &Browser,
     mode: Option<&str>,
@@ -3034,7 +3050,7 @@ async fn tool_snapshot(
     offset: usize,
     snapshot_id: Option<&str>,
 ) -> Result<Value, ToolErr> {
-    match mode {
+    let result = match mode {
         Some("text") => {
             if offset > 0 {
                 return Err(ToolErr::typed(
@@ -3074,12 +3090,18 @@ async fn tool_snapshot(
             )
             .await
         }
-        Some("legacy") => return tool_snapshot_legacy(browser, frame, offset, snapshot_id).await,
-        Some("ax") | None => return tool_snapshot_ax(browser, frame, offset, snapshot_id).await,
+        Some("legacy") => tool_snapshot_legacy(browser, frame, offset, snapshot_id).await,
+        Some("ax") | None => tool_snapshot_ax(browser, frame, offset, snapshot_id).await,
         Some(other) => Err(ToolErr::typed(
             format!("snapshot: unknown mode '{other}' (want 'ax'|'legacy'|'text')"),
             json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "snapshot", "arg": "mode", "want": other}),
         )),
+    };
+    let result = result?;
+    if let Ok((w, h, _)) = browser.viewport_readback().await {
+        Ok(echo_viewport(result, &json!({"width": w, "height": h})))
+    } else {
+        Ok(result)
     }
 }
 
@@ -3985,6 +4007,13 @@ pub(crate) async fn tool_screenshot(
         _ => serde_json::Map::new(),
     };
     meta.insert("stability".to_string(), stability);
+    // A deterministic capture already carries the pinned viewport; a plain
+    // capture must echo the live one so both report the same fact.
+    if !meta.contains_key("viewport") {
+        if let Ok((w, h, _)) = browser.viewport_readback().await {
+            meta.insert("viewport".to_string(), json!({"width": w, "height": h}));
+        }
+    }
     if let Some(p) = path {
         meta.insert("path".to_string(), json!(p));
     }
