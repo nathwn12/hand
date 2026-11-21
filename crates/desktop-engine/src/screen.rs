@@ -919,7 +919,7 @@ pub fn screenshot_desktop(a: &ShotArgs) -> String {
     };
     let t0 = Instant::now();
     let force_gdi = n_mon > 1 && grab_scope == "virtual";
-    let (mut img, backend): (Img, String) = if kind == "region" {
+    let (mut img, mut backend): (Img, String) = if kind == "region" {
         let (cw, ch) = (cx1 - cx0, cy1 - cy0);
         note = Some("region grabbed directly via GDI (no full-frame grab)".to_string());
         match bitblt_grab(cx0 as i32, cy0 as i32, cw as i32, ch as i32) {
@@ -984,6 +984,29 @@ pub fn screenshot_desktop(a: &ShotArgs) -> String {
             }
         }
     };
+    // DXGI desktop duplication can "succeed" with a fully blank (stale or
+    // headless/RDP) frame. A blank frame with ok:true is exactly the dishonest
+    // result the capture contract bans: re-grab the same full rect with GDI,
+    // and only a second blank is a typed blank_frame failure. GDI region grabs
+    // are never retried - a caller can legitimately ask for a dark region.
+    if backend == "dxgi" && crate::cap::max_channel_of(&img) < 8 {
+        match bitblt_grab(gl as i32, gt as i32, gw as i32, gh as i32) {
+            Ok(gdi) if crate::cap::max_channel_of(&gdi) >= 8 => {
+                note = Some(match note {
+                    Some(n) => format!("{n}; dxgi returned a full blank frame, gdi fallback"),
+                    None => "dxgi returned a full blank frame, gdi fallback".to_string(),
+                });
+                img = gdi;
+                backend = "gdi".to_string();
+            }
+            _ => {
+                return shot_err_restore(&witness, vec![
+                    "error: blank_frame: full_blank frame rejected (blank/black frame); dxgi and gdi both blank"
+                        .to_string(),
+                ]);
+            }
+        }
+    }
     let (gl, gt, gw, gh) = if kind == "region" {
         (cx0, cy0, cx1 - cx0, cy1 - cy0)
     } else {
