@@ -1,0 +1,67 @@
+{
+  "schema": "hand-mcp.benchmark.build-receipt/v1",
+  "ok": true,
+  "product": "hand",
+  "profile": "release",
+  "source": {
+    "root": "Q:\\PROJECTS\\PERSONAL\\hand",
+    "gitHead": "e945443f74d719373ed15f0166c97c78abb36656",
+    "branch": "feat/0.2.0",
+    "dirty": false,
+    "statusSha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "trackedDiffSha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "command": {
+    "program": "cargo",
+    "args": [
+      "build",
+      "--release",
+      "--locked",
+      "--manifest-path",
+      "Q:\\PROJECTS\\PERSONAL\\hand\\Cargo.toml",
+      "--bin",
+      "hand",
+      "--target-dir",
+      "Q:\\PROJECTS\\PERSONAL\\hand\\target"
+    ],
+    "cwd": "Q:\\PROJECTS\\PERSONAL\\hand",
+    "startedAtUtc": "2026-11-21T04:05:26.368Z",
+    "finishedAtUtc": "2026-11-21T04:06:30.651Z",
+    "durationMs": 64283,
+    "exitCode": 0,
+    "stdoutBytes": 0,
+    "stderrBytes": 201,
+    "stdoutSha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stderrSha256": "sha256:2b248542cd3684d249af696130478ee0367dc27d649df113cbe1fa677ba99c00",
+    "stdoutTail": "",
+    "stderrTail": "   Compiling hand v0.2.0 (Q:\\PROJECTS\\PERSONAL\\hand)\n   Compiling browser-engine v0.2.0 (Q:\\PROJECTS\\PERSONAL\\hand\\crates\\browser-engine)\n    Finished `release` profile [optimized] target(s) in 1m 04s\n"
+  },
+  "toolchain": {
+    "cargo": {
+      "status": 0,
+      "stdout": "cargo 1.100.0 (3acc79c0c 2026-11-05)",
+      "stderr": ""
+    },
+    "rustc": {
+      "status": 0,
+      "stdout": "rustc 1.100.0 (0ef1bc386 2026-11-09)\nbinary: rustc\ncommit-hash: 0ef1bc386059596dada8fb65b50425aab2ea637a\ncommit-date: 2026-11-09\nhost: x86_64-pc-windows-msvc\nrelease: 1.100.0\nLLVM version: 23.1.5",
+      "stderr": ""
+    },
+    "host": "x86_64-pc-windows-msvc",
+    "target": "x86_64-pc-windows-msvc"
+  },
+  "output": {
+    "path": "Q:\\PROJECTS\\PERSONAL\\hand\\benchmarks\\receipts\\builds\\artifacts\\hand-e945443f-20261121T040630905Z-hand.exe",
+    "buildPath": "Q:\\PROJECTS\\PERSONAL\\hand\\target\\release\\hand.exe",
+    "bytes": 19383808,
+    "sha256": "sha256:df13eaddeea519c2f6f6ca6f0c0e2bab0bcd0f52893d56f5a70850f20f44be88",
+    "modifiedAtUtc": "2026-11-21T04:06:30.574Z",
+    "durable": true
+  },
+  "version": {
+    "status": 0,
+    "stdout": "hand 0.2.0 (e945443f74d719373ed15f0166c97c78abb36656; release)",
+    "stderr": ""
+  },
+  "generatedAtUtc": "2026-11-21T04:06:30.967Z"
+}
