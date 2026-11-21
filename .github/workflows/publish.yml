@@ -1,10 +1,16 @@
+# Release lane: push to main publishes a new version by OIDC trusted publishing.
+# A version already on the registry is a skip, never a second publish. The tag
+# is created once and never moved. workflow_dispatch is the escape hatch.
+# No token, no OTP, no manual npm publish.
 name: publish
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   id-token: write
 
 jobs:
@@ -33,3 +39,12 @@ jobs:
       - run: npm install -g npm@11
       - uses: dtolnay/rust-toolchain@stable
       - run: node npm/release.mjs --publish --ci
+      - name: Tag the published version
+        shell: pwsh
+        run: |
+          $v = (Get-Content npm/package.json -Raw | ConvertFrom-Json).version
+          if (git tag --list "v$v") { Write-Host "tag v$v already exists"; exit 0 }
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "v$v"
+          git push origin "v$v"
