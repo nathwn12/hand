@@ -81,21 +81,6 @@ fn recv_for(s: &mut Session, id: i64, timeout: Duration) -> Value {
 /// A TCP listener that accepts connections and never answers. A page image
 /// pointing at it stays incomplete, which is what holds a deterministic
 /// capture in its image-settle race.
-fn hanging_server() -> String {
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind hanging server");
-    let addr = listener.local_addr().expect("hanging server address");
-    std::thread::spawn(move || {
-        let mut held = Vec::new();
-        for stream in listener.incoming() {
-            match stream {
-                Ok(stream) => held.push(stream),
-                Err(_) => break,
-            }
-        }
-    });
-    format!("http://{addr}/never.png")
-}
-
 /// The shared harness pipes stderr to null; the shutdown-log assertions need
 /// it, so this minimal session keeps both pipes. Stderr lines carry the instant
 /// they were read, so a test can measure the drain separately from the browser
@@ -294,15 +279,19 @@ fn budget_timeout_does_not_drop_a_capture_restore() {
         "probe shape: {before}"
     );
 
-    let image = hanging_server();
-    let injected = s.call(
+    // The budget's floor is engine-validated at 2000 ms, so the capture must
+    // DETERMINISTICALLY outlast it. The settle's fonts race is engine-capped at
+    // 3000 ms and only resolves when every loading face settles - so a page
+    // whose document.fonts reports one face, forever loading, holds the race
+    // to its cap: a timer, not machine speed and not the network. (A fresh
+    // hosted runner finished the old network-blocked variant inside the fixed
+    // 2000 ms budget; measured on the publish pipeline's first hosted runs.)
+    // The freeze walk and the restore never read document.fonts, so both run.
+    let hijacked = s.call(
         "browser_evaluate",
-        json!({"expression": format!(
-            "(document.body.appendChild(Object.assign(document.createElement('img'), \
-             {{src: '{image}'}})), true)"
-        )}),
+        json!({"expression": "(() => { const f = {[Symbol.iterator]: function* () { yield {status: 'loading', loaded: new Promise(() => {})}; }}; Object.defineProperty(document, 'fonts', {get: () => f, configurable: true}); return true; })()"}),
     );
-    assert_eq!(structured(&injected)["value"], json!(true));
+    assert_eq!(structured(&hijacked)["value"], json!(true));
 
     s.send(
         &json!({"jsonrpc": "2.0", "id": 1001, "method": "tools/call",
@@ -314,7 +303,7 @@ fn budget_timeout_does_not_drop_a_capture_restore() {
         &mut s,
         "!!document.getElementById('__gladius_deterministic')",
         &json!(true),
-        Duration::from_millis(1200),
+        Duration::from_millis(8000),
     );
     assert_eq!(frozen, json!(true));
 
