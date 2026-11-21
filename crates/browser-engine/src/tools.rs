@@ -4405,10 +4405,12 @@ const ACTIONABILITY_BOUND_MS: u64 = 1500;
 const ACTIONABILITY_POLL_MS: u64 = 50;
 
 /// Probe one CSS target in the page. The returned object is raw observable
-/// state; the Rust loop decides when it is settled.
+/// state; the Rust loop decides when it is settled. A selector that does not
+/// even parse (`querySelector` throws) reports `syntax:true` so the loop can
+/// refuse it on the first poll instead of burning the caller's bound.
 fn actionability_probe_js(sel: &str) -> String {
     format!(
-        "(() => {{ const el = document.querySelector({sel}); if (!el) return JSON.stringify({{found:false}}); const cs = getComputedStyle(el); const r = el.getBoundingClientRect(); return JSON.stringify({{found:true, visible: cs.display !== 'none' && cs.visibility !== 'hidden' && cs.visibility !== 'collapse' && Number(cs.opacity) > 0 && r.width > 0 && r.height > 0, enabled: !el.disabled && el.getAttribute('aria-disabled') !== 'true', rect: {{x: r.left, y: r.top, w: r.width, h: r.height}}}}); }})()"
+        "(() => {{ let el; try {{ el = document.querySelector({sel}); }} catch (e) {{ return JSON.stringify({{found:false, syntax:true}}); }} if (!el) return JSON.stringify({{found:false}}); const cs = getComputedStyle(el); const r = el.getBoundingClientRect(); return JSON.stringify({{found:true, visible: cs.display !== 'none' && cs.visibility !== 'hidden' && cs.visibility !== 'collapse' && Number(cs.opacity) > 0 && r.width > 0 && r.height > 0, enabled: !el.disabled && el.getAttribute('aria-disabled') !== 'true', rect: {{x: r.left, y: r.top, w: r.width, h: r.height}}}}); }})()"
     )
 }
 
@@ -4416,7 +4418,10 @@ fn actionability_probe_js(sel: &str) -> String {
 /// its box is unchanged across two consecutive samples, under a hard bound.
 /// AX selectors and frame-scoped targets resolve in their own realm at action
 /// time, so they are reported `skipped` rather than probed against the wrong
-/// document - an honest delta, never a false "settled".
+/// document - an honest delta, never a false "settled". A selector that does
+/// not even parse is `refused` on the first poll, so the action's resolver
+/// answers with the typed syntax error instead of a timeout the caller never
+/// deserved.
 async fn actionability_wait(browser: &Browser, element: &str, frame: Option<&str>) -> Value {
     let ax = ["role=", "name=", "text=", "label="]
         .iter()
@@ -4455,6 +4460,10 @@ async fn actionability_wait(browser: &Browser, element: &str, frame: Option<&str
         let ready = found && visible && enabled && rect.is_object();
         let stable = ready && last.as_ref() == Some(&rect);
         let waited = started.elapsed().as_millis() as u64;
+        if state["syntax"].as_bool().unwrap_or(false) {
+            return json!({"verdict":"refused","mode":"syntax","waitedMs":waited,"polls":polls,
+                          "boundMs":ACTIONABILITY_BOUND_MS,"note":"the selector does not parse; the action's own resolver refuses it typed"});
+        }
         if stable {
             return json!({"verdict":"settled","mode":"probed","waitedMs":waited,"polls":polls,
                           "boundMs":ACTIONABILITY_BOUND_MS,"visible":visible,"enabled":enabled,
