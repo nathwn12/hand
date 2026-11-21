@@ -62,7 +62,7 @@ pub fn list() -> Value {
                 "element": {"type": "string"}, "clip": {"type": "object"},
                 "viewport": {"type": "object"}, "deviceScaleFactor": {"type": "number"},
                 "size": {"type": "object", "properties": {"width": {"type": "integer"}, "height": {"type": "integer"}}, "required": ["width", "height"]},
-                "url": {"type": "string"}, "checksum": {"type": "string"},
+                "url": {"type": "string"}, "checksum": {"type": "string"}, "stability": {"type": "object"},
                 "reducedMotionEmulated": {"type": "boolean"},
                 "settled": {"type": "boolean"}, "settleTimeouts": {"type": "array"},
                 "freeze": {"type": "object"}, "freezeMode": {"type": "string"},
@@ -3814,6 +3814,50 @@ async fn push_backend_node(
     Ok(nid)
 }
 
+/// How many frame pairs a live capture may compare before it stops claiming
+/// a frozen image. Bounded: a permanently animating page is reported
+/// `unfrozen`, never retried forever.
+const CAPTURE_STABILITY_ATTEMPTS: u64 = 3;
+
+/// Double-capture a live page and compare the decoded bytes. An equal pair is
+/// `frozen`; a page that keeps changing is `unfrozen` with the differing
+/// checksums named. Deterministic captures are frozen by construction and pay
+/// no extra capture. Both outcomes return real pixels - only the claim changes.
+async fn capture_stable(
+    browser: &Browser,
+    opts: &crate::capture::Options,
+) -> Result<(crate::capture::Capture, Value), ToolErr> {
+    let first = crate::capture::capture(browser, opts)
+        .await
+        .map_err(ToolErr::from)?;
+    if opts.deterministic {
+        return Ok((
+            first,
+            json!({"verdict":"frozen","code":"frozen","frames":1,"attempts":0,
+                   "mode":"deterministic"}),
+        ));
+    }
+    let mut held = first;
+    let mut attempts = 0u64;
+    loop {
+        attempts += 1;
+        let next = crate::capture::capture(browser, opts)
+            .await
+            .map_err(ToolErr::from)?;
+        if next.checksum == held.checksum {
+            let verdict = json!({"verdict":"frozen","code":"frozen","frames":2,"attempts":attempts,
+                                 "checksum":held.checksum.clone()});
+            return Ok((held, verdict));
+        }
+        if attempts >= CAPTURE_STABILITY_ATTEMPTS {
+            let verdict = json!({"verdict":"unfrozen","code":"unfrozen","frames":2,"attempts":attempts,
+                                 "checksums":[held.checksum.clone(), next.checksum.clone()]});
+            return Ok((next, verdict));
+        }
+        held = next;
+    }
+}
+
 pub(crate) async fn tool_screenshot(
     browser: &Browser,
     full_page: bool,
@@ -3845,7 +3889,7 @@ pub(crate) async fn tool_screenshot(
         Some(el) => Some(screenshot_element_box(browser, el).await?),
         None => clip,
     };
-    let cap = crate::capture::capture(
+    let (cap, stability) = Box::pin(capture_stable(
         browser,
         &crate::capture::Options {
             full_page,
@@ -3856,7 +3900,7 @@ pub(crate) async fn tool_screenshot(
             format,
             quality,
         },
-    )
+    ))
     .await?;
     if let Some(before) = target_before {
         let after = browser.active_target_id().await;
@@ -3879,6 +3923,7 @@ pub(crate) async fn tool_screenshot(
         Value::Object(m) => m,
         _ => serde_json::Map::new(),
     };
+    meta.insert("stability".to_string(), stability);
     if let Some(p) = path {
         meta.insert("path".to_string(), json!(p));
     }

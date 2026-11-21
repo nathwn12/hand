@@ -300,6 +300,15 @@ total.
     property is declared under `outputSchema` in
     `baseline/declared-additions.json`.
 
+13. **Capture stability on `browser_screenshot`.** A live (non-deterministic)
+    capture takes two frames and compares their decoded bytes, up to three
+    pairs. An equal pair is `stability.verdict:"frozen"`; a page that keeps
+    changing is `stability.verdict:"unfrozen"` with `code:"unfrozen"` and the
+    two differing checksums named. Both outcomes return real pixels - only
+    the claim changes. Deterministic captures are frozen by construction and
+    pay no extra capture. The new output property is declared under
+    `outputSchema` in `baseline/declared-additions.json`.
+
 ## External CDP engines
 
 `GLADIUS_CDP_URL` attaches the browser domain to any CDP endpoint instead of the

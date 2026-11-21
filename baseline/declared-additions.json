@@ -39,7 +39,8 @@
     "browser_screenshot": [
       "properties.clip",
       "properties.element",
-      "properties.format"
+      "properties.format",
+      "properties.stability"
     ],
     "browser_select": [
       "properties.actionability",

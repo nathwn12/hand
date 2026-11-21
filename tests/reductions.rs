@@ -41,6 +41,24 @@ setTimeout(function () {
 }, 200);
 </script></body></html>"#;
 
+/// An animated canvas: every frame changes both position and colour, so two
+/// captures taken a few milliseconds apart are genuinely different pixels.
+const CANVAS: &str = r#"<!doctype html><html><head><title>Canvas</title></head><body style="margin:0">
+<canvas id="c" width="200" height="100"></canvas><script>
+var ctx = document.getElementById('c').getContext('2d');
+var n = 0;
+function draw() {
+  n++;
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, 200, 100);
+  ctx.fillStyle = 'rgb(' + (n % 256) + ',80,160)';
+  ctx.fillRect((n * 7) % 150, 10, 40, 40);
+  requestAnimationFrame(draw);
+}
+requestAnimationFrame(draw);
+</script></body></html>"#;
+
+const STILL: &str = r#"<!doctype html><html><head><title>Still</title></head><body><h1>still</h1></body></html>"#;
+
 struct Fixture {
     base: String,
     stop: Arc<AtomicBool>,
@@ -97,6 +115,8 @@ fn serve(mut stream: TcpStream) -> std::io::Result<()> {
         .to_string();
     let (status, body): (&str, &str) = match path.as_str() {
         "/late" => ("200 OK", LATE),
+        "/canvas" => ("200 OK", CANVAS),
+        "/still" => ("200 OK", STILL),
         "/favicon.ico" => ("204 No Content", ""),
         _ => ("404 Not Found", "missing"),
     };
@@ -113,6 +133,50 @@ fn evaluate(s: &mut Session, expr: &str) -> Value {
     let r = s.call("browser_evaluate", json!({"expression": expr}));
     assert!(!is_error(&r), "evaluate failed: {}", text_of(&r));
     structured(&r)["value"].clone()
+}
+
+#[test]
+fn r2_canvas_capture_reports_stability_verdict() {
+    let _g = serial();
+    let fx = Fixture::start();
+    let mut s = Session::spawn();
+    let nav = navigate_with_retry(&mut s, &format!("{}/canvas", fx.base));
+    assert!(!is_error(&nav), "nav: {}", text_of(&nav));
+
+    let resp = s.call("browser_screenshot", json!({}));
+    assert!(!is_error(&resp), "screenshot: {}", text_of(&resp));
+    let sc = structured(&resp);
+    let st = &sc["stability"];
+    assert!(st.is_object(), "screenshot must carry a stability verdict: {sc}");
+    let verdict = st["verdict"].as_str().unwrap_or("");
+    assert!(
+        verdict == "frozen" || verdict == "unfrozen",
+        "stability verdict must be typed: {st}"
+    );
+    assert_eq!(st["code"], verdict, "verdict must be typed: {st}");
+    assert!(st["attempts"].as_u64().unwrap_or(0) >= 1, "must compare frames: {st}");
+    if verdict == "unfrozen" {
+        let sums = st["checksums"].as_array().expect("checksums for an unfrozen capture");
+        assert!(sums.len() >= 2, "two differing frames named: {st}");
+        assert_ne!(sums[0], sums[1], "unfrozen must be truthful: {st}");
+    } else {
+        assert_eq!(st["frames"], 2, "frozen needs an equal pair: {st}");
+    }
+}
+
+#[test]
+fn r2_static_capture_is_frozen() {
+    let _g = serial();
+    let fx = Fixture::start();
+    let mut s = Session::spawn();
+    let nav = navigate_with_retry(&mut s, &format!("{}/still", fx.base));
+    assert!(!is_error(&nav), "nav: {}", text_of(&nav));
+
+    let resp = s.call("browser_screenshot", json!({}));
+    assert!(!is_error(&resp), "screenshot: {}", text_of(&resp));
+    let st = &structured(&resp)["stability"];
+    assert_eq!(st["verdict"], "frozen", "static page must compare equal: {st}");
+    assert_eq!(st["frames"], 2, "static page compared two frames: {st}");
 }
 
 #[test]
