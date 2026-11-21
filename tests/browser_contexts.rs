@@ -396,6 +396,36 @@ async fn wait_legacy_page(rig: &Rig, want: &str, cap: Duration) -> Result<(), St
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
 }
+
+/// A freshly launched engine can still be committing its initial about:blank
+/// when the first raw `Page.navigate` lands; the requested page then never
+/// commits and the title stays empty (measured on a cold hosted runner: a
+/// 30 s title poll gave up twice while 21 sibling tests passed). Navigate,
+/// poll the title, re-navigate boundedly: a cold start becomes deterministic
+/// and a genuinely broken page still fails with its own last observation.
+async fn open_legacy_page(rig: &Rig, url: &str, want: &str) {
+    let mut last = String::from("no attempt completed");
+    for attempt in 1..=3u8 {
+        match rig
+            .browser
+            .command("Page.navigate", json!({"url": url}), true)
+            .await
+        {
+            Err(e) => {
+                last = format!("Page.navigate failed: {e}");
+                eprintln!("LEGACY_RETRY attempt={attempt} url={url} {last}");
+            }
+            Ok(_) => match wait_legacy_page(rig, want, Duration::from_secs(30)).await {
+                Ok(()) => return,
+                Err(e) => {
+                    last = e;
+                    eprintln!("LEGACY_RETRY attempt={attempt} url={url} title never committed: {last}");
+                }
+            },
+        }
+    }
+    panic!("the legacy fixture page never committed across 3 navigations: {last}");
+}
 /// Bounded poll of a context's refreshed page list for a page whose url
 /// contains `needle`.
 async fn wait_for_page(rig: &Rig, name: &str, needle: &str, cap: Duration) -> Option<Value> {
@@ -966,18 +996,7 @@ fn legacy_realm_routing_refuses_a_context_page() {
     let fixture = Fixture::start();
     block_on(async {
         let rig = Rig::start();
-        rig.browser
-            .command(
-                "Page.navigate",
-                json!({"url": format!("{}/", fixture.base)}),
-                true,
-            )
-            .await
-            .expect("legacy navigate");
-        if let Err(last) = wait_legacy_page(&rig, "Context Fixture", Duration::from_secs(30)).await
-        {
-            panic!("the legacy fixture page must commit before the boundary checks: {last}");
-        }
+        open_legacy_page(&rig, &format!("{}/", fixture.base), "Context Fixture").await;
 
         let created = rig
             .call(json!({"action": "create", "name": "sealed", "url": format!("{}/?sealed", fixture.base)}))
@@ -1465,15 +1484,7 @@ fn selection_is_registry_scoped_and_teardown_leaves_the_other_context_alone() {
     block_on(async {
         let rig = Rig::start();
 
-        rig.browser
-            .command(
-                "Page.navigate",
-                json!({"url": format!("{}/", fixture.base)}),
-                true,
-            )
-            .await
-            .expect("legacy navigate");
-        rig.browser.wait_for_load(Duration::from_secs(10)).await;
+        open_legacy_page(&rig, &format!("{}/", fixture.base), "Context Fixture").await;
 
         for name in ["one", "two", "three"] {
             let r = rig
