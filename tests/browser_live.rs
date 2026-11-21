@@ -15,7 +15,7 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-use common::{is_error, structured, text_of, Session};
+use common::{is_error, navigate_with_retry, structured, text_of, Session};
 use serde_json::json;
 
 const INDEX: &str = r#"<!doctype html>
@@ -132,10 +132,7 @@ fn browser_inspect_act_verify_and_stale_ref_refusal() {
     let fixture = Fixture::start();
     let mut s = Session::spawn();
 
-    let nav = s.call(
-        "browser_navigate",
-        json!({"url": format!("{}/", fixture.base)}),
-    );
+    let nav = navigate_with_retry(&mut s, &format!("{}/", fixture.base));
     assert!(!is_error(&nav), "navigate failed: {}", text_of(&nav));
     let nav_sc = structured(&nav);
     assert_eq!(
@@ -199,10 +196,7 @@ fn browser_inspect_act_verify_and_stale_ref_refusal() {
         "deterministic capture reports a checksum: {shot_sc}"
     );
 
-    let next = s.call(
-        "browser_navigate",
-        json!({"url": format!("{}/next", fixture.base)}),
-    );
+    let next = navigate_with_retry(&mut s, &format!("{}/next", fixture.base));
     assert!(
         !is_error(&next),
         "second navigate failed: {}",

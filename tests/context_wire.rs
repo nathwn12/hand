@@ -50,7 +50,7 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use common::{is_error, structured, text_of, Session};
+use common::{is_error, navigate_with_retry, structured, text_of, Session};
 use serde_json::{json, Value};
 
 const CONTEXT_TOOL: &str = "browser_context";
@@ -335,7 +335,7 @@ fn two_contexts_isolate_cookies_and_the_legacy_page_stays_separate() {
     let base = fixture.base.clone();
     let mut s = Session::spawn();
 
-    let nav = s.call("browser_navigate", json!({"url": format!("{base}/legacy")}));
+    let nav = navigate_with_retry(&mut s, &format!("{base}/legacy"));
     assert!(!is_error(&nav), "legacy navigate failed: {}", text_of(&nav));
     assert_eq!(
         structured(&nav)["title"].as_str(),

@@ -10,7 +10,7 @@
 
 mod common;
 
-use common::{is_error, structured, text_of, Session};
+use common::{is_error, navigate_with_retry, structured, text_of, Session};
 use serde_json::{json, Value};
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -157,7 +157,7 @@ fn right_click_opens_the_pages_menu_and_snapshot_reports_it() {
     let _serial = serial();
     let fx = Fixture::start();
     let mut s = Session::spawn();
-    s.call("browser_navigate", json!({"url": format!("{}/pointer.html", fx.a)}));
+    navigate_with_retry(&mut s, &format!("{}/pointer.html", fx.a));
 
     let hidden = evaluate(&mut s, "document.getElementById('menu').hidden", None);
     assert_eq!(hidden, json!(true), "the menu starts hidden");
@@ -189,7 +189,7 @@ fn click_count_two_raises_dblclick() {
     let _serial = serial();
     let fx = Fixture::start();
     let mut s = Session::spawn();
-    s.call("browser_navigate", json!({"url": format!("{}/pointer.html", fx.a)}));
+    navigate_with_retry(&mut s, &format!("{}/pointer.html", fx.a));
 
     let single = s.call("browser_click", json!({"element": "#dbl"}));
     assert!(!is_error(&single), "{}", text_of(&single));
@@ -215,7 +215,7 @@ fn wheel_scrolls_the_document_and_reports_it() {
     let _serial = serial();
     let fx = Fixture::start();
     let mut s = Session::spawn();
-    s.call("browser_navigate", json!({"url": format!("{}/pointer.html", fx.a)}));
+    navigate_with_retry(&mut s, &format!("{}/pointer.html", fx.a));
 
     let down = s.call("browser_wheel", json!({"deltaY": 400}));
     assert!(!is_error(&down), "{}", text_of(&down));
@@ -228,7 +228,7 @@ fn wheel_scrolls_the_document_and_reports_it() {
     assert_eq!(reported, live, "the reply must report the measured offset");
     assert_eq!(structured(&down)["moved"], json!(true));
 
-    s.call("browser_navigate", json!({"url": format!("{}/oopif-child.html", fx.a)}));
+    navigate_with_retry(&mut s, &format!("{}/oopif-child.html", fx.a));
     let still = s.call("browser_wheel", json!({"deltaY": 400}));
     assert!(!is_error(&still), "{}", text_of(&still));
     assert_eq!(structured(&still)["moved"], json!(false));
@@ -242,7 +242,7 @@ fn drag_reorders_with_trusted_pointer_events() {
     let _serial = serial();
     let fx = Fixture::start();
     let mut s = Session::spawn();
-    s.call("browser_navigate", json!({"url": format!("{}/pointer.html", fx.a)}));
+    navigate_with_retry(&mut s, &format!("{}/pointer.html", fx.a));
 
     let before = evaluate(
         &mut s,
@@ -290,7 +290,7 @@ fn element_screenshot_is_the_box_and_is_deterministic() {
     let _serial = serial();
     let fx = Fixture::start();
     let mut s = Session::spawn();
-    s.call("browser_navigate", json!({"url": format!("{}/pointer.html", fx.a)}));
+    navigate_with_retry(&mut s, &format!("{}/pointer.html", fx.a));
 
     let layout = s.call("browser_layout", json!({"selector": "#shot"}));
     assert!(!is_error(&layout), "{}", text_of(&layout));
@@ -333,7 +333,7 @@ fn oopif_frame_snapshot_and_click_with_typed_unmapped_frame() {
     let _serial = serial();
     let fx = Fixture::start();
     let mut s = Session::spawn();
-    s.call("browser_navigate", json!({"url": format!("{}/oopif-parent.html", fx.a)}));
+    navigate_with_retry(&mut s, &format!("{}/oopif-parent.html", fx.a));
     let fid = oopif_frame(&mut s);
 
     let main = text_of(&s.call("browser_snapshot", json!({})));

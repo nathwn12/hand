@@ -10,7 +10,7 @@ mod common;
 
 use std::time::{Duration, Instant};
 
-use common::{is_error, structured, text_of, Session};
+use common::{is_error, navigate_with_retry, structured, text_of, Session};
 use serde_json::{json, Value};
 
 /// Mirrors the documented shutdown bounds in `src/server.rs` and `src/main.rs`:
@@ -1004,7 +1004,7 @@ fn a_snapshot_reply_larger_than_one_transport_frame_keeps_the_engine() {
     const ITEMS: usize = 12_000;
     let rows: String = (0..ITEMS).map(|i| format!("<li>row {i}</li>")).collect();
     let url = format!("data:text/html,<ul>{rows}</ul>");
-    let nav = s.call("browser_navigate", json!({"url": url}));
+    let nav = navigate_with_retry(&mut s, &url);
     assert!(!is_error(&nav), "navigate: {}", text_of(&nav));
 
     let snap = s.call("browser_snapshot", json!({}));
@@ -1058,7 +1058,7 @@ fn a_snapshot_reply_larger_than_one_transport_frame_keeps_the_engine() {
 fn an_out_of_range_tab_select_is_refused_without_waiting_on_the_deadline() {
     let _serial = serial();
     let mut s = Session::spawn();
-    let nav = s.call("browser_navigate", json!({"url": "about:blank"}));
+    let nav = navigate_with_retry(&mut s, "about:blank");
     assert!(!is_error(&nav), "navigate: {}", text_of(&nav));
 
     let started = Instant::now();

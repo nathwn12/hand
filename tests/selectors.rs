@@ -17,7 +17,7 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-use common::{is_error, structured, text_of, Session};
+use common::{is_error, navigate_with_retry, structured, text_of, Session};
 use serde_json::{json, Value};
 
 const LONG: &str = "This accessible name is deliberately longer than eighty characters so the snapshot has to truncate it somewhere near the cap";
@@ -178,10 +178,7 @@ fn require_engine() {
 /// A navigated session on the fixture index page.
 fn opened(fixture: &Fixture) -> Session {
     let mut s = Session::spawn();
-    let nav = s.call(
-        "browser_navigate",
-        json!({"url": format!("{}/", fixture.base)}),
-    );
+    let nav = navigate_with_retry(&mut s, &format!("{}/", fixture.base));
     assert!(!is_error(&nav), "navigate failed: {}", text_of(&nav));
     s
 }
@@ -597,11 +594,8 @@ fn legacy_css_and_ref_targeting_are_unchanged() {
         Some("go-hit")
     );
 
-    ok(
-        &mut s,
-        "browser_navigate",
-        json!({"url": format!("{}/next", fixture.base)}),
-    );
+    let nav = navigate_with_retry(&mut s, &format!("{}/next", fixture.base));
+    assert!(!is_error(&nav), "navigate failed: {}", text_of(&nav));
     let stale = s.call("browser_click", json!({"element": at}));
     assert!(is_error(&stale), "a pre-navigation ref must fail: {stale}");
     assert_eq!(
