@@ -74,6 +74,8 @@ body { font: 16px/1.4 system-ui; margin: 0; padding: 8px; background: #fff; colo
 <input id="focusable" type="text" aria-label="No focus ring">
 </body></html>"#;
 /// Exact bytes the loopback fixture delivers, and their SHA-256.
+const TRACE_PAGE: &str = r#"<!doctype html><html><head><title>Trace Page</title></head>
+<body><h1>trace</h1><p>row B6 fixture</p></body></html>"#;
 const DOWNLOAD_BYTES: &[u8] = b"hand row B5 download payload\n";
 const DOWNLOAD_SHA256: &str = "20e1664389c59576710eca014871d3f63479d4afe7087fdd182a736e5515800d";
 
@@ -149,6 +151,7 @@ fn serve(mut stream: TcpStream) -> std::io::Result<()> {
         "/drag" => ("200 OK", DRAG.to_string()),
         "/form" => ("200 OK", FORM.to_string()),
         "/audit" => ("200 OK", AUDIT.to_string()),
+        p if p.starts_with("/trace") => ("200 OK", TRACE_PAGE.to_string()),
         "/redirect" => {
             let head = "HTTP/1.1 302 Found\r\nLocation: /next\r\nContent-Length: 0\r\n\
                         Cache-Control: no-store\r\nConnection: close\r\n\r\n";
@@ -565,4 +568,98 @@ fn b7_audit_measures_six_viewports_with_evidence_per_check() {
     // The matrix restores the connection-wide viewport override.
     let after = evaluate(&mut s, "window.innerWidth").as_i64().unwrap_or(0);
     assert_eq!(after, default_width, "viewport must be restored after the audit");
+}
+
+#[test]
+fn b6_trace_writes_har_with_counted_redaction_and_cancel_cleans_up() {
+    let _g = serial();
+    let fx = Fixture::start();
+    let mut s = Session::spawn();
+
+    let tools = s.list_tools();
+    assert!(tools.iter().any(|t| t["name"] == "browser_trace"),
+            "catalog must publish browser_trace");
+
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let dir = std::env::temp_dir().join(format!("hand-trace-b6-{}-{nanos}", std::process::id()));
+    let dir_str = dir.to_string_lossy().to_string();
+
+    // Both refusals are typed and land before any file is created.
+    let relative = s.call("browser_trace", json!({"dir": "relative/trace", "har": true}));
+    assert!(is_error(&relative), "a relative dir must be refused: {}", text_of(&relative));
+    let sc = structured(&relative);
+    assert_eq!(sc["code"].as_str().unwrap_or(""), "invalid_args");
+    assert_eq!(sc["reason"].as_str().unwrap_or(""), "bad_value");
+    assert_eq!(sc["arg"].as_str().unwrap_or(""), "dir");
+
+    let video = s.call("browser_trace", json!({"dir": dir_str, "video": true}));
+    assert!(is_error(&video), "video must stay typed not_implemented: {}", text_of(&video));
+    let sc = structured(&video);
+    assert_eq!(sc["code"].as_str().unwrap_or(""), "not_implemented");
+    assert_eq!(sc["field"].as_str().unwrap_or(""), "video");
+    assert!(!dir.exists(), "a refusal must not create the caller's directory");
+
+    // Arm the existing CDP Network ring, then navigate to a URL that carries
+    // the literal we will redact. The HAR must wrap that real observation.
+    let armed = s.call("browser_network", json!({"action": "get"}));
+    assert!(!is_error(&armed), "arming network capture failed: {}", text_of(&armed));
+    let page = navigate_with_retry(&mut s, &format!("{}/trace?Authorization=secret", fx.base));
+    assert!(!is_error(&page), "{}", text_of(&page));
+
+    let r = s.call("browser_trace", json!({
+        "dir": dir_str,
+        "screenshots": true,
+        "har": true,
+        "redact": ["Authorization", "not-on-this-page"]
+    }));
+    assert!(!is_error(&r), "trace failed: {}", text_of(&r));
+    let sc = structured(&r).clone();
+    assert_eq!(sc["ok"].as_bool(), Some(true), "trace payload: {sc:?}");
+    assert_eq!(sc["dir"].as_str(), Some(dir_str.as_str()));
+    let files = sc["files"].as_array().expect("files");
+    assert_eq!(files.len(), 2, "one HAR and one deterministic step: {sc:?}");
+    assert!(sc["bytes"].as_u64().unwrap_or(0) > 0, "bytes must be counted: {sc:?}");
+
+    let har_path = dir.join("trace.har");
+    let shot_path = dir.join("step-0001.png");
+    let har_text = std::fs::read_to_string(&har_path).expect("HAR on disk");
+    let har: Value = serde_json::from_str(&har_text).expect("HAR is valid JSON");
+    assert_eq!(har["log"]["version"].as_str(), Some("1.2"), "HAR 1.2: {har:?}");
+    assert!(har["log"]["comment"].as_str().unwrap_or("").contains("browser.network_get"),
+            "HAR must name the capture it wraps");
+    let entries = har["log"]["entries"].as_array().expect("entries");
+    assert!(!entries.is_empty(), "the armed ring must have real network entries");
+    assert!(entries.iter().all(|e| e["_capture"]["source"] == "browser.network_get"),
+            "every entry must name its source: {entries:?}");
+    assert!(entries.iter().any(|e| e["request"]["url"].as_str().unwrap_or("").contains("/trace")),
+            "the traced navigation must appear: {entries:?}");
+    assert!(!har_text.contains("Authorization"), "literal must be gone from the HAR text");
+    assert!(har_text.contains("[REDACTED]"), "replacement marker must be visible");
+    let redactions = sc["redactions"].as_array().expect("redactions");
+    let found = |literal: &str| redactions.iter().find(|r| r["literal"] == literal).cloned();
+    let hit = found("Authorization").expect("named literal");
+    assert_eq!(hit["marker"].as_str(), Some("[REDACTED]"));
+    assert!(hit["count"].as_u64().unwrap_or(0) >= 1, "counted occurrence: {hit:?}");
+    let miss = found("not-on-this-page").expect("a literal with zero hits is still named");
+    assert_eq!(miss["count"].as_u64(), Some(0), "no false detection: {miss:?}");
+
+    let shot = std::fs::read(&shot_path).expect("deterministic step on disk");
+    assert!(shot.len() > 1000 && shot.starts_with(b"\x89PNG"), "real PNG: {} bytes", shot.len());
+
+    // Cancel removes only what this tool wrote; a caller's file survives.
+    let bystander = dir.join("caller-note.txt");
+    std::fs::write(&bystander, b"keep me").expect("bystander");
+    let cancel = s.call("browser_trace", json!({"action": "cancel"}));
+    assert!(!is_error(&cancel), "cancel failed: {}", text_of(&cancel));
+    assert_eq!(structured(&cancel)["ok"].as_bool(), Some(true));
+    assert!(!har_path.exists() && !shot_path.exists(), "owned artifacts removed on cancel");
+    assert_eq!(std::fs::read_to_string(&bystander).expect("bystander survived"), "keep me");
+
+    let cancel_again = s.call("browser_trace", json!({"action": "cancel"}));
+    assert!(!is_error(&cancel_again), "cancel is idempotent: {}", text_of(&cancel_again));
+    assert_eq!(structured(&cancel_again)["ok"].as_bool(), Some(true));
+    let _ = std::fs::remove_dir_all(&dir);
 }
