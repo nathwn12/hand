@@ -1,11 +1,11 @@
 <#
 .SYNOPSIS
-  Provisions gladius's OWN pinned Chrome-for-Testing headless-shell (win64).
+  Provisions gladius's OWN pinned Chrome-for-Testing full Chrome (win64).
 
 .DESCRIPTION
   Resolves one
   PINNED Chrome-for-Testing build (a version string, never a channel name),
-  downloads the chrome-headless-shell zip, verifies the zip AND every
+  downloads the chrome (full browser) zip, verifies the zip AND every
   extracted file against scripts/chromium-manifest.json (whose sha256 values
   were computed BY US from the real downloaded files - the upstream CfT JSON
   endpoints carry no sha256 field), and extracts atomically into an owned
@@ -37,17 +37,17 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
 # Pin (keep in lockstep with scripts/chromium-manifest.json).
-$PinnedVersion = '155.0.8059.84'
+$PinnedVersion = '158.0.8127.36'
 $Platform = 'win64'
-$AssetName = 'chrome-headless-shell-win64.zip'
-$AssetUrl = 'https://storage.googleapis.com/chrome-for-testing-public/155.0.8059.84/win64/chrome-headless-shell-win64.zip'
-$ExpectedZipSha256 = '5ca590a4968864e219ea25ccd134597ef8898a733a4698c07fc3e8b2c480fef4'
-$ExpectedZipSize = 123681250
+$AssetName = 'chrome-win64.zip'
+$AssetUrl = 'https://storage.googleapis.com/chrome-for-testing-public/158.0.8127.36/win64/chrome-win64.zip'
+$ExpectedZipSha256 = '6a8ad290952cc612c7777ffb3eb62f345539a2a1a8d440cfac190c6d36b34d2c'
+$ExpectedZipSize = 214927656
 $ZipShort8 = $ExpectedZipSha256.Substring(0, 8)
 $ManifestName = 'chromium-manifest.json'
 $CacheOverrideEnv = 'GLADIUS_CHROMIUM_CACHE'
-$InnerRoot = 'chrome-headless-shell-win64'
-$ExeRel = "$InnerRoot/chrome-headless-shell.exe"
+$InnerRoot = 'chrome-win64'
+$ExeRel = "$InnerRoot/chrome.exe"
 $GoodVersionsUrl = 'https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions.json'
 
 function Get-StableCfTVersion {
@@ -66,7 +66,7 @@ function Get-StableCfTVersion {
 }
 
 function Get-CfTAssetUrl([string]$Ver) {
-  return ('https://storage.googleapis.com/chrome-for-testing-public/{0}/win64/chrome-headless-shell-win64.zip' -f $Ver)
+  return ('https://storage.googleapis.com/chrome-for-testing-public/{0}/win64/chrome-win64.zip' -f $Ver)
 }
 
 if ($Check -and $Update) {
@@ -95,7 +95,7 @@ if ($Check) {
 
 function Fail-Absent([string]$Reason) {
   Write-Host $Reason
-  Write-Host ('chrome-headless-shell is absent. Provision it with: powershell -ExecutionPolicy Bypass -File scripts\fetch-chromium.ps1')
+  Write-Host ('Chrome for Testing is absent. Provision it with: powershell -ExecutionPolicy Bypass -File scripts\fetch-chromium.ps1')
   Write-Host 'Gladius never falls back to an ambient or shared browser, and never touches the installed Brave/Edge/Chrome.'
   exit 1
 }
@@ -191,7 +191,7 @@ if ($Update) {
   $tmpZip = $SourcePath
   $downloadedTemp = $false
   if ([string]::IsNullOrWhiteSpace($tmpZip)) {
-    $tmpZip = Join-Path ([System.IO.Path]::GetTempPath()) ('chrome-headless-shell-{0}-{1}.zip' -f $newVersion, [System.IO.Path]::GetRandomFileName())
+    $tmpZip = Join-Path ([System.IO.Path]::GetTempPath()) ('chrome-{0}-{1}.zip' -f $newVersion, [System.IO.Path]::GetRandomFileName())
     try {
       Invoke-WebRequest -Uri $newAssetUrl -OutFile $tmpZip
     } catch {
@@ -226,9 +226,9 @@ if ($Update) {
       Write-Host ('update zip missing expected top dir: {0}; wrote nothing.' -f $InnerRoot)
       exit 1
     }
-    $updExe = Join-Path $updRoot 'chrome-headless-shell.exe'
+    $updExe = Join-Path $updRoot 'chrome.exe'
     if (-not (Test-Path -LiteralPath $updExe -PathType Leaf)) {
-      Write-Host 'update zip missing expected entry: chrome-headless-shell.exe; wrote nothing.'
+      Write-Host 'update zip missing expected entry: chrome.exe; wrote nothing.'
       exit 1
     }
     $updFiles = Get-RelFiles $updStage | Sort-Object Rel
@@ -251,11 +251,11 @@ if ($Update) {
     } else {
       ('{0} (Stable channel pin, read {1}; a channel name is NOT a pin, the resolved version string is)' -f $GoodVersionsUrl, $today)
     }
-    $comment = ('Pinned Chrome-for-Testing chrome-headless-shell manifest for gladius (win64 only). Hashes computed BY US on {0} from the real downloaded archive: downloaded {1} via Invoke-WebRequest, hashed the zip with Get-FileHash SHA256, extracted with Expand-Archive, then hashed every extracted file with SHA256 and recorded sizes. The upstream CfT JSON endpoints carry NO sha256 field, so this file is the sole integrity root. scripts/fetch-chromium.ps1 verifies the zip AND every listed file (exact set, no extras) before provisioning, and re-verifies on reuse. Keep this file, the script constants, and the pinned version in lockstep.' -f $today, $newAssetUrl)
+    $comment = ('Pinned Chrome-for-Testing chrome (full browser) manifest for gladius (win64 only). Hashes computed BY US on {0} from the real downloaded archive: downloaded {1} via Invoke-WebRequest, hashed the zip with Get-FileHash SHA256, extracted with Expand-Archive, then hashed every extracted file with SHA256 and recorded sizes. The upstream CfT JSON endpoints carry NO sha256 field, so this file is the sole integrity root. scripts/fetch-chromium.ps1 verifies the zip AND every listed file (exact set, no extras) before provisioning, and re-verifies on reuse. Keep this file, the script constants, and the pinned version in lockstep.' -f $today, $newAssetUrl)
     $newManifest = [ordered]@{
       _comment = $comment
       browser = [ordered]@{
-        project = 'Chrome for Testing: chrome-headless-shell (headless-only //content wrapper)'
+        project = 'Chrome for Testing: chrome (full browser)'
         version = $newVersion
         platform = $Platform
         resolvedFrom = $resolvedFrom
@@ -442,9 +442,9 @@ try {
     Write-Host ('zip missing expected top dir: {0}; wrote nothing.' -f $InnerRoot)
     exit 1
   }
-  $stagedExe = Join-Path $stagedRoot 'chrome-headless-shell.exe'
+  $stagedExe = Join-Path $stagedRoot 'chrome.exe'
   if (-not (Test-Path -LiteralPath $stagedExe -PathType Leaf)) {
-    Write-Host 'zip missing expected entry: chrome-headless-shell.exe; wrote nothing.'
+    Write-Host 'zip missing expected entry: chrome.exe; wrote nothing.'
     exit 1
   }
 

@@ -4082,15 +4082,15 @@ async fn launch(excluded_contexts: Arc<Mutex<HashMap<String, String>>>) -> Resul
 
 /// Pinned Chromium identity (keep in lockstep with
 /// `scripts/fetch-chromium.ps1` and `scripts/chromium-manifest.json`).
-const PINNED_CHROMIUM_VERSION: &str = "155.0.8059.84";
+const PINNED_CHROMIUM_VERSION: &str = "158.0.8127.36";
 /// First 8 hex chars of the pinned zip sha256 (the versioned cache dir tag).
-const PINNED_ZIP_SHORT8: &str = "5ca590a4";
+const PINNED_ZIP_SHORT8: &str = "6a8ad290";
 /// Env override for the explicit browser binary path.
 const CHROMIUM_ENV: &str = "GLADIUS_CHROMIUM";
 /// Env override for the versioned cache root.
 const CHROMIUM_CACHE_ENV: &str = "GLADIUS_CHROMIUM_CACHE";
-/// Zip-relative path of the shell binary inside the versioned cache dir.
-const CHROMIUM_EXE_REL: &str = "chrome-headless-shell-win64/chrome-headless-shell.exe";
+/// Zip-relative path of the full Chrome binary inside the versioned cache dir.
+const CHROMIUM_EXE_REL: &str = "chrome-win64/chrome.exe";
 
 /// Owned Chromium resolution: an explicit `GLADIUS_CHROMIUM` path wins when
 /// set and non-blank (must be a file), else the pinned build under the owned
@@ -4142,9 +4142,9 @@ pub(crate) fn find_chromium() -> Result<std::path::PathBuf, String> {
 
 /// Owned Chromium argv for `port` with private `profile_dir`. Each flag
 /// appears EXACTLY ONCE (kept with the repo's exactly-once discipline).
-/// Bare `--headless` is the shell's headless selector (the full browser's
-/// new-mode spelling is not ours, and the removed old-mode spelling must
-/// never reappear). The profile dir is created fresh per instance before
+/// Bare `--headless` selects Chrome's new headless mode (the default since
+/// Chrome 132; the removed old-mode spelling must never reappear). The
+/// profile dir is created fresh per instance before
 /// launch: since Chrome 136 the remote-debugging switches are ignored on
 /// the default data directory, so without a private profile no port binds
 /// and readiness never goes ready. `about:blank` is the last positional
@@ -4159,6 +4159,8 @@ fn chromium_argv(port: u16, profile_dir: &std::path::Path) -> Vec<String> {
         format!("--user-data-dir={}", profile_dir.display()),
         "--no-first-run".to_string(),
         "--no-default-browser-check".to_string(),
+        "--disable-popup-blocking".to_string(),
+        "--disable-gpu".to_string(),
         "--disable-backgrounding-occluded-windows".to_string(),
         "--disable-renderer-backgrounding".to_string(),
         "--disable-background-timer-throttling".to_string(),
@@ -4361,7 +4363,7 @@ async fn launch_owned_chromium(
     .await
 }
 
-/// Single owned-launch attempt: the owned Chromium (`chrome-headless-shell`
+/// Single owned-launch attempt: the owned Chromium (full Chrome for Testing
 /// on a free loopback port with a fresh private profile), modelled as
 /// `Engine::Owned` so `close()` kills the tree we started and sweeps the
 /// profile. Picks a FRESH free port AND a fresh profile on every call (both
@@ -6672,6 +6674,8 @@ mod tests {
             "--headless",
             "--no-first-run",
             "--no-default-browser-check",
+            "--disable-popup-blocking",
+            "--disable-gpu",
             "--disable-backgrounding-occluded-windows",
             "--disable-renderer-backgrounding",
             "--disable-background-timer-throttling",
@@ -6708,6 +6712,8 @@ mod tests {
             "--headless".to_string(),
             "--no-default-browser-check".to_string(),
             "--no-first-run".to_string(),
+            "--disable-popup-blocking".to_string(),
+            "--disable-gpu".to_string(),
             "--disable-backgrounding-occluded-windows".to_string(),
             "--disable-renderer-backgrounding".to_string(),
             "--disable-background-timer-throttling".to_string(),
@@ -6773,6 +6779,25 @@ mod tests {
         std::env::set_var("GLADIUS_CHROMIUM_CACHE", &scratch);
         assert_eq!(find_chromium().expect("planted cache must win"), exe);
         std::fs::remove_dir_all(&scratch).ok();
+    }
+
+    /// Full-Chrome identity: the pinned artifact is `chrome.exe` inside
+    /// `chrome-win64`, not the smaller `chrome-headless-shell`. Fails on the
+    /// old shell pin, so a regression back to it cannot ship.
+    #[test]
+    fn pinned_browser_is_full_chrome_not_shell() {
+        assert_eq!(
+            CHROMIUM_EXE_REL, "chrome-win64/chrome.exe",
+            "pinned artifact must be full Chrome: {CHROMIUM_EXE_REL}"
+        );
+        let exe_name = std::path::Path::new(CHROMIUM_EXE_REL)
+            .file_name()
+            .and_then(|s| s.to_str())
+            .expect("exe file name");
+        assert_eq!(
+            exe_name, "chrome.exe",
+            "pinned artifact must be chrome.exe, not chrome-headless-shell.exe"
+        );
     }
 
     /// Pin drift: the runtime constants MUST equal the committed
