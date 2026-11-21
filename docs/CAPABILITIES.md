@@ -132,9 +132,10 @@ existing target takes precedence over the hidden-launch request.
 
 ### Lifecycle and distribution
 
-- `oc-hand` OpenCode wiring: live at `C:\Users\nathan\.local\bin\hand.exe`, 38
-  tools. Private remote `github.com/nathwn12/hand`. No npm package and nothing
-  published; the npm name `hand-mcp` is reserved by intent only.
+- `oc-hand` OpenCode wiring: an installed copy serves the local
+  OpenCode config; its version follows the release. Public remote
+  `github.com/nathwn12/hand`; `hand-mcp` is published on npm through
+  `0.1.1`, with `0.2.0` shipping as this release.
 - Product and executable are `hand`; the repo, crate and binary were renamed
   from `hand-mcp`. Fixture ids, baseline captures and benchmark receipt schemas
   keep the `hand-mcp` names on purpose: they record what was measured, and
