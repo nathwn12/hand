@@ -1543,20 +1543,25 @@ pub async fn call(name: &str, args: &Value, browser: &Browser) -> Value {
             tool_history(browser, &action).await
         }
         "network" => {
-            if let Err(e) = check_unknown("network", args, &["action", "filter", "limit"]) {
-                return e.envelope();
-            }
             let action = args
                 .get("action")
                 .and_then(|v| v.as_str())
-                .unwrap_or("get")
-                .to_string();
-            let filter = args
-                .get("filter")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            let limit = args.get("limit").and_then(|v| v.as_i64());
-            tool_network(browser, &action, filter.as_deref(), limit).await
+                .unwrap_or("get");
+            // B3 interception actions belong to the private net module. Route
+            // them before the ring's arg check so their own args pass through.
+            if matches!(action, "route" | "mock" | "abort" | "offline" | "restore") {
+                crate::net::handle(browser, args).await
+            } else {
+                if let Err(e) = check_unknown("network", args, &["action", "filter", "limit"]) {
+                    return e.envelope();
+                }
+                let filter = args
+                    .get("filter")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let limit = args.get("limit").and_then(|v| v.as_i64());
+                tool_network(browser, action, filter.as_deref(), limit).await
+            }
         }
         "cdp" => {
             if let Err(e) = check_unknown("cdp", args, &["method", "params", "session"]) {
@@ -3233,6 +3238,27 @@ mod tests {
             unreadable_value("combobox", "chosen option"),
             "chosen option"
         );
+    }
+
+    /// The five interception actions must reach the B3 stub, not fall through
+    /// to `network: unknown action`. Anything else keeps the ring action error.
+    #[tokio::test]
+    async fn network_interception_actions_reach_the_b3_stub() {
+        use serde_json::json;
+
+        use crate::browser::Browser;
+
+        let browser = Browser::new();
+        for action in ["route", "mock", "abort", "offline", "restore"] {
+            let env = super::call("network", &json!({"action": action}), &browser).await;
+            assert_eq!(env["structuredContent"]["code"], "not_implemented", "{action}: {env}");
+            assert_eq!(env["structuredContent"]["tool"], "browser_network");
+            let text = env["content"][0]["text"].as_str().unwrap_or("");
+            assert!(text.contains("B3"), "{action}: {text}");
+        }
+
+        let unknown = super::call("network", &json!({"action": "bogus"}), &browser).await;
+        assert_eq!(unknown["structuredContent"]["reason"], "unknown_action");
     }
 }
 

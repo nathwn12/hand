@@ -138,11 +138,11 @@ test("the floor plus its declared allowances passes the hand comparison with no 
   assert.deepEqual(report.extra, []);
   assert.deepEqual(report.metadataDrift, []);
   assert.deepEqual(report.declaredMissing, []);
-  assert.equal(report.declaredAdditions.length, 17, "every declared allowance is exercised: 10 schema groups and 7 descriptions");
+  assert.equal(report.declaredAdditions.length, 30, "every declared allowance is exercised: 16 schema groups and 14 descriptions");
   assert.equal(
     report.declaredAdditions.filter((entry) => entry.kind === "metadata.description").length,
-    7,
-    "the seven rewritten descriptions are allowances, not drift",
+    14,
+    "the fourteen rewritten descriptions are allowances, not drift",
   );
 });
 

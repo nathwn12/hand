@@ -210,3 +210,23 @@ pub fn text_of(resp: &Value) -> String {
         })
         .unwrap_or_default()
 }
+
+/// A freshly launched engine can still be committing its own about:blank
+/// navigation when the caller's first `browser_navigate` lands; Chrome then
+/// aborts one of them with net::ERR_ABORTED. Retry ONLY that transient, so a
+/// real navigate failure still fails the caller.
+pub fn navigate_with_retry(s: &mut Session, url: &str) -> Value {
+    let mut last = Value::Null;
+    for attempt in 0..3 {
+        let resp = s.call("browser_navigate", json!({"url": url}));
+        if !is_error(&resp) {
+            return resp;
+        }
+        last = resp;
+        if !text_of(&last).contains("ERR_ABORTED") {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(150 * (attempt + 1) as u64));
+    }
+    last
+}

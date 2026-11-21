@@ -9,9 +9,6 @@
       "properties.button",
       "properties.clickCount"
     ],
-    "browser_drag": [
-      "properties.dataTransfer"
-    ],
     "browser_layout": [
       "properties.frame"
     ],
@@ -31,10 +28,6 @@
   "outputSchema": {
     "browser_click": [
       "properties.resolved"
-    ],
-    "browser_drag": [
-      "properties.dataTransfer",
-      "properties.dragEvents"
     ],
     "browser_hover": [
       "properties.resolved"

@@ -12,7 +12,7 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-use common::{is_error, structured, text_of, Session};
+use common::{is_error, navigate_with_retry, structured, text_of, Session};
 use serde_json::{json, Value};
 
 const PAGE: &str = r#"<!doctype html><html><head><title>Determinism</title></head>
@@ -91,32 +91,12 @@ fn value(resp: &Value, what: &str) -> Value {
     structured(resp)["value"].clone()
 }
 
-/// A freshly launched engine can still be committing its own about:blank
-/// navigation when the caller's first `browser_navigate` lands; Chrome then
-/// aborts one of them with net::ERR_ABORTED. Retry ONLY that transient, so a
-/// real navigate failure still fails the test.
-fn navigate(s: &mut Session, url: &str) -> Value {
-    let mut last = Value::Null;
-    for attempt in 0..3 {
-        let resp = s.call("browser_navigate", json!({"url": url}));
-        if !is_error(&resp) {
-            return resp;
-        }
-        last = resp;
-        if !text_of(&last).contains("ERR_ABORTED") {
-            break;
-        }
-        std::thread::sleep(Duration::from_millis(150 * (attempt + 1) as u64));
-    }
-    last
-}
-
 #[test]
 fn clock_is_read_back_from_the_page_after_override() {
     let _serial = serial();
     let fixture = Fixture::start();
     let mut s = Session::spawn();
-    let nav = navigate(&mut s, &format!("{}/", fixture.base));
+    let nav = navigate_with_retry(&mut s, &format!("{}/", fixture.base));
     assert!(!is_error(&nav), "navigate failed: {}", text_of(&nav));
 
     let frozen = s.call(
@@ -145,7 +125,7 @@ fn locale_and_timezone_are_read_back_from_the_page() {
     let _serial = serial();
     let fixture = Fixture::start();
     let mut s = Session::spawn();
-    let nav = navigate(&mut s, &format!("{}/", fixture.base));
+    let nav = navigate_with_retry(&mut s, &format!("{}/", fixture.base));
     assert!(!is_error(&nav), "navigate failed: {}", text_of(&nav));
 
     let set = s.call(

@@ -25,6 +25,7 @@ const DECLARED_DESCRIPTIONS = [
   "browser_assert_layout",
   "browser_click",
   "browser_hover",
+  "browser_layout",
   "browser_screenshot",
   "browser_select",
   "browser_snapshot",
@@ -120,7 +121,7 @@ test("the allowance file is versioned, dotted and read by the comparator itself"
   assert.deepEqual(
     [...rawFile.metadata.description].sort(),
     DECLARED_DESCRIPTIONS,
-    "exactly the thirteen rewritten descriptions are declared, nothing more and nothing less",
+    "exactly the fourteen rewritten descriptions are declared, nothing more and nothing less",
   );
   for (const name of rawFile.metadata.description) {
     assert.ok(floorNames.has(name), `metadata.description.${name} is not a floor tool`);
@@ -139,10 +140,14 @@ test("a candidate that is the floor plus the declared allowances passes, and the
   assert.deepEqual(
     input.map((entry) => `${entry.tool} ${entry.paths.join(",")}`).sort(),
     [
+      "browser_assert_layout properties.frame",
       "browser_click properties.button,properties.clickCount",
+      "browser_layout properties.frame",
       "browser_screenshot properties.clip,properties.element,properties.format,properties.quality",
+      "browser_visual properties.frame",
+      "desktop_screenshot properties.privacyMasks",
     ],
-    "exactly the six declared input properties are allowed",
+    "exactly the ten declared input properties are allowed",
   );
   assert.equal(
     output.reduce((count, entry) => count + entry.paths.length, 0),
@@ -152,7 +157,7 @@ test("a candidate that is the floor plus the declared allowances passes, and the
   assert.deepEqual(
     descriptions.map((entry) => entry.tool).sort(),
     DECLARED_DESCRIPTIONS,
-    "one place lists every allowance, so all seven rewritten descriptions are named here",
+    "one place lists every allowance, so all fourteen rewritten descriptions are named here",
   );
 });
 
@@ -277,7 +282,7 @@ test("the green candidate is green through the real CLI, exit 0", () => {
   assert.doesNotMatch(cli.stdout, /--strict-metadata/, "the reported policy is not stated as a flag");
   assert.match(cli.stdout, /screenshot inputSchema \+= properties\.clip, properties\.element, properties\.format, properties\.quality/);
   assert.match(cli.stdout, /browser_click metadata\.description \+= description/);
-  assert.match(cli.stdout, /declared {3}23 addition group\(s\)/);
+  assert.match(cli.stdout, /declared {3}30 addition group\(s\)/);
 });
 
 test("the legacy profile is never allowed to grow: a declared path does not soften a recapture", () => {
