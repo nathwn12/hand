@@ -4212,8 +4212,8 @@ const CHROMIUM_EXE_REL: &str = "chrome-win64/chrome.exe";
 /// set and non-blank (must be a file), else the pinned build under the owned
 /// cache root (`GLADIUS_CHROMIUM_CACHE` when set and non-blank, otherwise
 /// `%LOCALAPPDATA%\gladius\chromium\<version>-<zip-sha8>\`). A missing
-/// browser is a CLEAR error naming `scripts/fetch-chromium.ps1`: never a
-/// silent fallback to any ambient, shared, or system browser.
+/// browser is a CLEAR error naming `crates/browser-engine/scripts/fetch-chromium.ps1`:
+/// never a silent fallback to any ambient, shared, or system browser.
 pub(crate) fn find_chromium() -> Result<std::path::PathBuf, String> {
     if let Ok(p) = std::env::var(CHROMIUM_ENV) {
         if !p.trim().is_empty() {
@@ -4223,7 +4223,7 @@ pub(crate) fn find_chromium() -> Result<std::path::PathBuf, String> {
             }
             return Err(format!(
                 "chromium browser not found: GLADIUS_CHROMIUM='{}' is not a file; \
-                 run scripts/fetch-chromium.ps1 to provision the pinned browser",
+                 run crates/browser-engine/scripts/fetch-chromium.ps1 to provision the pinned browser",
                 cand.display()
             ));
         }
@@ -4237,7 +4237,7 @@ pub(crate) fn find_chromium() -> Result<std::path::PathBuf, String> {
             _ => {
                 return Err("chromium browser not found: LOCALAPPDATA is unset and \
                      GLADIUS_CHROMIUM_CACHE is unset; set one of them or run \
-                     scripts/fetch-chromium.ps1 to provision the pinned browser"
+                     crates/browser-engine/scripts/fetch-chromium.ps1 to provision the pinned browser"
                     .to_string());
             }
         },
@@ -4250,7 +4250,7 @@ pub(crate) fn find_chromium() -> Result<std::path::PathBuf, String> {
     }
     Err(format!(
         "chromium browser not found: expected {} (pinned \
-         {PINNED_CHROMIUM_VERSION}); run scripts/fetch-chromium.ps1 to provision \
+         {PINNED_CHROMIUM_VERSION}); run crates/browser-engine/scripts/fetch-chromium.ps1 to provision \
          the pinned browser",
         cand.display()
     ))
