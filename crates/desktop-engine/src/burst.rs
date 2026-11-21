@@ -2681,7 +2681,9 @@ pub fn do_burst(args: &DoArgs) -> String {
         let typ = typ_v.as_str().unwrap_or("\u{0}");
         let has_element =
             matches!(ad.get("element"), Some(v) if py_truthy(v) && !py_str(v).trim().is_empty());
-        if typ == "set_value" || (typ == "type" && has_element) {
+        if !crate::gate::uia_text_permitted(private_desktop)
+            && (typ == "set_value" || (typ == "type" && has_element))
+        {
             let sel = ad.get("element").map(py_str).unwrap_or_default();
             let e = crate::gate::uia_text_unavailable(sel.trim());
             let mut m = base_entry(i, &typ_v, false, elapsed_ms(&t0));
@@ -3322,7 +3324,7 @@ pub fn do_burst(args: &DoArgs) -> String {
                 return Ok(Some(d));
             }
             if typ == "type" && has_element {
-                {
+                if !crate::gate::uia_text_permitted(private_desktop) {
                     let sel = ad.get("element").map(py_str).unwrap_or_default();
                     let e = crate::gate::uia_text_unavailable(sel.trim());
                     let mut dd = base_entry(i, &typ_v, false, elapsed_ms(&t0));
@@ -3392,7 +3394,7 @@ pub fn do_burst(args: &DoArgs) -> String {
                         ad,
                         &entry,
                         &py_str(ad.get("element").unwrap_or(&Value::Null)),
-                        true,
+                        !crate::gate::uia_text_permitted(private_desktop),
                     ) {
                         d.insert("ok".to_string(), Value::from(false));
                         d.insert("code".to_string(), Value::from(se.code));
@@ -4131,7 +4133,7 @@ pub fn do_burst(args: &DoArgs) -> String {
                 return Ok(Some(d));
             }
             if typ == "set_value" {
-                {
+                if !crate::gate::uia_text_permitted(private_desktop) {
                     let sel = ad.get("element").map(py_str).unwrap_or_default();
                     let e = crate::gate::uia_text_unavailable(sel.trim());
                     let mut dd = base_entry(i, &typ_v, false, elapsed_ms(&t0));
@@ -4245,7 +4247,7 @@ pub fn do_burst(args: &DoArgs) -> String {
                         ad,
                         &entry,
                         &py_str(ad.get("element").unwrap_or(&Value::Null)),
-                        true,
+                        !crate::gate::uia_text_permitted(private_desktop),
                     ) {
                         d.insert("ok".to_string(), Value::from(false));
                         d.insert("code".to_string(), Value::from(se.code));
@@ -4301,6 +4303,7 @@ pub fn do_burst(args: &DoArgs) -> String {
                     let path = entry_str(&entry, "path");
                     let before = action_state(tgt, &path);
                     let (ok_v, via, verr) = crate::uia::uia_set_value(tgt, &path, &text);
+                    d.insert("delivered".to_string(), Value::from("uia"));
                     d.insert(
                         "via".to_string(),
                         Value::from(if via.is_empty() {
@@ -6423,6 +6426,36 @@ mod tests {
         assert_eq!(payload["sendinput_calls"], Value::from(0));
         assert_eq!(payload["events"], Value::from(0));
         println!("UIA_TEXT_POLICY_OK refusals=2 text=\"\"");
+
+        // Scope: `desktop:"hidden"` WITH an explicit ordinary target is
+        // target-wins, not a private desktop. Both verbs stay refused exactly
+        // as on the owner's desktop; the flag buys nothing there either.
+        let scoped = do_burst(&DoArgs {
+            target: Some(serde_json::json!({ "hwnd": hwnd })),
+            desktop: Some("hidden".to_string()),
+            ..DoArgs::new(&actions)
+        });
+        let sp = sc(&scoped);
+        let sr = sp["results"].as_array().expect("results");
+        for (k, r) in sr.iter().enumerate() {
+            assert_eq!(r["ok"], Value::from(false), "scoped action {k}: {r}");
+            assert_eq!(
+                r["code"],
+                Value::from("background_unavailable"),
+                "scoped action {k}: {r}"
+            );
+            assert!(
+                r["error"].as_str().unwrap_or("").contains("auto_id:100"),
+                "scoped action {k} must name the control: {r}"
+            );
+            assert!(r.get("via").is_none(), "no provider path may run: {r}");
+        }
+        assert!(
+            sp.get("hidden_desktop").is_none(),
+            "target-wins must not launch a hidden program: {sp}"
+        );
+        assert_eq!(fx.edit_text(), "", "no provider call may have written");
+        println!("UIA_TEXT_SCOPE_OK owner refusals=2 hidden-with-target refusals=2");
     }
 
     /// SAFETY: `desktop:"hidden"` plus an explicit ordinary target is just

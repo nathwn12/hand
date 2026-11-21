@@ -649,3 +649,88 @@ fn desktop_act_verify_on_a_private_desktop_leaves_the_owner_alone() {
         layout::TYPED_TEXT
     );
 }
+
+/// D4 + D3 LIVE: UIA text entry is legal on the PRIVATE hidden desktop - there
+/// is no owner to steal focus from - and every act reports a readback `effect`.
+/// The owner's desktop keeps the exact refusal (burst.rs unit tests). The
+/// fixture's own journal is the independent oracle that both writes landed.
+#[test]
+fn hidden_desktop_uia_text_entry_reports_verified_effect() {
+    let app = FixtureApp::build();
+    let mut s = Session::spawn();
+    let fg_before = foreground_now();
+    let cursor_before = cursor_now();
+    let journal = app.dir.join("journal-text.txt").to_string_lossy().into_owned();
+
+    let response = s.call(
+        "desktop_do",
+        json!({
+            "desktop": "hidden",
+            "background": app.exe_arg(),
+            "background_args": [journal],
+            "actions": [
+                {"type": "set_value", "element": "auto_id:100", "text": "alpha"},
+                {"type": "type", "element": "auto_id:100", "text": "beta"},
+            ],
+        }),
+    );
+    assert!(
+        !is_error(&response),
+        "UIA text entry on the hidden desktop must be allowed: {}",
+        text_of(&response)
+    );
+    let sc = structured(&response);
+    assert_eq!(
+        sc["sendinput_calls"],
+        Value::from(0),
+        "a hidden-desktop burst never injects: {sc}"
+    );
+    assert_eq!(
+        sc["foregroundUnchanged"],
+        Value::from(true),
+        "the owner's foreground must not move: {sc}"
+    );
+    assert_eq!(
+        sc["cursorUnchanged"],
+        Value::from(true),
+        "the owner's pointer must not move: {sc}"
+    );
+    let results = sc["results"].as_array().expect("results array");
+    assert_eq!(results.len(), 2, "both actions report: {sc}");
+    for (k, r) in results.iter().enumerate() {
+        assert_eq!(r["ok"], Value::from(true), "action {k}: {r}");
+        assert_eq!(r["delivered"], Value::from("uia"), "action {k}: {r}");
+        assert_eq!(
+            r["effect"],
+            Value::from("verified"),
+            "the readable state must have moved to the requested value: action {k}: {r}"
+        );
+    }
+
+    let lines: Vec<String> = std::fs::read_to_string(&app.dir.join("journal-text.txt"))
+        .unwrap_or_default()
+        .lines()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty())
+        .collect();
+    assert!(
+        lines.iter().any(|l| l == "edit=alpha"),
+        "the app's own journal must record the set_value: {lines:?}"
+    );
+    assert!(
+        lines.iter().any(|l| l == "edit=beta"),
+        "the app's own journal must record the type: {lines:?}"
+    );
+
+    let fg_after = foreground_now();
+    if fg_after != fg_before {
+        let ours = pid_of(fg_after).is_some_and(|p| p == std::process::id() || p == s.child.id());
+        assert!(!ours, "hand must not activate itself: {fg_before} -> {fg_after}");
+    }
+    let cursor_after = cursor_now();
+    eprintln!(
+        "HAND_HIDDEN_TEXT_OK effect=verified write1=alpha write2=beta \
+         fg_unchanged={} cursor_unchanged={} sendinput=0 fg={fg_before}->{fg_after} cursor={cursor_before:?}->{cursor_after:?}",
+        sc["foregroundUnchanged"], sc["cursorUnchanged"]
+    );
+}

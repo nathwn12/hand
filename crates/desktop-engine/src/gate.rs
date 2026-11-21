@@ -148,6 +148,16 @@ pub(crate) fn uia_text_unavailable(element: &str) -> GateError {
     }
 }
 
+/// One policy, two scopes: ValuePattern.SetValue may focus its control, so UIA
+/// text entry is refused on the owner's desktop and no flag buys it out. A
+/// private hidden desktop has no owner to steal focus from, so the same policy
+/// permits it there and only there. Because that desktop is created inside the
+/// call, no `elements` snapshot can be taken in advance, so `expect_fp` is not
+/// required there; the owner's desktop keeps its fingerprint discipline.
+pub(crate) fn uia_text_permitted(private_desktop: bool) -> bool {
+    private_desktop
+}
+
 fn target_refusal(verb: &str) -> GateError {
     GateError {
         code: TARGET_REQUIRED,
@@ -294,6 +304,9 @@ impl Gate {
             }
             "type" | "key" | "hotkey" => {
                 if verb == "type" && has_element {
+                    if uia_text_permitted(self.private_desktop) {
+                        return Ok(Delivery::Uia);
+                    }
                     return Err(background_refusal(
                         "type on an element",
                         "UIA ValuePattern.SetValue may focus the control; use the per-action \
@@ -314,6 +327,9 @@ impl Gate {
             "set_value" => {
                 if !self.has_target {
                     return Err(target_refusal(verb));
+                }
+                if uia_text_permitted(self.private_desktop) {
+                    return Ok(Delivery::Uia);
                 }
                 Err(background_refusal(
                     "set_value",
@@ -603,10 +619,24 @@ mod tests {
         let private = g(true, false, false).private_desktop(true);
         assert_eq!(private.decide("type", false, false), Ok(Delivery::Posted));
         assert_eq!(private.decide("key", false, false), Ok(Delivery::Posted));
+        // One policy, two scopes: UIA text entry is UIA on a private desktop,
+        // refused on the owner's desktop whatever the flags say.
+        assert!(!uia_text_permitted(false));
+        assert!(uia_text_permitted(true));
+        assert_eq!(private.decide("type", false, true), Ok(Delivery::Uia));
+        assert_eq!(
+            private.decide("set_value", false, true),
+            Ok(Delivery::Uia)
+        );
         assert_eq!(gate.decide("invoke", false, true), Ok(Delivery::Uia));
         assert_eq!(
             code(gate.decide("set_value", false, true)),
             Some(BACKGROUND_UNAVAILABLE)
+        );
+        assert_eq!(
+            code(g(true, true, true).allow_clipboard(true).decide("set_value", false, true)),
+            Some(BACKGROUND_UNAVAILABLE),
+            "no flag buys UIA text entry on the owner's desktop"
         );
         let e = gate.decide("move", true, false).unwrap_err();
         assert_eq!(e.code, NO_CURSOR_POLICY);
