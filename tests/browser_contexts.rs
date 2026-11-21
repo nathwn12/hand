@@ -849,9 +849,11 @@ fn context_arguments_and_unknown_names_are_typed_refusals() {
 }
 
 /// Measured teardown semantics: disposing a context closes its pages WITHOUT
-/// running `beforeunload`, `pagehide` or `unload`, while `close` (a plain
-/// closeTarget) does run them. The second half is the control that proves the
-/// fixture's sink actually observes handler traffic.
+/// running `beforeunload` or `unload`; `close` (a plain closeTarget) does run
+/// teardown handlers. Chrome 158 full Chrome additionally fires `pagehide` on
+/// dispose (headless-shell 155 fired none), so `pagehide` is allowed here - it
+/// is a browser platform behaviour, not an engine action. The orderly `close`
+/// half is the control that proves the fixture's sink observes handler traffic.
 #[test]
 fn destroy_skips_page_teardown_handlers_while_close_runs_them() {
     let _serial = serial();
@@ -898,10 +900,12 @@ fn destroy_skips_page_teardown_handlers_while_close_runs_them() {
         assert_eq!(sc(&destroyed)["gone"].as_bool(), Some(true));
         tokio::time::sleep(Duration::from_millis(700)).await;
         let seen = fixture.seen();
+        // Chrome 158 emits `pagehide` on dispose; it cannot be suppressed from
+        // CDP. The guarantee that matters - no handler that can block navigation
+        // (`beforeunload`) or persist work (`unload`) - still holds.
         assert!(
-            seen.is_empty(),
-            "disposeBrowserContext runs no beforeunload/pagehide/unload on the pages it closes; \
-             observed {seen:?}"
+            !seen.iter().any(|s| s == "beforeunload" || s == "unload"),
+            "disposeBrowserContext must run no beforeunload/unload; observed {seen:?}"
         );
 
         let orderly = rig
@@ -1022,13 +1026,17 @@ fn legacy_realm_routing_refuses_a_context_page() {
             Some("sealed"),
             "targets list says which context owns it: {marked}"
         );
+        // Chrome 158 full Chrome runs component-extension service workers in
+        // every browser context, so they are legitimately marked with the
+        // context name too. Only pages decide the default-context legacy shape.
         for row in rows
             .iter()
             .filter(|r| r["targetId"].as_str() != Some(target.as_str()))
+            .filter(|r| r["type"].as_str() == Some("page"))
         {
             assert!(
                 row.get("context").is_none(),
-                "default-context targets keep the legacy shape: {row}"
+                "default-context pages keep the legacy shape: {row}"
             );
         }
 
@@ -2427,13 +2435,19 @@ fn a_same_document_navigation_keeps_the_title_and_a_real_one_replaces_it() {
                 })
                 .cloned()
                 .expect("the self-navigating page is tracked");
-            if page["url"].as_str().is_some_and(|u| u.ends_with("/b"))
-                && page["title"].as_str() == Some("Titled B")
-            {
+            if page["url"].as_str().is_some_and(|u| u.ends_with("/b")) {
                 assert_eq!(
                     page["source"].as_str(),
                     Some("targetInfo"),
                     "a new document is relabelled from target info: {shown}"
+                );
+                // Chrome 158 can leave the target-info title as the URL for a
+                // new document before the real <title> propagates. Either value
+                // proves the stale "Auto A" was replaced; "Auto A" does not.
+                let title = page["title"].as_str().unwrap_or("");
+                assert!(
+                    title == "Titled B" || title.ends_with("/b"),
+                    "the stale title must be replaced: {shown}"
                 );
                 break;
             }
