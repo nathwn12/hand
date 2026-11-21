@@ -17,6 +17,11 @@ extern "system" {
     fn GetCursorPos(pt: *mut CursorPoint) -> i32;
     fn GetWindowThreadProcessId(hwnd: *mut core::ffi::c_void, pid: *mut u32) -> u32;
     fn IsChild(parent: *mut core::ffi::c_void, child: *mut core::ffi::c_void) -> i32;
+    fn EnumWindows(
+        cb: Option<unsafe extern "system" fn(*mut core::ffi::c_void, isize) -> i32>,
+        l: isize,
+    ) -> i32;
+    fn GetClassNameW(hwnd: *mut core::ffi::c_void, buf: *mut u16, max: i32) -> i32;
 }
 
 #[repr(C)]
@@ -49,6 +54,46 @@ fn pid_of(hwnd: i64) -> Option<u32> {
 
 fn is_child(parent: i64, child: i64) -> bool {
     parent != 0 && child != 0 && unsafe { IsChild(parent as _, child as _) } != 0
+}
+
+struct ClassPidScan {
+    class: String,
+    pid: u32,
+    hits: Vec<i64>,
+}
+
+unsafe extern "system" fn class_pid_cb(hwnd: *mut core::ffi::c_void, l: isize) -> i32 {
+    let scan = &mut *(l as *mut ClassPidScan);
+    let mut buf = [0u16; 256];
+    let n = unsafe { GetClassNameW(hwnd, buf.as_mut_ptr(), buf.len() as i32) };
+    if n > 0 && String::from_utf16_lossy(&buf[..n as usize]) == scan.class {
+        let mut pid = 0u32;
+        unsafe { GetWindowThreadProcessId(hwnd, &mut pid) };
+        if pid == scan.pid {
+            scan.hits.push(hwnd as i64);
+        }
+    }
+    1
+}
+
+/// Resolve the fixture by IDENTITY: its window class plus the pid we launched.
+/// `FindWindowW` answered with the FIRST class match in Z-order, which under
+/// parallel runs is another test's fixture. That handle dies when the other
+/// test tears down, and the cached hwnd then answers `target_gone`. Identity
+/// is the same answer the product's target lock uses; this is not a retry.
+fn hwnd_of_class_and_pid(class: &str, pid: u32) -> Option<i64> {
+    let mut scan = ClassPidScan {
+        class: class.to_string(),
+        pid,
+        hits: Vec::new(),
+    };
+    unsafe {
+        EnumWindows(
+            Some(class_pid_cb),
+            &mut scan as *mut ClassPidScan as isize,
+        );
+    }
+    scan.hits.first().copied()
 }
 
 #[test]
@@ -256,7 +301,6 @@ unsafe extern "system" fn cover_proc(
 
 #[link(name = "user32")]
 extern "system" {
-    fn FindWindowW(class: *const u16, title: *const u16) -> *mut core::ffi::c_void;
     fn RegisterClassW(class: *const CoverClass) -> u16;
     fn CreateWindowExW(
         ex: u32,
@@ -343,16 +387,15 @@ impl LiveFixture {
             .arg(&journal)
             .spawn()
             .expect("fixture app launches on the owner desktop");
-        let class = "HandDesktopFixture\0".encode_utf16().collect::<Vec<_>>();
         let mut found = std::ptr::null_mut();
         for _ in 0..100 {
-            found = unsafe { FindWindowW(class.as_ptr(), std::ptr::null()) };
-            if !found.is_null() {
+            if let Some(h) = hwnd_of_class_and_pid("HandDesktopFixture", child.id()) {
+                found = h as *mut core::ffi::c_void;
                 break;
             }
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
-        assert!(!found.is_null(), "fixture app window appeared");
+        assert!(!found.is_null(), "fixture app window appeared for pid {}", child.id());
         Self {
             child,
             dir,
