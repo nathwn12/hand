@@ -3618,10 +3618,10 @@ pub fn do_burst(args: &DoArgs) -> String {
                                 }
                             }
                             None => {
+                                // The budget-stop entry does not carry `posted`;
+                                // the release posts still fire.
                                 for (msg, w, l) in &ups {
-                                    if bg_post(tgt, *msg, *w, *l) {
-                                        posted += 1;
-                                    }
+                                    bg_post(tgt, *msg, *w, *l);
                                 }
                                 return Ok(Some(budget_stop(i, &typ_v, &t0, budget, "a held key")));
                             }
@@ -3817,10 +3817,10 @@ pub fn do_burst(args: &DoArgs) -> String {
                             }
                         }
                         None => {
+                            // The budget-stop entry does not carry `posted`;
+                            // the release posts still fire.
                             for (msg, w, l) in &ups {
-                                if bg_post(tgt, *msg, *w, *l) {
-                                    posted += 1;
-                                }
+                                bg_post(tgt, *msg, *w, *l);
                             }
                             return Ok(Some(budget_stop(i, &typ_v, &t0, budget, "a held hotkey")));
                         }

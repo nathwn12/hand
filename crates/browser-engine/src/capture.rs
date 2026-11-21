@@ -532,7 +532,7 @@ fn take_dropped_clear() -> bool {
         REMAINING.store(want, Ordering::SeqCst);
     }
     REMAINING
-        .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))
+        .try_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))
         .is_ok()
 }
 
