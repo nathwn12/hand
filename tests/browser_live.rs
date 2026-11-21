@@ -412,6 +412,58 @@ fn browser_inspect_act_verify_and_stale_ref_refusal() {
     assert_eq!(continued_sc["steps"][1]["status"], json!("ok"), "{continued_sc}");
 }
 
+/// A freeze applied before element resolution must be undone on the error
+/// path. A missing target returns typed before capture; the page must be left
+/// with no freeze style, no restore registry and a running animation.
+#[test]
+fn freeze_with_missing_element_restores_motion() {
+    let mut s = Session::spawn();
+    let fixture = Fixture::start();
+    let moved = navigate_with_retry(&mut s, &format!("{}/motion", fixture.base));
+    assert!(!is_error(&moved), "motion fixture failed: {}", text_of(&moved));
+
+    let bad = s.call(
+        "browser_screenshot",
+        json!({"freeze": true, "element": "#does-not-exist"}),
+    );
+    assert!(is_error(&bad), "missing element must be a typed error: {}", text_of(&bad));
+    let sc = structured(&bad);
+    assert_eq!(sc["code"], json!("invalid_target"), "{sc}");
+    assert_eq!(sc["reason"], json!("not_found"), "{sc}");
+
+    let probe = s.call(
+        "browser_evaluate",
+        json!({"expression": r#"({
+          style: !!document.getElementById('__hand_shot_freeze'),
+          registry: (window.__handShotFreeze === null || window.__handShotFreeze === undefined),
+          running: (document.getAnimations ? document.getAnimations() : []).filter(a => a.playState === 'running').length
+        })"#}),
+    );
+    assert!(!is_error(&probe), "state probe failed: {}", text_of(&probe));
+    let v = structured(&probe)["value"].clone();
+    assert_eq!(v["style"], json!(false), "freeze style must be gone: {v}");
+    assert_eq!(v["registry"], json!(true), "freeze registry must be cleared: {v}");
+    assert!(
+        v["running"].as_u64().unwrap_or(0) >= 1,
+        "the animation must still be running: {v}"
+    );
+}
+
+/// A per-step timeout drops the future mid-freeze, so a batch cannot restore.
+/// Refuse the combination with a typed error instead of leaking a frozen page.
+#[test]
+fn run_refuses_a_freezing_screenshot_step() {
+    let mut s = Session::spawn();
+    let out = s.call(
+        "browser_run",
+        json!({"steps": [{"tool": "screenshot", "args": {"freeze": true}}]}),
+    );
+    assert!(is_error(&out), "freeze in run must be refused: {}", text_of(&out));
+    let sc = structured(&out);
+    assert_eq!(sc["code"], json!("invalid_args"), "{sc}");
+    assert_eq!(sc["arg"], json!("freeze"), "{sc}");
+}
+
 /// `selector` is a published alias: a client that prunes undeclared keys must
 /// see it in the schema. `element` stays canonical and both are named in anyOf.
 #[test]

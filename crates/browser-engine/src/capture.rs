@@ -252,13 +252,26 @@ const SHOT_FREEZE_JS: &str = r#"(() => {
   style.textContent = '*,*::before,*::after{animation-play-state:paused!important;transition:none!important;transition-duration:0s!important;caret-color:transparent!important;scroll-behavior:auto!important;}';
   try { (document.head || document.documentElement).appendChild(style); } catch (e) {}
   restore.push(() => { try { style.remove(); } catch (e) {} });
-  window.__handShotFreeze = {restore: restore};
+  // Bounded page-side self-restore. If the Rust future is dropped by a cancel
+  // (no normal-path restore can run), the timer restores this freeze anyway.
+  // The closure captures `restore` by value so a later freeze overwriting the
+  // registry cannot make this timer undo the wrong set of closures.
+  const timer = setTimeout(() => {
+    for (let i = restore.length - 1; i >= 0; i--) {
+      try { restore[i](); } catch (e) {}
+    }
+    if (window.__handShotFreeze && window.__handShotFreeze.restore === restore) {
+      window.__handShotFreeze = null;
+    }
+  }, 60000);
+  window.__handShotFreeze = {restore: restore, timer: timer};
   return paused;
 })()"#;
 
 const SHOT_FREEZE_RESTORE_JS: &str = r#"(() => {
   const st = window.__handShotFreeze;
   let restored = 0;
+  if (st && st.timer) { try { clearTimeout(st.timer); } catch (e) {} }
   if (st && Array.isArray(st.restore)) {
     for (let i = st.restore.length - 1; i >= 0; i--) {
       try { st.restore[i](); restored++; } catch (e) {}

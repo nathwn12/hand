@@ -426,7 +426,7 @@ pub fn list() -> Value {
     listed["tools"].as_array_mut().expect("tools").push(crate::trace::schema());
     listed["tools"].as_array_mut().expect("tools").push(json!({
         "name": "run", "title": "Run",
-        "description": "Ordered browser batch. steps[] runs in order, 1..64 steps of {tool, args?}; tool is one of the browser tools except run and close. continueOnError (default false) stops at the first failing step; true keeps going. timeoutMs (default 30000) bounds each step. Every step reports {index, tool, status, ms, result?|error?} with the step's own structuredContent as evidence; aggregate ok, steps, failed and ms. No desktop tool is accepted.",
+        "description": "Ordered browser batch. steps[] runs in order, 1..64 steps of {tool, args?}; tool is one of the browser tools except run and close. continueOnError (default false) stops at the first failing step; true keeps going. timeoutMs (default 30000) bounds each step. A screenshot step with freeze:true is refused with typed invalid_args (a timeout would drop the future and leave the page frozen); call browser_screenshot directly to freeze. Every step reports {index, tool, status, ms, result?|error?} with the step's own structuredContent as evidence; aggregate ok, steps, failed and ms. No desktop tool is accepted.",
         "inputSchema": {"type": "object", "properties": {
             "steps": {"type": "array", "minItems": 1, "maxItems": 64, "items": {"type": "object",
                 "properties": {"tool": {"type": "string", "enum": json!(RUN_TOOLS)},
@@ -4126,6 +4126,13 @@ pub(crate) async fn tool_screenshot(
         Ok(crate::browser::BackendCaps::Render) => {}
         Err(e) => return Err(ToolErr::fallback(format!("screenshot: {e}"))),
     }
+    // Resolve the target BEFORE freezing. Element resolution returns typed
+    // errors (unknown ref, not found, hidden); applying freeze first left the
+    // injected style and paused media behind on every one of those exits.
+    let clip = match element {
+        Some(el) => Some(screenshot_element_box(browser, el).await?),
+        None => clip,
+    };
     // `freeze` pauses the page's own motion sources before any framing work;
     // `motion` is the residual after freezing ([] when the pause took effect).
     // A deterministic capture already pins its own freeze and reports no new
@@ -4143,10 +4150,6 @@ pub(crate) async fn tool_screenshot(
         None
     } else {
         Some(browser.active_target_id().await)
-    };
-    let clip = match element {
-        Some(el) => Some(screenshot_element_box(browser, el).await?),
-        None => clip,
     };
     let opts = crate::capture::Options {
         full_page,
@@ -5592,6 +5595,17 @@ async fn tool_run(browser: &Browser, args: &Value) -> Result<Value, ToolErr> {
                 ))
             }
         };
+        // A per-step timeout drops the future, so a freeze applied inside a
+        // batch could never be restored; refuse it before the step starts.
+        if tool == "screenshot"
+            && step_args.get("freeze").and_then(|v| v.as_bool()).unwrap_or(false)
+        {
+            return Err(ToolErr::typed(
+                "run: 'freeze' is refused in a screenshot step (a timeout would leave the page frozen); call browser_screenshot directly"
+                    .to_string(),
+                json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "run", "step": i + 1, "arg": "freeze"}),
+            ));
+        }
         let begun = std::time::Instant::now();
         let reply = tokio::time::timeout(
             std::time::Duration::from_millis(timeout_ms),
