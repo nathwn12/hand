@@ -112,12 +112,12 @@ node baseline/scripts/build-hand-catalog.mjs --serve Q:\path\to\hand.exe
 node baseline/scripts/compare-catalog.mjs --serve Q:\path\to\hand.exe
 
 # re-capture check: the pinned binary must still emit the committed catalogue
-node baseline/scripts/compare-catalog.mjs --baseline gladius --pin 59c6d77 --serve Q:\PROJECTS\PERSONAL\gladius\target\release\gladius.exe
-node baseline/scripts/compare-catalog.mjs --baseline puppet --pin 0f790be --serve Q:\PROJECTS\PERSONAL\puppet\target\release\puppet.exe
+node baseline/scripts/compare-catalog.mjs --baseline gladius --pin 59c6d77 --serve ..\gladius\target\release\gladius.exe
+node baseline/scripts/compare-catalog.mjs --baseline puppet --pin 0f790be --serve ..\puppet\target\release\puppet.exe
 
 # re-capture the raw catalogues (rewrites catalog/)
-node baseline/scripts/capture-mcp-catalog.mjs --cmd Q:\PROJECTS\PERSONAL\gladius\target\release\gladius.exe --out baseline/catalog/gladius-59c6d77
-node baseline/scripts/capture-mcp-catalog.mjs --cmd Q:\PROJECTS\PERSONAL\puppet\target\release\puppet.exe --out baseline/catalog/puppet-0f790be
+node baseline/scripts/capture-mcp-catalog.mjs --cmd ..\gladius\target\release\gladius.exe --out baseline/catalog/gladius-59c6d77
+node baseline/scripts/capture-mcp-catalog.mjs --cmd ..\puppet\target\release\puppet.exe --out baseline/catalog/puppet-0f790be
 ```
 
 Exit codes: `compare-catalog.mjs` returns 0 pass, 1 mismatch, 2 usage or

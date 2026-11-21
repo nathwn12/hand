@@ -7,7 +7,7 @@
 //! Both sides must land on the SAME pixel dimensions: a mismatch is a
 //! typed `size_mismatch` naming both sizes, never a silent scale. The
 //! per-pixel rule is the port of
-//! `Q:\PROJECTS\PERSONAL\gladius\src\visual.rs` (`png_diff`/`DiffOpts`)
+//! the pinned gladius source at `src/visual.rs` (`png_diff`/`DiffOpts`)
 //! in `crate::cap` (per-channel delta above `threshold` counts, union
 //! bbox, ratio); the returned image marks changed pixels solid red over a
 //! dimmed greyscale copy of `base`. Read-only: no activation, no input.

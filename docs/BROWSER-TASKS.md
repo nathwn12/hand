@@ -4,7 +4,7 @@ Row B13 of the 0.2.0 bar. One command drives the whole loopback fixture
 sequence through hand's public MCP-over-stdio endpoint.
 
 ```powershell
-cd Q:\PROJECTS\PERSONAL\hand
+cd <hand-repo>
 node fixtures/run-tasks.mjs
 ```
 
