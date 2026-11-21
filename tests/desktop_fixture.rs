@@ -46,6 +46,16 @@ use std::time::Duration;
 use common::{is_error, structured, text_of, Session};
 use serde_json::{json, Value};
 
+/// One live desktop at a time inside this binary. The engine never steals the
+/// owner's foreground or cursor, but another test in this binary can create or
+/// destroy windows and move the pointer while a no-steal assertion is sampling
+/// before/after state. Serialising keeps those assertions about the engine.
+static ONE_DESKTOP: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn serial() -> std::sync::MutexGuard<'static, ()> {
+    ONE_DESKTOP.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 
 #[link(name = "user32")]
 extern "system" {
@@ -395,6 +405,7 @@ fn the_fixture_app_holds_no_pointer_foreground_or_activation_api() {
 
 #[test]
 fn desktop_act_verify_on_a_private_desktop_leaves_the_owner_alone() {
+    let _serial = serial();
     let app = FixtureApp::build();
     let mut s = Session::spawn();
     let own_pid = std::process::id();
@@ -673,6 +684,7 @@ fn desktop_act_verify_on_a_private_desktop_leaves_the_owner_alone() {
 /// fixture's own journal is the independent oracle that both writes landed.
 #[test]
 fn hidden_desktop_uia_text_entry_reports_verified_effect() {
+    let _serial = serial();
     let app = FixtureApp::build();
     let mut s = Session::spawn();
     let fg_before = foreground_now();
@@ -812,19 +824,34 @@ fn d8_call(name: &str, args: Value) -> Value {
 /// the frame; identity revalidation covers both.
 #[test]
 fn uwp_target_lock_reports_appid_provenance() {
+    let _serial = serial();
     let listed = d8_call("list_windows", json!({"include_app_ids": true}));
     let windows = listed["result"]["structuredContent"]["windows"]
         .as_array()
         .expect("windows array")
         .clone();
-    let sample = windows
-        .iter()
-        .find(|w| w["appId"].as_str().is_some_and(|s| !s.is_empty()));
-    let Some(app) = sample else {
-        eprintln!("UWP_LIVE_UNVERIFIED: no window exposes an AppUserModelID on this desktop");
+    // A live sample must be unambiguous: count each appId across the visible
+    // top-level windows and use one that names exactly one of them. A shared
+    // appId on two windows would make the lock ambiguous and prove nothing.
+    let top = windows.iter().filter(|w| {
+        w.get("hostHwnd").is_none() && (w.get("visible").is_none() || w["visible"] == json!(true))
+    });
+    let mut counts: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    for w in top.clone() {
+        if let Some(id) = w["appId"].as_str().filter(|s| !s.is_empty()) {
+            *counts.entry(id).or_insert(0) += 1;
+        }
+    }
+    let app_id = top.clone().find_map(|w| {
+        let id = w["appId"].as_str()?;
+        (!id.is_empty() && counts.get(id) == Some(&1)).then(|| id.to_string())
+    });
+    let Some(app_id) = app_id else {
+        eprintln!(
+            "UWP_LIVE_UNVERIFIED: no appId names exactly one visible top-level window on this desktop"
+        );
         return;
     };
-    let app_id = app["appId"].as_str().unwrap().to_string();
     let out = d8_call("elements", json!({"target": {"appId": app_id.clone()}}));
     assert_eq!(
         out["result"]["isError"], json!(false),
@@ -884,9 +911,12 @@ fn uwp_target_lock_reports_appid_provenance() {
         );
         assert!(!child.is_null(), "hosted app child fixture created");
         ShowWindow(host, 4); // SW_SHOWNOACTIVATE
+        // pid narrows this to the fixture's own frame: the live Settings app
+        // also exposes an ApplicationFrameWindow and made the selector
+        // ambiguous on this host.
         let bound = d8_call(
             "elements",
-            json!({"target": {"className": "ApplicationFrameWindow"}}),
+            json!({"target": {"className": "ApplicationFrameWindow", "pid": std::process::id()}}),
         );
         let bsc = &bound["result"]["structuredContent"];
         assert_eq!(
@@ -902,32 +932,24 @@ fn uwp_target_lock_reports_appid_provenance() {
         DestroyWindow(host);
     }
 
-    let uwp = windows.iter().find(|w| {
-        w["class"].as_str() == Some("ApplicationFrameWindow")
-            && w["appId"].as_str().is_some_and(|s| !s.is_empty())
-    });
-    match uwp {
-        Some(w) => {
-            let id = w["appId"].as_str().unwrap();
-            let bound = d8_call("elements", json!({"target": {"appId": id}}));
-            assert_eq!(bound["result"]["isError"], json!(false), "{}", text_of(&bound));
-            assert_eq!(
-                bound["result"]["structuredContent"]["appId"].as_str(),
-                Some(id),
-                "live UWP lock must name its appId"
-            );
-            eprintln!("UWP_LIVE_OK appId={id} hwnd={}", w["hwnd"]);
-        }
-        None => eprintln!(
-            "UWP_LIVE_UNVERIFIED: no visible ApplicationFrameWindow with an AppUserModelID on this desktop; hosted resolution proved with the built host/child pair"
-        ),
-    }
+    // Second live lock on the same unambiguous id. The hosted pair above
+    // already proved frame -> child resolution on this host; the early return
+    // means there is no live id to test when none is unique.
+    let bound = d8_call("elements", json!({"target": {"appId": app_id}}));
+    assert_eq!(bound["result"]["isError"], json!(false), "{}", text_of(&bound));
+    assert_eq!(
+        bound["result"]["structuredContent"]["appId"].as_str(),
+        Some(app_id.as_str()),
+        "live UWP lock must name its appId"
+    );
+    eprintln!("UWP_LIVE_OK appId={app_id}");
 }
 
 /// The listing carries the extra per-window fields where the OS supplies
 /// them. Absent fields are omitted, never guessed.
 #[test]
 fn desktop_list_windows_reports_monitor_scale_and_visibility() {
+    let _serial = serial();
     let listed = d8_call("list_windows", json!({}));
     let windows = listed["result"]["structuredContent"]["windows"]
         .as_array()
