@@ -9,6 +9,8 @@
 
 mod common;
 
+use std::collections::HashMap;
+
 use common::{text_of, tool, Session};
 use serde_json::{json, Value};
 
@@ -113,6 +115,40 @@ fn initialize_identifies_version_platform_and_both_engines() {
             instructions.contains(needle),
             "instructions must name {needle:?}: {instructions}"
         );
+    }
+}
+
+/// `initialize.instructions` is a runtime parameter index, not a stale copy of
+/// the tool names: every published tool gets one compact line and every
+/// required key is named on that line.
+#[test]
+fn instructions_index_every_catalog_tool_and_its_required_keys() {
+    let mut s = Session::spawn();
+    let tools = s.list_tools();
+    let resp = s.request(
+        "initialize",
+        json!({"protocolVersion": "2025-11-25", "capabilities": {},
+               "clientInfo": {"name": "probe", "version": "0"}}),
+    );
+    let text = resp["result"]["instructions"]
+        .as_str()
+        .expect("instructions");
+    let lines: HashMap<&str, &str> = text
+        .lines()
+        .filter_map(|line| line.split_once(':').map(|(name, _)| (name, line)))
+        .collect();
+    for t in &tools {
+        let name = t["name"].as_str().expect("tool name");
+        let line = lines
+            .get(name)
+            .unwrap_or_else(|| panic!("instructions omit a line for {name}: {text}"));
+        let required = t["inputSchema"]["required"].as_array();
+        for key in required.into_iter().flatten().filter_map(|v| v.as_str()) {
+            assert!(
+                line.contains(key),
+                "{name}: required key {key} is not on its parameter line: {line}"
+            );
+        }
     }
 }
 

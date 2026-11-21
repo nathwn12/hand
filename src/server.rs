@@ -118,8 +118,47 @@ fn server_info() -> Value {
     })
 }
 
-fn instructions() -> &'static str {
-    "hand is a standalone MCP server. browser_*: navigate, snapshot, screenshot, click, type, evaluate, wait_for, targets, dialog, history, network, console, storage, tabs, viewport, select, hover, key, upload, layout, assert_layout, visual, cdp, close, fetch_text, context, wheel, drag, form, download, assert, audit, trace. desktop_*: screenshot, diff, list_windows, window, do, cursor, elements. Browser: start with browser_snapshot for @eN refs; refs die on navigation and stale refs fail typed. Desktop: select one named window; never the foreground window, activation, pointer or clipboard. Errors are typed tool results, not protocol errors. Cancel or budget expiry: outcome:unknown, retry:unsafe. Verification is separate from delivery. No telemetry or upload."
+/// One compact parameter line per published tool, built from the same prefixed
+/// catalog `tools/list` serves. A new tool or a changed key appears here without
+/// a second hand-maintained list going stale.
+fn instructions() -> String {
+    let mut text = String::from(
+        "hand is a standalone MCP server. Browser: start with browser_snapshot for @eN refs; refs die on navigation and stale refs fail typed. Desktop: select one named window; never the foreground window, activation, pointer or clipboard. Errors are typed tool results, not protocol errors. Cancel or budget expiry: outcome:unknown, retry:unsafe. Verification is separate from delivery. No telemetry or upload.\nParameters (required | [optional]):\n",
+    );
+    let catalog = catalog::combined_list();
+    let Some(tools) = catalog["tools"].as_array() else {
+        return text;
+    };
+    for tool in tools {
+        let Some(name) = tool["name"].as_str() else {
+            continue;
+        };
+        let schema = &tool["inputSchema"];
+        let required: Vec<&str> = schema["required"]
+            .as_array()
+            .map(|keys| keys.iter().filter_map(|k| k.as_str()).collect())
+            .unwrap_or_default();
+        let optional: Vec<&str> = schema["properties"]
+            .as_object()
+            .map(|props| {
+                props
+                    .keys()
+                    .map(String::as_str)
+                    .filter(|key| !required.contains(key))
+                    .collect()
+            })
+            .unwrap_or_default();
+        text.push_str(name);
+        text.push(':');
+        text.push_str(&required.join(","));
+        if !optional.is_empty() {
+            text.push('[');
+            text.push_str(&optional.join(","));
+            text.push(']');
+        }
+        text.push('\n');
+    }
+    text
 }
 
 /// One `initialize`/`server/discover` result.
@@ -1120,7 +1159,10 @@ mod tests {
             text.starts_with("hand is a standalone MCP server"),
             "instructions must open with hand's identity: {text}"
         );
-        assert!(text.len() <= 1200, "instructions grew to {} bytes", text.len());
+        // The index is now generated: one line per published tool with its
+        // required and optional keys. 2691 bytes at 40 tools; 4096 leaves room
+        // for the next tools without letting the index become an essay.
+        assert!(text.len() <= 4096, "instructions grew to {} bytes", text.len());
         for name in catalog::BROWSER_TOOLS.iter().chain(catalog::DESKTOP_TOOLS.iter()) {
             assert!(text.contains(*name), "instructions omit {name:?}: {text}");
         }
