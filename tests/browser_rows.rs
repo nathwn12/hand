@@ -458,8 +458,33 @@ fn b2_assert_reports_expected_observed_verdict_for_dom_text_url() {
     assert!(f["observed"]["text"].as_str().unwrap_or("").contains("next"),
             "last observed text: {f:?}");
 
-    // ax and network stay honestly unimplemented rather than faked.
-    let ax = s.call("browser_assert", json!({"kind": "ax", "expected": {}}));
-    assert!(is_error(&ax), "ax must be a typed not_implemented");
-    assert_eq!(structured(&ax)["code"].as_str().unwrap_or(""), "not_implemented");
+    // ax reads the same Accessibility tree the snapshot renders: the h1 on
+    // this page is a heading named "next" (the page title is "Next Page").
+    // The verdict is the string the frozen ax fixture expects, and every
+    // check carries its measurement.
+    let ax = s.call("browser_assert", json!({
+        "kind": "ax", "target": "role=heading[name=\"next\"]",
+        "expected": {"role": "heading", "name": "next"}
+    }));
+    assert!(!is_error(&ax), "ax assert failed: {}", text_of(&ax));
+    let a = structured(&ax);
+    assert_eq!(a["verdict"].as_str().unwrap_or(""), "pass", "ax verdict: {a:?}");
+    assert!(a["observed"]["source"].as_str().unwrap_or("").contains("Accessibility.getFullAXTree"),
+            "ax must read the snapshot's AX tree: {a:?}");
+    let ax_checks = a["evidence"]["checks"].as_array().expect("checks");
+    assert_eq!(ax_checks.len(), 3, "exists + role + name: {a:?}");
+    assert!(ax_checks.iter().all(|c| c["pass"] == true), "checks: {ax_checks:?}");
+
+    // A false ax check is a normal verdict, not a typed error.
+    let ax_miss = s.call("browser_assert", json!({
+        "kind": "ax", "target": "role=heading[name=\"Not On This Page\"]",
+        "expected": {"role": "heading", "name": "Not On This Page"}, "timeoutMs": 200
+    }));
+    assert!(!is_error(&ax_miss), "a false ax verdict must not be an error: {}", text_of(&ax_miss));
+    assert_eq!(structured(&ax_miss)["verdict"].as_str().unwrap_or(""), "fail");
+
+    // network stays honestly unimplemented rather than faked.
+    let network = s.call("browser_assert", json!({"kind": "network", "expected": {}}));
+    assert!(is_error(&network), "network must be a typed not_implemented");
+    assert_eq!(structured(&network)["code"].as_str().unwrap_or(""), "not_implemented");
 }

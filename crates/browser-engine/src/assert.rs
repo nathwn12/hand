@@ -1,9 +1,11 @@
 //! Assertion contract for row B2.
 //!
-//! Private home for the `browser_assert` tool: DOM, text and URL assertions
+//! Private home for the `browser_assert` tool: DOM, AX, text and URL assertions
 //! with bounded polling, returning expected, observed, verdict, evidence and
-//! elapsed time. `ax` and `network` kinds stay typed `not_implemented`: no
-//! verdict is faked for a check this row cannot actually perform.
+//! elapsed time. The AX kind reads the same `Accessibility.getFullAXTree`
+//! tree `browser_snapshot` renders; only `network` stays typed
+//! `not_implemented`, so no verdict is faked for a check this row cannot
+//! actually perform.
 
 use std::time::{Duration, Instant};
 
@@ -21,7 +23,7 @@ pub fn schema() -> Value {
     json!({
         "name": "assert",
         "title": "Browser assert",
-        "description": "Assert against the live page with bounded polling. kind dom checks a CSS selector or @eN ref for existence, text and attributes; kind text checks visible text with contains/equals; kind url checks the current location with equals/contains or a small bounded wildcard pattern (^, $, .*). Every reply carries expected, observed, verdict, evidence and elapsedMs. A check still false at the poll budget returns verdict false with the last observed value, not a timeout. ax and network kinds are typed not_implemented.",
+        "description": "Assert against the live page with bounded polling. kind dom checks a CSS selector or @eN ref for existence, text and attributes; kind ax matches a role and accessible name on the same Accessibility tree browser_snapshot reads (target forms: role=<role>, role=<role>[name=\\\"<name>\\\"], name=\\\"<name>\\\"; expected {role, name}); kind text checks visible text with contains/equals; kind url checks the current location with equals/contains or a small bounded wildcard pattern (^, $, .*). Every reply carries expected, observed, verdict, evidence and elapsedMs. dom/text/url return a boolean verdict; ax returns the string pass or fail. A check still false at the poll budget returns that verdict with the last observed value, not a timeout. network is typed not_implemented.",
         "inputSchema": {"type": "object", "properties": {
             "kind": {"type": "string", "enum": ["dom", "ax", "text", "url", "network"]},
             "target": {},
@@ -32,7 +34,7 @@ pub fn schema() -> Value {
         "outputSchema": {"type": "object", "properties": {
             "expected": {},
             "observed": {},
-            "verdict": {"type": "boolean"},
+            "verdict": {"type": ["boolean", "string"]},
             "evidence": {"type": "object"},
             "elapsedMs": {"type": "integer", "minimum": 0}
         }, "required": ["expected", "observed", "verdict", "evidence", "elapsedMs"],
@@ -236,6 +238,157 @@ async fn observe_url(browser: &Browser) -> Result<Value, String> {
     Ok(json!({"url": value.as_str().unwrap_or("")}))
 }
 
+/// Collapse whitespace the way `browser_snapshot` collapses an AX name, so a
+/// name copied from a snapshot is the name an assertion compares against.
+fn ax_norm(s: &str) -> String {
+    s.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// A double-quoted selector value with `\"` and `\\` escapes. The same rule
+/// the action tools use; an unquoted value is rejected rather than guessed.
+fn ax_unquote(s: &str) -> Option<String> {
+    let inner = s.strip_prefix('"')?.strip_suffix('"')?;
+    let mut out = String::with_capacity(inner.len());
+    let mut it = inner.chars();
+    while let Some(c) = it.next() {
+        match c {
+            '"' => return None,
+            '\\' => match it.next()? {
+                '"' => out.push('"'),
+                '\\' => out.push('\\'),
+                other => {
+                    out.push('\\');
+                    out.push(other);
+                }
+            },
+            c => out.push(c),
+        }
+    }
+    Some(out)
+}
+
+/// Only the two AX selector forms an assertion needs: `role=<role>` and
+/// `role=<role>[name="<name>"]`, plus bare `name="<name>"`. Expected fields
+/// widen the filter but never replace it, so the target the caller wrote and
+/// the expectation it states must both hold.
+fn ax_target(target: Option<&str>, expected: &Value) -> (Option<String>, Option<String>) {
+    let mut role = expected.get("role").and_then(|v| v.as_str()).map(str::to_string);
+    let mut name = expected.get("name").and_then(|v| v.as_str()).map(str::to_string);
+    if let Some(raw) = target {
+        let t = raw.trim();
+        if let Some(rest) = t.strip_prefix("role=") {
+            let (r, suffix) = match rest.find('[') {
+                Some(i) => (&rest[..i], Some(&rest[i..])),
+                None => (rest, None),
+            };
+            role = Some(r.trim().to_lowercase());
+            if let Some(inner) = suffix.and_then(|s| s.strip_prefix("[name=")).and_then(|s| s.strip_suffix(']')) {
+                name = ax_unquote(inner);
+            }
+        } else if let Some(rest) = t.strip_prefix("name=") {
+            name = ax_unquote(rest);
+        }
+    }
+    (role, name)
+}
+
+/// Read the same Accessibility tree `browser_snapshot` renders, and apply the
+/// same flattening: ignored nodes and text-only roles are excluded, roles are
+/// lowercased, and names are whitespace-collapsed and capped at 80 characters.
+/// No DOM write, no synthetic AX node, no verdict minted from a tree this read
+/// did not return.
+async fn observe_ax(browser: &Browser, target: Option<&str>, expected: &Value) -> Result<Value, String> {
+    let (want_role, want_name) = ax_target(target, expected);
+    let tree = browser.ax_tree(None).await?;
+    let empty = Vec::new();
+    let nodes = tree.get("nodes").and_then(|v| v.as_array()).unwrap_or(&empty);
+    let mut candidates: Vec<Value> = Vec::new();
+    for n in nodes.iter() {
+        if n.get("ignored").and_then(|v| v.as_bool()) == Some(true) {
+            continue;
+        }
+        let role_raw = n
+            .get("role")
+            .and_then(|r| r.get("value"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        if role_raw.is_empty() {
+            continue;
+        }
+        let role = role_raw.to_lowercase();
+        if role == "statictext" || role == "inlinetextbox" {
+            continue;
+        }
+        // A backend DOM id is what the snapshot needs to mint a ref. An
+        // assertion mints none, so a node without one is still real evidence.
+        let backend = n.get("backendDOMNodeId").and_then(|v| v.as_i64());
+        let raw_name = n
+            .get("name")
+            .and_then(|x| x.get("value"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let name: String = ax_norm(raw_name).chars().take(80).collect();
+        if let Some(w) = &want_role {
+            if role != *w {
+                continue;
+            }
+        }
+        if let Some(w) = &want_name {
+            if ax_norm(&name).to_lowercase() != ax_norm(w).to_lowercase() {
+                continue;
+            }
+        }
+        candidates.push(json!({"role": role, "name": name, "backendNodeId": backend}));
+    }
+    Ok(json!({
+        "source": "Accessibility.getFullAXTree via browser.ax_tree, the read browser_snapshot uses",
+        "treeNodes": nodes.len(),
+        "target": target,
+        "wantRole": want_role,
+        "wantName": want_name,
+        "candidates": candidates
+    }))
+}
+
+/// One check per stated expectation, each carrying the observed value. A
+/// target that matched nothing is an honest `exists:false`, never an error.
+fn compare_ax(expected: &Value, observed: &Value) -> Vec<Value> {
+    let empty = Vec::new();
+    let candidates = observed
+        .get("candidates")
+        .and_then(|v| v.as_array())
+        .unwrap_or(&empty);
+    let mut checks = vec![check(
+        "exists",
+        json!(true),
+        json!(candidates.len()),
+        !candidates.is_empty(),
+    )];
+    if let Some(want) = expected.get("role").and_then(|v| v.as_str()) {
+        let got = candidates
+            .first()
+            .and_then(|c| c.get("role").and_then(|v| v.as_str()))
+            .unwrap_or("");
+        let pass = candidates
+            .iter()
+            .any(|c| c.get("role").and_then(|v| v.as_str()) == Some(want));
+        checks.push(check("role", json!(want), json!(got), pass));
+    }
+    if let Some(want) = expected.get("name").and_then(|v| v.as_str()) {
+        let got = candidates
+            .first()
+            .and_then(|c| c.get("name").and_then(|v| v.as_str()))
+            .unwrap_or("");
+        let pass = candidates.iter().any(|c| {
+            c.get("name")
+                .and_then(|v| v.as_str())
+                .is_some_and(|n| ax_norm(n).to_lowercase() == ax_norm(want).to_lowercase())
+        });
+        checks.push(check("name", json!(want), json!(got), pass));
+    }
+    checks
+}
+
 /// Dispatcher entry point for the B2 fill lane.
 pub async fn handle(browser: &Browser, args: &Value) -> Result<Value, ToolErr> {
     let started = Instant::now();
@@ -261,7 +414,7 @@ pub async fn handle(browser: &Browser, args: &Value) -> Result<Value, ToolErr> {
         .get("expected")
         .cloned()
         .ok_or_else(|| invalid("browser_assert: missing required arg 'expected'".to_string(), ToolReason::MissingArg, "expected"))?;
-    if kind == "ax" || kind == "network" {
+    if kind == "network" {
         return Err(not_implemented_kind(kind));
     }
     if kind == "dom" && !expected.is_object() {
@@ -270,6 +423,13 @@ pub async fn handle(browser: &Browser, args: &Value) -> Result<Value, ToolErr> {
     let target = args.get("target").and_then(|v| v.as_str());
     if kind == "dom" && target.is_none() {
         return Err(invalid("browser_assert: dom needs 'target' (a selector or @eN ref)".to_string(), ToolReason::MissingArg, "target"));
+    }
+    if kind == "ax" && ax_target(target, &expected) == (None, None) {
+        return Err(invalid(
+            "browser_assert: ax needs 'target' (role=<role>[name=\"...\"]) or expected {role, name}".to_string(),
+            ToolReason::MissingArg,
+            "target",
+        ));
     }
     let timeout_ms = match args.get("timeoutMs") {
         None => 5_000u64,
@@ -295,12 +455,14 @@ pub async fn handle(browser: &Browser, args: &Value) -> Result<Value, ToolErr> {
     loop {
         let current = match kind {
             "dom" => observe_dom(browser, target).await,
+            "ax" => observe_ax(browser, target, &expected).await,
             "text" => observe_text(browser, target).await,
             _ => observe_url(browser).await,
         }
         .map_err(ToolErr::fallback)?;
         let this_checks = match kind {
             "dom" => compare_dom(&expected, &current),
+            "ax" => compare_ax(&expected, &current),
             "text" => compare_text(&expected, &current),
             _ => compare_url(&expected, &current),
         };
@@ -320,10 +482,18 @@ pub async fn handle(browser: &Browser, args: &Value) -> Result<Value, ToolErr> {
         tokio::time::sleep(remain.min(poll)).await;
     }
 
+    // The ax kind answers with the verdict string its frozen fixture expects;
+    // dom/text/url keep the boolean verdict their schemas and fixtures expect.
+    // Either way the per-check booleans in evidence carry the same decision.
+    let verdict_value = if kind == "ax" {
+        json!(if verdict { "pass" } else { "fail" })
+    } else {
+        json!(verdict)
+    };
     let body = json!({
         "expected": expected,
         "observed": observed,
-        "verdict": verdict,
+        "verdict": verdict_value,
         "evidence": {"kind": kind, "checks": checks, "polls": polls, "budgetMs": timeout_ms},
         "elapsedMs": started.elapsed().as_millis() as u64
     });
@@ -332,7 +502,7 @@ pub async fn handle(browser: &Browser, args: &Value) -> Result<Value, ToolErr> {
 
 #[cfg(test)]
 mod tests {
-    use super::{not_implemented_kind, wildcard_match, ROW};
+    use super::{ax_target, compare_ax, not_implemented_kind, wildcard_match, ROW};
     use serde_json::json;
 
     #[test]
@@ -346,12 +516,39 @@ mod tests {
 
     #[test]
     fn unimplemented_kinds_are_typed_and_name_the_row_and_kind() {
-        let env = not_implemented_kind("ax").envelope();
+        let env = not_implemented_kind("network").envelope();
         assert_eq!(env["structuredContent"]["code"], "not_implemented");
-        assert_eq!(env["structuredContent"]["kind"], "ax");
+        assert_eq!(env["structuredContent"]["kind"], "network");
         let text = env["content"][0]["text"].as_str().unwrap_or("");
         assert!(text.contains(ROW), "message must name {ROW}: {text}");
-        assert!(text.contains("ax"), "message must name the kind: {text}");
+        assert!(text.contains("network"), "message must name the kind: {text}");
+    }
+
+    #[test]
+    fn ax_target_reads_role_and_name_from_the_selector_and_expected() {
+        let expected = json!({});
+        assert_eq!(
+            ax_target(Some("role=button[name=\"Act\"]"), &expected),
+            (Some("button".to_string()), Some("Act".to_string()))
+        );
+        let expected = json!({"role": "button", "name": "Act"});
+        assert_eq!(ax_target(None, &expected), (Some("button".to_string()), Some("Act".to_string())));
+    }
+
+    #[test]
+    fn ax_compare_emits_measured_checks_not_a_bare_boolean() {
+        let expected = json!({"role": "button", "name": "Act"});
+        let observed = json!({"candidates": [
+            {"role": "button", "name": "Act", "backendNodeId": 7}
+        ]});
+        let checks = compare_ax(&expected, &observed);
+        assert_eq!(checks.len(), 3, "exists + role + name: {checks:?}");
+        assert_eq!(checks[0]["name"], "exists");
+        assert_eq!(checks[0]["observed"], json!(1));
+        assert!(checks.iter().all(|c| c["pass"] == true), "checks: {checks:?}");
+        let empty = compare_ax(&expected, &json!({"candidates": []}));
+        assert_eq!(empty[0]["observed"], json!(0));
+        assert_eq!(empty[0]["pass"], false);
     }
 
     #[test]
