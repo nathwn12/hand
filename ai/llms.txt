@@ -1,0 +1,13 @@
+---
+project: hand
+one_line: 'Browser automation and Windows computer use in one MCP server: headless Chrome over CDP, native UI via UIA. Click, type, screenshot, test extensions - one Rust binary, no pointer steal.'
+stack: [Rust]
+status: draft
+since: 2026-11
+capabilities: []
+limits: []
+updated: 2026-11-22
+draft: true
+---
+
+One stdio connection. One Rust binary. Two domains.
