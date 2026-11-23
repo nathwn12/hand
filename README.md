@@ -53,16 +53,17 @@ The client spawns npx, which runs the bundled binary and speaks newline-delimite
 
 From source: `cargo build --release`, then `hand doctor` proves the build, the pinned engines and the browser path.
 
-## Browser, 33 tools
+## Browser, 34 tools
 
 `browser_snapshot` returns stable `@eN` references. Every action returns `resolved`, so a stale ref fails typed instead of clicking the wrong thing.
 
 - Navigate and inspect: `browser_navigate`, `browser_snapshot`, `browser_targets`, `browser_tabs`, `browser_viewport`, `browser_dialog`, `browser_history`
 - Act: `browser_click` (left, right, middle, double), `browser_type`, `browser_hover`, `browser_select`, `browser_key`, `browser_upload`, `browser_wheel`, `browser_drag`, `browser_form` (ordered form batches)
 - Prove: `browser_assert_layout`, `browser_layout`, `browser_visual`, `browser_assert` (dom, text, url, ax), `browser_audit` (six viewports, WCAG contrast evidence), `browser_screenshot` (whole page, one element, or a clip; png, jpeg, webp)
-- Read: `browser_evaluate`, `browser_console`, `browser_network`, `browser_fetch_text`
+- Read: `browser_evaluate`, `browser_console`, `browser_network`, `browser_fetch_text`, `browser_storage` (cookies and web storage)
 - Download: `browser_download` (caller directory, SHA-256, MIME, cancel cleanup)
 - Record: `browser_trace` (opt-in HAR over the live network log plus step screenshots, literal counted redaction, into a caller-supplied absolute directory)
+- Batch: `browser_run` (ordered tool batch)
 - Isolate: `browser_context` (named, separate cookie and storage jars)
 - Reach the protocol: `browser_cdp`
 - Wait and close: `browser_wait_for`, `browser_close`
