@@ -19,6 +19,13 @@ const pkg = JSON.parse(readFileSync(join(here, 'package.json'), 'utf8'));
 const WORKFLOW = 'publish.yml';
 const GITHUB_REPO = 'nathwn12/hand';
 
+// npm's own registry client uses `?write=true` for read-after-write: the public
+// registry revalidates its cache before replying. `npm view --prefer-online`
+// reads a cached packument and can miss a just-published version for minutes.
+const REGISTRY = 'https://registry.npmjs.org';
+const READ_ATTEMPTS = 18;
+const READ_DELAY_MS = 5000;
+
 // Closed history, not a rule. hand-mcp@0.3.0 was published from 2065697...
 // while the immutable v0.3.0 tag already dereferenced 8ae5914... . Both stay
 // where they are. No other version or commit pair matches this exception.
@@ -71,6 +78,18 @@ function step(name, fn) {
 function npmUser() {
   try { return npmOut(['whoami'], { cwd: here }).split(/\r?\n/)[0].trim(); } catch { return null; }
 }
+function interpretVersionDocument(text, name, version) {
+  let doc;
+  try { doc = JSON.parse(text); } catch { return { status: 'unavailable', reason: 'registry JSON is unreadable' }; }
+  const record = Array.isArray(doc) ? doc[0] : doc;
+  if (!record || record.version !== version) return { status: 'absent', reason: `no record for ${name}@${version}` };
+  const gitHead = typeof record.gitHead === 'string' ? record.gitHead.toLowerCase() : null;
+  if (!gitHead || !/^[0-9a-f]{7,40}$/.test(gitHead)) {
+    return { status: 'unavailable', reason: `${name}@${version} has no usable gitHead` };
+  }
+  return { status: 'present', gitHead, version: record.version };
+}
+
 // Three states, never two: "npm is down" must not become "version is free".
 // `view` is injected so offline fixtures can drive the parse without a network.
 export function registryVersion(view, name, version) {
@@ -84,15 +103,67 @@ export function registryVersion(view, name, version) {
       ? { status: 'absent', reason: detail.trim() }
       : { status: 'unavailable', reason: detail.trim() };
   }
-  let doc;
-  try { doc = JSON.parse(text); } catch { return { status: 'unavailable', reason: 'registry JSON is unreadable' }; }
-  const record = Array.isArray(doc) ? doc[0] : doc;
-  if (!record || record.version !== version) return { status: 'absent', reason: `no record for ${name}@${version}` };
-  const gitHead = typeof record.gitHead === 'string' ? record.gitHead.toLowerCase() : null;
-  if (!gitHead || !/^[0-9a-f]{7,40}$/.test(gitHead)) {
-    return { status: 'unavailable', reason: `${name}@${version} has no usable gitHead` };
+  return interpretVersionDocument(text, name, version);
+}
+
+export function versionReadUrl(name, version, registry = REGISTRY) {
+  return `${registry.replace(/\/+$/, '')}/${encodeURIComponent(name)}/${encodeURIComponent(version)}?write=true`;
+}
+
+// Authoritative read of one version. `?write=true` is the registry's
+// read-after-write control; `cache-control: no-cache` stops a local or edge
+// cache serving a stale copy. `fetchImpl` is injected so the read-back can be
+// tested without a publish or a network.
+export async function authoritativeVersion(fetchImpl, name, version, registry = REGISTRY) {
+  let response;
+  try {
+    response = await fetchImpl(versionReadUrl(name, version, registry), {
+      headers: { accept: 'application/json', 'cache-control': 'no-cache' },
+    });
+  } catch (error) {
+    return { status: 'unavailable', reason: String(error?.message ?? error).trim() };
   }
-  return { status: 'present', gitHead, version: record.version };
+  if (response.status === 404) return { status: 'absent', reason: 'registry returned 404' };
+  if (!response.ok) return { status: 'unavailable', reason: `registry HTTP ${response.status}` };
+  let text;
+  try { text = await response.text(); } catch (error) {
+    return { status: 'unavailable', reason: `registry body unreadable: ${String(error?.message ?? error).trim()}` };
+  }
+  return interpretVersionDocument(text, name, version);
+}
+
+const short = (sha) => (typeof sha === 'string' ? sha.slice(0, 8) : '(missing)');
+
+// After publish there are three outcomes, not two. `verified` alone may tag;
+// `conflict` is a real identity failure and `pending` (not visible or unreadable)
+// is a resumable state: never republish, never tag an unverified SHA.
+export function classifyPublishedVersion({ observed, expected }) {
+  if (observed?.status === 'present') {
+    return observed.gitHead === expected
+      ? { kind: 'verified', gitHead: observed.gitHead }
+      : { kind: 'conflict', gitHead: observed.gitHead, expected,
+          reason: `registry shows ${observed.version} from ${short(observed.gitHead)}, not ${short(expected)}; refusing to tag` };
+  }
+  return { kind: 'pending', status: observed?.status ?? 'unavailable', reason: observed?.reason ?? 'no read-back' };
+}
+
+// Bounded eventual consistency. Terminal verdicts stop the loop; only `pending`
+// waits, and the caller controls both delay and clock so fixtures stay instant.
+export async function waitForPublishedVersion({
+  read, expected, attempts = READ_ATTEMPTS, delayMs = READ_DELAY_MS,
+  sleep = (ms) => new Promise((resolveSleep) => setTimeout(resolveSleep, ms)),
+}) {
+  let last;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    last = await read();
+    const verdict = classifyPublishedVersion({ observed: last, expected });
+    if (verdict.kind !== 'pending') return { ...verdict, reads: attempt };
+    if (attempt < attempts) await sleep(delayMs);
+  }
+  return {
+    kind: 'pending', reads: attempts, status: last?.status,
+    reason: `not visible after ${attempts} authoritative reads (${(attempts * delayMs) / 1000}s): ${last?.reason ?? 'no read-back'}`,
+  };
 }
 
 // An annotated tag needs its ^{} dereference, not the tag object id. An exact
@@ -115,7 +186,6 @@ export function remoteTagCommit(lsRemote, tag) {
 // The registry's gitHead is the authority for a skip and for the commit a tag
 // must name. A conflicting immutable tag is refused before any publish.
 export function releaseIdentityDecision({ version, head, registry, tag, historical = HISTORICAL_RELEASE_IDENTITY }) {
-  const short = (sha) => (typeof sha === 'string' ? sha.slice(0, 8) : '(missing)');
   const fail = (reason) => ({ action: 'fail', tagMode: 'none', reason });
   if (registry.status === 'unavailable') return fail(`registry lookup failed: ${registry.reason}`);
   if (tag.status === 'unavailable') return fail(`tag lookup failed: ${tag.reason}`);
@@ -194,12 +264,12 @@ async function publishMode() {
   const cargoVersion = (cargo.match(/^version\s*=\s*"([^"]+)"/m) || [])[1];
   if (cargoVersion !== pkg.version) fail('preflight', `package ${pkg.version} and Cargo ${cargoVersion} disagree`);
 
-  const registry = step('identity', () => registryVersion((args) => npmOut(args, { cwd: here }), pkg.name, pkg.version));
+  const registry = await authoritativeVersion(fetch, pkg.name, pkg.version);
   const tag = step('identity', () => remoteTagCommit((args) => run('git', args), `v${pkg.version}`));
   const decision = releaseIdentityDecision({ version: pkg.version, head, registry, tag });
   if (decision.action === 'fail') fail('identity', decision.reason);
-  emitReleaseIdentity({ version: pkg.version, ...decision });
   if (decision.action === 'skip') {
+    emitReleaseIdentity({ version: pkg.version, ...decision });
     console.log(`publish: ${decision.reason}; nothing to publish, tag mode ${decision.tagMode}`);
     return;
   }
@@ -292,25 +362,23 @@ async function publishMode() {
   if (ci) publishArgs.push('--provenance');
   step('publish', () => npmExec(publishArgs, { cwd: here, stdio: ['inherit', 'inherit', 'inherit'] }));
 
-  // The publish command accepting is not the registry showing it. Propagate, then verify.
-  let live = null;
-  for (let attempt = 0; attempt < 18; attempt += 1) {
-    try { live = npmOut(['view', `${pkg.name}@${pkg.version}`, 'version', '--prefer-online'], { cwd: here }); } catch { live = null; }
-    if (live === pkg.version) break;
-    if (attempt < 17) await new Promise((r) => setTimeout(r, 5000));
-  }
+  // Publish accepting is not the registry showing it. Read through `?write=true`
+  // so a cached packument cannot report a false miss, then classify: only a
+  // verified gitHead may tag; a conflict fails and pending stays resumable.
+  const verdict = await waitForPublishedVersion({
+    read: () => authoritativeVersion(fetch, pkg.name, pkg.version),
+    expected: head,
+  });
   rmSync(work, { recursive: true, force: true });
-  if (live !== pkg.version) {
-    console.error(`PENDING registry: ${pkg.name}@${pkg.version} was accepted, but the registry has not shown it after 90s.`);
-    console.error(`check https://registry.npmjs.org/${pkg.name}/${pkg.version} before announcing anything`);
+  if (verdict.kind === 'conflict') fail('identity', verdict.reason);
+  if (verdict.kind !== 'verified') {
+    console.error(`PENDING registry: ${pkg.name}@${pkg.version} was accepted, but ${verdict.reason}.`);
+    console.error(`check ${versionReadUrl(pkg.name, pkg.version)} before announcing anything; a retry resumes with a skip and a verified tag`);
     process.exitCode = 2;
     return;
   }
-  const published = step('identity', () => registryVersion((args) => npmOut(args, { cwd: here }), pkg.name, pkg.version));
-  if (published.status !== 'present' || published.gitHead !== head) {
-    fail('identity', `registry shows ${pkg.name}@${pkg.version} from ${published.gitHead?.slice(0, 8) ?? '(missing)'}, not ${head.slice(0, 8)}; refusing to tag`);
-  }
-  console.log(`published: ${pkg.name}@${live} from ${head.slice(0, 8)}`);
+  emitReleaseIdentity({ version: pkg.version, sourceCommit: verdict.gitHead, tagCommit: verdict.gitHead, tagMode: 'tag' });
+  console.log(`published: ${pkg.name}@${pkg.version} from ${verdict.gitHead.slice(0, 8)} (authoritative read-back, ${verdict.reads} read${verdict.reads === 1 ? '' : 's'})`);
 }
 
 async function trustMode() {

@@ -620,3 +620,155 @@ test("release identity is attested only when embedded commit matches the receipt
     assert.match(mismatch.reason, /the binary embeds commit bbbbbbbb/);
   });
 });
+
+// --- Authoritative post-publish read-back (release propagation) -------------
+// GitHub 45097306460 attempt1: publish accepted with provenance, but the cached
+// `npm view ... version --prefer-online` packument still 404'd for 90s, so the
+// step exited 2 and the tag was held until attempt2 tagged the exact gitHead.
+// These fixtures inject fetch and sleep: no publish, no tag, no real waiting.
+function versionDocResponse(status, doc) {
+  return {
+    status,
+    ok: status >= 200 && status < 300,
+    text: async () => (typeof doc === "string" ? doc : JSON.stringify(doc)),
+  };
+}
+
+test("authoritative read targets the write path and returns a typed source", async () => {
+  let call = null;
+  const got = await release.authoritativeVersion(
+    async (url, opts) => {
+      call = { url, opts };
+      return versionDocResponse(200, { version: "9.9.9", gitHead: SOURCE.toUpperCase() });
+    },
+    "hand-mcp",
+    "9.9.9",
+  );
+  assert.equal(call.url, "https://registry.npmjs.org/hand-mcp/9.9.9?write=true");
+  assert.equal(call.opts.headers["cache-control"], "no-cache");
+  assert.equal(got.status, "present");
+  assert.equal(got.gitHead, SOURCE, "gitHead is lower-cased for comparison");
+});
+
+test("authoritative read separates absent, server error and network failure", async () => {
+  const absent = await release.authoritativeVersion(
+    async () => versionDocResponse(404, ""),
+    "hand-mcp",
+    "9.9.9",
+  );
+  assert.equal(absent.status, "absent");
+  const serverError = await release.authoritativeVersion(
+    async () => versionDocResponse(503, "unavailable"),
+    "hand-mcp",
+    "9.9.9",
+  );
+  assert.equal(serverError.status, "unavailable");
+  const offline = await release.authoritativeVersion(
+    async () => { throw new Error("getaddrinfo ENOTFOUND registry.npmjs.org"); },
+    "hand-mcp",
+    "9.9.9",
+  );
+  assert.equal(offline.status, "unavailable");
+  assert.match(offline.reason, /ENOTFOUND/);
+});
+
+test("delayed visibility resolves through authoritative reads but strands the cached view", async () => {
+  // The old reader: a cached packument that still 404s for the whole window.
+  const staleView = () => {
+    const error = new Error("No matching version found for hand-mcp@9.9.9");
+    error.stderr = "npm ERR! code E404";
+    throw error;
+  };
+  const legacy = await release.waitForPublishedVersion({
+    read: () => release.registryVersion(staleView, "hand-mcp", "9.9.9"),
+    expected: SOURCE,
+    attempts: 18,
+    delayMs: 5000,
+    sleep: async () => {},
+  });
+  assert.equal(legacy.kind, "pending", "the cached view strands an accepted publish for 90s");
+  assert.equal(legacy.reads, 18);
+
+  let reads = 0;
+  const authoritative = await release.waitForPublishedVersion({
+    read: async () => {
+      reads += 1;
+      return reads < 4
+        ? { status: "absent", reason: "not replicated yet" }
+        : { status: "present", gitHead: SOURCE, version: "9.9.9" };
+    },
+    expected: SOURCE,
+    attempts: 18,
+    delayMs: 5000,
+    sleep: async () => {},
+  });
+  assert.equal(authoritative.kind, "verified");
+  assert.equal(authoritative.reads, 4, "bounded eventual consistency resolves at the fourth authoritative read");
+  assert.equal(authoritative.gitHead, SOURCE);
+});
+
+test("a published version from another commit is a conflict, never a tag", async () => {
+  const verdict = await release.waitForPublishedVersion({
+    read: async () => ({ status: "present", gitHead: OTHER, version: "9.9.9" }),
+    expected: SOURCE,
+    attempts: 5,
+    delayMs: 1,
+    sleep: async () => {},
+  });
+  assert.equal(verdict.kind, "conflict");
+  assert.equal(verdict.reads, 1, "a terminal conflict stops the loop before any tag");
+  assert.equal(verdict.gitHead, OTHER);
+  assert.match(verdict.reason, /refusing to tag/);
+  const conflict = release.classifyPublishedVersion({
+    observed: { status: "present", gitHead: OTHER, version: "9.9.9" },
+    expected: SOURCE,
+  });
+  assert.equal(conflict.kind, "conflict");
+  assert.equal(conflict.gitHead, OTHER);
+});
+
+test("unavailable authoritative reads stay pending and never authorise a tag", async () => {
+  const verdict = await release.waitForPublishedVersion({
+    read: async () => ({ status: "unavailable", reason: "ENOTFOUND" }),
+    expected: SOURCE,
+    attempts: 3,
+    delayMs: 1,
+    sleep: async () => {},
+  });
+  assert.equal(verdict.kind, "pending");
+  assert.equal(verdict.status, "unavailable");
+  assert.equal(verdict.gitHead, undefined);
+  assert.match(verdict.reason, /ENOTFOUND/);
+  assert.equal(
+    release.classifyPublishedVersion({ observed: { status: "absent", reason: "404" }, expected: SOURCE }).kind,
+    "pending",
+  );
+});
+
+test("a pending publish resumes on retry with a skip at the verified gitHead", async () => {
+  const pending = await release.waitForPublishedVersion({
+    read: async () => ({ status: "absent", reason: "not replicated yet" }),
+    expected: SOURCE,
+    attempts: 2,
+    delayMs: 1,
+    sleep: async () => {},
+  });
+  assert.equal(pending.kind, "pending");
+
+  // Retry: the authoritative pre-publish read now sees the published source.
+  const registry = await release.authoritativeVersion(
+    async () => versionDocResponse(200, { version: "9.9.9", gitHead: SOURCE }),
+    "hand-mcp",
+    "9.9.9",
+  );
+  assert.equal(registry.status, "present");
+  const decision = release.releaseIdentityDecision({
+    version: "9.9.9",
+    head: OTHER, // a later push HEAD must never be tagged
+    registry,
+    tag: { status: "absent" },
+  });
+  assert.equal(decision.action, "skip");
+  assert.equal(decision.sourceCommit, SOURCE);
+  assert.equal(decision.tagCommit, SOURCE);
+});
