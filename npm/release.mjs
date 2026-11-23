@@ -5,9 +5,10 @@
 //   node npm/release.mjs --publish    # gate, build, pack, handshake, publish, registry read-back
 //                                     # --publish runs npm login itself when the session is absent
 //   node npm/release.mjs --trust      # bind GitHub Actions as npm trusted publisher
-// publish is idempotent: a version already on the registry is a skip, never a second publish.
+// publish is idempotent: a version already on the registry is a skip only when
+// its gitHead names this source commit, never a second publish.
 import { execFileSync, spawn } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,6 +18,16 @@ const repo = resolve(here, '..');
 const pkg = JSON.parse(readFileSync(join(here, 'package.json'), 'utf8'));
 const WORKFLOW = 'publish.yml';
 const GITHUB_REPO = 'nathwn12/hand';
+
+// Closed history, not a rule. hand-mcp@0.3.0 was published from 2065697...
+// while the immutable v0.3.0 tag already dereferenced 8ae5914... . Both stay
+// where they are. No other version or commit pair matches this exception.
+export const HISTORICAL_RELEASE_IDENTITY = Object.freeze({
+  '0.3.0': Object.freeze({
+    tagCommit: '8ae5914f249d500f498255d070b704dfffab7daa',
+    sourceCommit: '2065697ad7231f3a4604e3568eb58c1e35b7b7b8',
+  }),
+});
 
 const argv = process.argv.slice(2);
 const KNOWN = new Set(['--initial', '--publish', '--trust', '--ci', '--skip-build']);
@@ -60,8 +71,95 @@ function step(name, fn) {
 function npmUser() {
   try { return npmOut(['whoami'], { cwd: here }).split(/\r?\n/)[0].trim(); } catch { return null; }
 }
-function registryHas(name, version) {
-  try { return npmOut(['view', `${name}@${version}`, 'version', '--prefer-online'], { cwd: here }) === version; } catch { return false; }
+// Three states, never two: "npm is down" must not become "version is free".
+// `view` is injected so offline fixtures can drive the parse without a network.
+export function registryVersion(view, name, version) {
+  let text;
+  try {
+    text = view(['view', `${name}@${version}`, '--json', '--prefer-online']);
+  } catch (error) {
+    const detail = `${error?.stderr ?? ''}\n${error?.message ?? ''}`;
+    const absent = /E404|No matching version found|is not in this registry|version not found/i.test(detail);
+    return absent
+      ? { status: 'absent', reason: detail.trim() }
+      : { status: 'unavailable', reason: detail.trim() };
+  }
+  let doc;
+  try { doc = JSON.parse(text); } catch { return { status: 'unavailable', reason: 'registry JSON is unreadable' }; }
+  const record = Array.isArray(doc) ? doc[0] : doc;
+  if (!record || record.version !== version) return { status: 'absent', reason: `no record for ${name}@${version}` };
+  const gitHead = typeof record.gitHead === 'string' ? record.gitHead.toLowerCase() : null;
+  if (!gitHead || !/^[0-9a-f]{7,40}$/.test(gitHead)) {
+    return { status: 'unavailable', reason: `${name}@${version} has no usable gitHead` };
+  }
+  return { status: 'present', gitHead, version: record.version };
+}
+
+// An annotated tag needs its ^{} dereference, not the tag object id. An exact
+// ls-remote pattern hides the ^{} line, so ask for the ref family and filter.
+export function remoteTagCommit(lsRemote, tag) {
+  let text;
+  try {
+    text = lsRemote(['ls-remote', '--tags', 'origin', `refs/tags/${tag}*`]);
+  } catch (error) {
+    return { status: 'unavailable', reason: String(error?.stderr ?? error?.message ?? error).trim() };
+  }
+  const cols = text.split(/\r?\n/).filter(Boolean).map((line) => line.split(/\s+/));
+  const ref = `refs/tags/${tag}`;
+  const deref = cols.find((c) => c[1] === `${ref}^{}`) ?? cols.find((c) => c[1] === ref);
+  return deref && /^[0-9a-f]{40}$/i.test(deref[0])
+    ? { status: 'present', commit: deref[0].toLowerCase() }
+    : { status: 'absent', reason: `no remote tag ${tag}` };
+}
+
+// The registry's gitHead is the authority for a skip and for the commit a tag
+// must name. A conflicting immutable tag is refused before any publish.
+export function releaseIdentityDecision({ version, head, registry, tag, historical = HISTORICAL_RELEASE_IDENTITY }) {
+  const short = (sha) => (typeof sha === 'string' ? sha.slice(0, 8) : '(missing)');
+  const fail = (reason) => ({ action: 'fail', tagMode: 'none', reason });
+  if (registry.status === 'unavailable') return fail(`registry lookup failed: ${registry.reason}`);
+  if (tag.status === 'unavailable') return fail(`tag lookup failed: ${tag.reason}`);
+
+  const pinned = historical[version];
+  if (pinned
+    && registry.status === 'present' && registry.gitHead === pinned.sourceCommit
+    && tag.status === 'present' && tag.commit === pinned.tagCommit) {
+    return {
+      action: 'skip', tagMode: 'leave', historical: true,
+      sourceCommit: pinned.sourceCommit, tagCommit: pinned.tagCommit,
+      reason: `v${version} is the closed historical identity exception: tag ${short(pinned.tagCommit)}, publish ${short(pinned.sourceCommit)}; neither moves`,
+    };
+  }
+
+  if (registry.status === 'present') {
+    // The published gitHead owns this version. A later push HEAD is never a
+    // reason to republish or to move the tag onto an unrelated commit.
+    const source = registry.gitHead;
+    if (tag.status === 'present' && tag.commit !== source) {
+      return fail(`immutable tag v${version} points at ${short(tag.commit)}, not published source ${short(source)}; refusing to retag`);
+    }
+    return { action: 'skip', tagMode: 'tag', sourceCommit: source, tagCommit: source,
+      reason: `v${version} is already published from ${short(source)}${source !== head ? `; current HEAD ${short(head)} is not tagged` : ''}` };
+  }
+  if (tag.status === 'present' && tag.commit !== head) {
+    return fail(`immutable tag v${version} points at ${short(tag.commit)}, not source ${short(head)}; refusing to publish or retag`);
+  }
+  return { action: 'publish', tagMode: 'tag', sourceCommit: head, tagCommit: head,
+    reason: `v${version} is absent from the registry` };
+}
+
+function emitReleaseIdentity({ version, sourceCommit, tagCommit, tagMode }) {
+  const fields = {
+    releaseVersion: version,
+    releaseSourceCommit: sourceCommit,
+    releaseTagCommit: tagCommit,
+    releaseTagMode: tagMode,
+  };
+  const out = process.env.GITHUB_OUTPUT;
+  for (const [key, value] of Object.entries(fields)) {
+    if (out) appendFileSync(out, `${key}=${value}\n`);
+    else console.log(`${key}=${value}`);
+  }
 }
 function visibleWindow(mode) {
   return `Start-Process powershell.exe -NoExit -Command "cd Q:\\PROJECTS\\PERSONAL\\hand; node npm/release.mjs ${mode}"`;
@@ -82,7 +180,7 @@ async function initial() {
 }
 
 async function publishMode() {
-  const head = step('preflight', () => run('git', ['rev-parse', 'HEAD']));
+  const head = step('preflight', () => run('git', ['rev-parse', 'HEAD'])).toLowerCase();
   if (!ci) {
     const branch = step('preflight', () => run('git', ['rev-parse', '--abbrev-ref', 'HEAD']));
     if (branch !== 'main') fail('preflight', `branch is ${branch}, not main. Check out main first: git checkout main`);
@@ -96,8 +194,13 @@ async function publishMode() {
   const cargoVersion = (cargo.match(/^version\s*=\s*"([^"]+)"/m) || [])[1];
   if (cargoVersion !== pkg.version) fail('preflight', `package ${pkg.version} and Cargo ${cargoVersion} disagree`);
 
-  if (registryHas(pkg.name, pkg.version)) {
-    console.log(`publish: ${pkg.name}@${pkg.version} is already on the registry (skip, nothing to publish)`);
+  const registry = step('identity', () => registryVersion((args) => npmOut(args, { cwd: here }), pkg.name, pkg.version));
+  const tag = step('identity', () => remoteTagCommit((args) => run('git', args), `v${pkg.version}`));
+  const decision = releaseIdentityDecision({ version: pkg.version, head, registry, tag });
+  if (decision.action === 'fail') fail('identity', decision.reason);
+  emitReleaseIdentity({ version: pkg.version, ...decision });
+  if (decision.action === 'skip') {
+    console.log(`publish: ${decision.reason}; nothing to publish, tag mode ${decision.tagMode}`);
     return;
   }
 
@@ -196,14 +299,18 @@ async function publishMode() {
     if (live === pkg.version) break;
     if (attempt < 17) await new Promise((r) => setTimeout(r, 5000));
   }
+  rmSync(work, { recursive: true, force: true });
   if (live !== pkg.version) {
     console.error(`PENDING registry: ${pkg.name}@${pkg.version} was accepted, but the registry has not shown it after 90s.`);
     console.error(`check https://registry.npmjs.org/${pkg.name}/${pkg.version} before announcing anything`);
     process.exitCode = 2;
-  } else {
-    console.log(`published: ${pkg.name}@${live}`);
+    return;
   }
-  rmSync(work, { recursive: true, force: true });
+  const published = step('identity', () => registryVersion((args) => npmOut(args, { cwd: here }), pkg.name, pkg.version));
+  if (published.status !== 'present' || published.gitHead !== head) {
+    fail('identity', `registry shows ${pkg.name}@${pkg.version} from ${published.gitHead?.slice(0, 8) ?? '(missing)'}, not ${head.slice(0, 8)}; refusing to tag`);
+  }
+  console.log(`published: ${pkg.name}@${live} from ${head.slice(0, 8)}`);
 }
 
 async function trustMode() {
@@ -229,8 +336,14 @@ async function trustMode() {
   console.log(`trust: ${GITHUB_REPO} ${WORKFLOW} may publish ${pkg.name}`);
 }
 
-for (const mode of modes) {
-  if (mode === '--initial') await initial();
-  if (mode === '--publish') await publishMode();
-  if (mode === '--trust') await trustMode();
+// A test imports this module namespace to drive the pure identity helpers.
+// Only a direct invocation may run a publish, tag or login ceremony.
+const invokedDirectly = process.argv[1]
+  && resolve(process.argv[1]).toLowerCase() === fileURLToPath(import.meta.url).toLowerCase();
+if (invokedDirectly) {
+  for (const mode of modes) {
+    if (mode === '--initial') await initial();
+    if (mode === '--publish') await publishMode();
+    if (mode === '--trust') await trustMode();
+  }
 }

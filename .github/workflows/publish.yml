@@ -1,8 +1,9 @@
 # Release lane: push to main publishes a new version by OIDC trusted publishing.
-# A version already on the registry is a skip, never a second publish. The tag
-# is created once and never moved. workflow_dispatch is the escape hatch.
-# The full gate is local; this job only builds, packs, proves and publishes.
-# No token, no OTP, no manual npm publish.
+# A version already on the registry is a skip only when its gitHead names this
+# source commit; a conflicting immutable tag is refused before publish. The tag
+# is created at the published source commit, once, and never moved.
+# workflow_dispatch is the escape hatch. The full gate is local; this job only
+# builds, packs, proves, publishes and tags. No token, OTP or manual publish.
 name: publish
 
 on:
@@ -24,14 +25,41 @@ jobs:
           node-version: 22
       - run: npm install -g npm@11
       - uses: dtolnay/rust-toolchain@stable
-      - run: node npm/release.mjs --publish --ci
-      - name: Tag the published version
+      - id: publish
+        run: node npm/release.mjs --publish --ci
+      - name: Tag the published source commit
         shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ steps.publish.outputs.releaseVersion }}
+          RELEASE_SOURCE_COMMIT: ${{ steps.publish.outputs.releaseSourceCommit }}
+          RELEASE_TAG_COMMIT: ${{ steps.publish.outputs.releaseTagCommit }}
+          RELEASE_TAG_MODE: ${{ steps.publish.outputs.releaseTagMode }}
         run: |
-          $v = (Get-Content npm/package.json -Raw | ConvertFrom-Json).version
-          $remote = git ls-remote --tags origin "refs/tags/v$v"
-          if ($remote) { Write-Host "tag v$v already exists"; exit 0 }
+          $v = $env:RELEASE_VERSION
+          $source = $env:RELEASE_SOURCE_COMMIT
+          $expected = if ($env:RELEASE_TAG_MODE -eq 'leave') { $env:RELEASE_TAG_COMMIT } else { $source }
+          if (-not $v -or $expected -notmatch '^[0-9a-f]{40}$') { throw "publish step did not report a full source commit" }
+          $ref = "refs/tags/v$v"
+          $remote = @(git ls-remote --tags origin "$ref*")
+          $deref = @($remote | Where-Object { $_ -like "*$ref^{}" } | Select-Object -First 1)
+          if ($deref.Count -eq 0) { $deref = @($remote | Where-Object { $_ -like "* $ref" } | Select-Object -First 1) }
+          if ($deref.Count -gt 0) {
+            $commit = ($deref[0] -split '\s+')[0].ToLowerInvariant()
+            if ($commit -ne $expected) { throw "immutable tag v$v points at $commit, not identity $expected" }
+            if ($env:RELEASE_TAG_MODE -eq 'leave') {
+              Write-Host "v$v is the closed historical identity exception; tag and registry untouched"
+            } else {
+              Write-Host "tag v$v already names $source"
+            }
+            exit 0
+          }
+          if ($env:RELEASE_TAG_MODE -eq 'leave') { throw "historical identity for v$v expects an existing tag" }
+          git cat-file -e "$source^{commit}" 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            git fetch --depth 1 origin $source
+            if ($LASTEXITCODE -ne 0) { throw "cannot fetch published source $source" }
+          }
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag "v$v"
-          git push origin "v$v"
+          git tag "v$v" $source
+          git push origin "refs/tags/v$v"

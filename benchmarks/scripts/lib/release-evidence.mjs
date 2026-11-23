@@ -198,6 +198,35 @@ export async function verifyBuildReceipt({ build, receipt, currentBinarySha }) {
   };
 }
 
+// A binary's --version is a self-report. It becomes an attested identity only
+// when a recorded --release build names the same commit and the artifact hash
+// matches. The receipt itself is never mutated.
+export function releaseIdentityFromEvidence(receipt, evidence) {
+  const claimed = receipt?.product?.releaseIdentity ?? {};
+  const embedded = parseBuildIdentity(receipt?.product?.version);
+  const unverified = (reason) => ({
+    ...claimed,
+    verified: false,
+    basis: claimed.basis ?? "embedded-build-metadata",
+    ...(reason ? { reason } : {}),
+  });
+  if (evidence?.verified !== true || evidence.kind !== "local-release-build") return unverified();
+  const head = evidence.detail?.head;
+  if (!embedded || !head || !head.startsWith(embedded.sha)) {
+    return unverified(`embedded commit ${embedded?.sha ?? "(missing)"} is not the attested source ${head ?? "(missing)"}`);
+  }
+  return {
+    ...claimed,
+    claimed: embedded.profile,
+    embedded,
+    verified: true,
+    basis: "local-release-build-attestation",
+    head,
+    reference: evidence.reference,
+    reason: `a recorded cargo --release build at ${head} matches the embedded commit and artifact hash (${evidence.reference})`,
+  };
+}
+
 export async function verifyReleaseEvidence({
   receipt,
   currentBinarySha,
@@ -221,7 +250,7 @@ export async function verifyReleaseEvidence({
       receipt,
       currentBinarySha,
     });
-    if (result.verified) return result;
+    if (result.verified) return { ...result, releaseIdentity: releaseIdentityFromEvidence(receipt, result) };
     reasons.push(`${basename(entry.file)}: ${result.reason}`);
   }
   const suffix =

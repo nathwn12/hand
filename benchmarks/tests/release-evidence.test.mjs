@@ -15,6 +15,7 @@ import {
   verifyBaselinePin,
   verifyReleaseEvidence,
 } from "../scripts/lib/release-evidence.mjs";
+import * as release from "../../npm/release.mjs";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..", "..");
 const RECORDER = join(REPO_ROOT, "benchmarks", "scripts", "record-build.mjs");
@@ -416,5 +417,206 @@ test("the gate passes a browser group backed by a real local release build and a
     ]);
     const browser = comparison.groups.find((group) => group.scenario === "browser-snapshot");
     assert.equal(browser.allPass, true, browser.differences.join("; "));
+  });
+});
+
+// Offline release-identity fixtures. No npm publish, no git tag, no push, no
+// remote mutation: the helpers take the command result as an injected function.
+const shaOf = (char) => char.repeat(40);
+const SOURCE = shaOf("a");
+const OTHER = shaOf("b");
+
+function viewPresent(gitHead) {
+  return () => JSON.stringify([{ version: "9.9.9", gitHead }]);
+}
+function viewAbsent() {
+  return () => {
+    const error = new Error("No matching version found for hand-mcp@9.9.9");
+    error.stderr = "npm ERR! code E404";
+    throw error;
+  };
+}
+function viewUnavailable() {
+  return () => {
+    const error = new Error("getaddrinfo ENOTFOUND registry.npmjs.org");
+    error.stderr = "npm ERR! code ENOTFOUND";
+    throw error;
+  };
+}
+function tagPresent(commit) {
+  return () => `${shaOf("c")}\trefs/tags/v9.9.9\n${commit}\trefs/tags/v9.9.9^{}\n`;
+}
+const tagAbsent = () => "";
+
+test("registry lookup separates npm unavailable, no version and a published source", () => {
+  assert.equal(release.registryVersion(viewAbsent(), "hand-mcp", "9.9.9").status, "absent");
+  const down = release.registryVersion(viewUnavailable(), "hand-mcp", "9.9.9");
+  assert.equal(down.status, "unavailable");
+  const present = release.registryVersion(viewPresent(SOURCE.toUpperCase()), "hand-mcp", "9.9.9");
+  assert.equal(present.status, "present");
+  assert.equal(present.gitHead, SOURCE);
+});
+
+test("an annotated tag resolves to its dereferenced commit", () => {
+  let asked = null;
+  const found = release.remoteTagCommit((args) => {
+    asked = args;
+    return tagPresent(OTHER)();
+  }, "v9.9.9");
+  assert.deepEqual(asked, ["ls-remote", "--tags", "origin", "refs/tags/v9.9.9*"]);
+  assert.equal(found.status, "present");
+  assert.equal(found.commit, OTHER, "the tag object id is not the source commit");
+  assert.equal(release.remoteTagCommit(tagAbsent, "v9.9.9").status, "absent");
+});
+
+test("identity decision uses registry source and refuses ordinary mismatches", () => {
+  const base = { version: "9.9.9", head: SOURCE };
+  const publish = release.releaseIdentityDecision({
+    ...base,
+    registry: { status: "absent" },
+    tag: { status: "absent" },
+  });
+  assert.equal(publish.action, "publish");
+  assert.equal(publish.sourceCommit, SOURCE);
+  assert.equal(publish.tagMode, "tag");
+
+  const skip = release.releaseIdentityDecision({
+    ...base,
+    registry: { status: "present", gitHead: SOURCE },
+    tag: { status: "absent" },
+  });
+  assert.equal(skip.action, "skip");
+  assert.equal(skip.sourceCommit, SOURCE);
+
+  const laterHead = release.releaseIdentityDecision({
+    ...base,
+    head: OTHER,
+    registry: { status: "present", gitHead: SOURCE },
+    tag: { status: "absent" },
+  });
+  assert.equal(laterHead.action, "skip");
+  assert.equal(laterHead.sourceCommit, SOURCE, "a later push HEAD is never tagged");
+  assert.equal(laterHead.tagCommit, SOURCE);
+
+  const tagVsRegistry = release.releaseIdentityDecision({
+    ...base,
+    registry: { status: "present", gitHead: SOURCE },
+    tag: { status: "present", commit: OTHER },
+  });
+  assert.equal(tagVsRegistry.action, "fail");
+  assert.match(tagVsRegistry.reason, /immutable tag v9\.9\.9/);
+
+  const tagConflict = release.releaseIdentityDecision({
+    ...base,
+    registry: { status: "absent" },
+    tag: { status: "present", commit: OTHER },
+  });
+  assert.equal(tagConflict.action, "fail");
+  assert.match(tagConflict.reason, /immutable tag v9\.9\.9/);
+
+  const noRegistry = release.releaseIdentityDecision({
+    ...base,
+    registry: { status: "unavailable", reason: "ENOTFOUND" },
+    tag: { status: "absent" },
+  });
+  assert.equal(noRegistry.action, "fail");
+  assert.match(noRegistry.reason, /registry lookup failed/);
+
+  const noTag = release.releaseIdentityDecision({
+    ...base,
+    registry: { status: "absent" },
+    tag: { status: "unavailable", reason: "no origin" },
+  });
+  assert.equal(noTag.action, "fail");
+  assert.match(noTag.reason, /tag lookup failed/);
+});
+
+test("the historical exception is pinned to one version and commit pair", () => {
+  const pinned = release.HISTORICAL_RELEASE_IDENTITY["0.3.0"];
+  const historical = release.releaseIdentityDecision({
+    version: "0.3.0",
+    head: shaOf("d"),
+    registry: { status: "present", gitHead: pinned.sourceCommit },
+    tag: { status: "present", commit: pinned.tagCommit },
+  });
+  assert.equal(historical.action, "skip");
+  assert.equal(historical.tagMode, "leave");
+  assert.equal(historical.tagCommit, pinned.tagCommit);
+
+  const wrongTag = release.releaseIdentityDecision({
+    version: "0.3.0",
+    head: shaOf("d"),
+    registry: { status: "present", gitHead: pinned.sourceCommit },
+    tag: { status: "present", commit: OTHER },
+  });
+  assert.equal(wrongTag.action, "fail");
+
+  const wrongVersion = release.releaseIdentityDecision({
+    version: "0.3.1",
+    head: shaOf("d"),
+    registry: { status: "present", gitHead: pinned.sourceCommit },
+    tag: { status: "present", commit: pinned.tagCommit },
+  });
+  assert.equal(wrongVersion.action, "fail");
+});
+
+test("release identity is attested only when embedded commit matches the receipt", async () => {
+  await withTemp(async (dir) => {
+    const crate = await makeCrate(dir);
+    const out = join(dir, "builds");
+    const result = run(
+      process.execPath,
+      [
+        RECORDER,
+        "--product",
+        "hand",
+        "--source-root",
+        crate,
+        "--manifest-path",
+        "Cargo.toml",
+        "--bin",
+        "hand-bench-sample",
+        "--target-dir",
+        "target",
+        "--out",
+        out,
+      ],
+      REPO_ROOT,
+    );
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    const entries = await loadBuildReceipts(out);
+    const build = entries[0].build;
+    const receipt = {
+      product: {
+        id: "hand",
+        executable: { path: build.output.path, sha256: build.output.sha256 },
+        version: { stdout: build.version.stdout },
+        releaseIdentity: { verified: false, basis: "embedded-build-metadata" },
+      },
+    };
+    const evidence = await verifyReleaseEvidence({
+      receipt,
+      currentBinarySha: build.output.sha256,
+      pins: null,
+      builds: entries,
+    });
+    assert.equal(evidence.verified, true, evidence.reason);
+    assert.equal(evidence.releaseIdentity.verified, true, evidence.releaseIdentity.reason);
+    assert.equal(evidence.releaseIdentity.basis, "local-release-build-attestation");
+    assert.equal(evidence.releaseIdentity.head, build.source.gitHead);
+
+    const mismatch = await verifyReleaseEvidence({
+      receipt: {
+        product: {
+          ...receipt.product,
+          version: { stdout: `hand 9.9.9 (${OTHER}; release)` },
+        },
+      },
+      currentBinarySha: build.output.sha256,
+      pins: null,
+      builds: entries,
+    });
+    assert.equal(mismatch.verified, false);
+    assert.match(mismatch.reason, /the binary embeds commit bbbbbbbb/);
   });
 });
