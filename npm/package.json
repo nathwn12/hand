@@ -1,6 +1,6 @@
 {
   "name": "hand-mcp",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "hand-mcp: one MCP server for headless browser testing (CDP) and Windows desktop computer use",
   "type": "module",
   "license": "MIT",
@@ -23,7 +23,7 @@
   },
   "scripts": {
     "prepack": "node ./stage.mjs",
-    "preinstall": "node -e \"if(process.env.npm_config_global==='true'){console.error('hand-mcp: global install refused — use npx hand-mcp@0.3.0');process.exit(1)}\""
+    "preinstall": "node -e \"if(process.env.npm_config_global==='true'){console.error('hand-mcp: global install refused — use npx hand-mcp@0.3.1');process.exit(1)}\""
   },
   "files": [
     "bin/",
