@@ -197,14 +197,30 @@ fn handshake_result(params: &Value) -> Value {
     })
 }
 
-fn discover_result() -> Value {
-    json!({
+/// The 2026-07-28 cache hint. OpenCode 2.4.1 validates modern `tools/list` and
+/// `server/discover` results with `ttlMs` (a non-negative integer) and
+/// `cacheScope` (`public` or `private`). Zero TTL and private scope are the
+/// conservative values: the body is never served from cache (it is still
+/// stored for the tool index) and is never shared across authorization contexts.
+fn add_cache_hints(result: &mut Value) {
+    if let Some(obj) = result.as_object_mut() {
+        obj.insert("ttlMs".to_string(), json!(0));
+        obj.insert("cacheScope".to_string(), json!("private"));
+    }
+}
+
+fn discover_result(modern: bool) -> Value {
+    let mut result = json!({
         "supportedVersions": SUPPORTED,
         "capabilities": {"tools": {"listChanged": false}},
         "serverInfo": server_info(),
         "instructions": instructions(),
         "resultType": "complete",
-    })
+    });
+    if modern {
+        add_cache_hints(&mut result);
+    }
+    result
 }
 
 fn result_frame(id: &Value, result: Value) -> Value {
@@ -870,7 +886,7 @@ async fn handle_frame(value: Value, state: &Arc<State>, tx: &mpsc::UnboundedSend
             let _ = tx.send(result_frame(&id, handshake_result(&params)));
         }
         "server/discover" => {
-            let _ = tx.send(result_frame(&id, discover_result()));
+            let _ = tx.send(result_frame(&id, discover_result(modern)));
         }
         "ping" => {
             let _ = tx.send(result_frame(&id, json!({})));
@@ -881,6 +897,7 @@ async fn handle_frame(value: Value, state: &Arc<State>, tx: &mpsc::UnboundedSend
                 if let Some(obj) = result.as_object_mut() {
                     obj.insert("resultType".to_string(), json!("complete"));
                 }
+                add_cache_hints(&mut result);
             }
             let _ = tx.send(result_frame(&id, result));
         }

@@ -427,6 +427,58 @@ fn modern_peer_gets_result_type_and_a_bad_version_is_refused_before_dispatch() {
     );
 }
 
+/// OpenCode 2.4.1 validates 2026-07-28 `tools/list` and `server/discover`
+/// results against a schema that requires `ttlMs` (a non-negative integer) and
+/// `cacheScope` (`public` or `private`) beside `resultType`. hand sent only
+/// `resultType`, which OpenCode rejected. Zero TTL and private scope are the
+/// conservative values: the body is never served from cache (it is still
+/// stored for the tool index) and is never shared across authorization contexts.
+/// A peer without the modern marker keeps the original result, byte for byte.
+#[test]
+fn modern_tools_list_and_discover_carry_cache_hints_and_legacy_does_not() {
+    let mut s = Session::spawn();
+
+    let modern = s.request(
+        "tools/list",
+        json!({"_meta": {"io.modelcontextprotocol/protocolVersion": "2026-07-28"}}),
+    );
+    assert_eq!(modern["result"]["resultType"].as_str(), Some("complete"));
+    assert_eq!(modern["result"]["ttlMs"].as_u64(), Some(0));
+    assert_eq!(modern["result"]["cacheScope"].as_str(), Some("private"));
+
+    let discover = s.request(
+        "server/discover",
+        json!({"_meta": {"io.modelcontextprotocol/protocolVersion": "2026-07-28"}}),
+    );
+    assert_eq!(discover["result"]["resultType"].as_str(), Some("complete"));
+    assert_eq!(discover["result"]["ttlMs"].as_u64(), Some(0));
+    assert_eq!(discover["result"]["cacheScope"].as_str(), Some("private"));
+
+    let legacy = s.request("tools/list", json!({}));
+    assert!(
+        legacy["result"].get("ttlMs").is_none(),
+        "a legacy tools/list must not gain cache hints: {legacy}"
+    );
+    assert!(
+        legacy["result"].get("cacheScope").is_none(),
+        "a legacy tools/list must not gain cache hints: {legacy}"
+    );
+
+    let legacy_discover = s.request("server/discover", json!({}));
+    assert_eq!(
+        legacy_discover["result"]["resultType"].as_str(),
+        Some("complete")
+    );
+    assert!(
+        legacy_discover["result"].get("ttlMs").is_none(),
+        "a legacy server/discover must not gain cache hints: {legacy_discover}"
+    );
+    assert!(
+        legacy_discover["result"].get("cacheScope").is_none(),
+        "a legacy server/discover must not gain cache hints: {legacy_discover}"
+    );
+}
+
 #[test]
 fn discovery_reports_supported_versions_and_the_same_identity() {
     let mut s = Session::spawn();
