@@ -4,7 +4,7 @@ resolver = "2"
 
 [package]
 name = "hand"
-version = "0.3.2"
+version = "0.3.3"
 edition = "2021"
 license = "MIT"
 rust-version = "1.88"
