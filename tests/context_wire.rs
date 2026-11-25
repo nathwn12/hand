@@ -1237,7 +1237,13 @@ fn context_target_refuses_wrong_typed_values_and_cross_scope_paging() {
         .as_str()
         .expect("a context render returns a snapshotId")
         .to_string();
-    let ctx_total = ctx_render_sc["totalLines"].as_u64();
+    let ctx_total = ctx_render_sc["totalLines"]
+        .as_u64()
+        .expect("a render reports its totalLines");
+    assert!(
+        ctx_total > 1,
+        "the fixture render needs more than one line for a real window: {ctx_render_sc}"
+    );
     let ctx_next = s.call(
         "browser_snapshot",
         json!({"context": "alpha", "offset": 1, "snapshotId": ctx_id}),
@@ -1260,8 +1266,26 @@ fn context_target_refuses_wrong_typed_values_and_cross_scope_paging() {
     );
     assert_eq!(
         ctx_next_sc["totalLines"].as_u64(),
-        ctx_total,
+        Some(ctx_total),
         "the continuation keeps the original render's line count: {ctx_next_sc}"
+    );
+    // The window is real content, not just metadata: offset 1 starts where
+    // line 1 of that render started (the header line 0 is gone).
+    let ctx_first_line = text_of(&ctx_next)
+        .lines()
+        .next()
+        .unwrap_or("")
+        .to_string();
+    let ctx_render_line1 = text_of(&ctx_render)
+        .lines()
+        .nth(1)
+        .unwrap_or("")
+        .to_string();
+    assert!(!ctx_render_line1.is_empty(), "the render has a second line");
+    assert_eq!(
+        ctx_first_line, ctx_render_line1,
+        "offset 1 returns the shifted window, not the whole render again: {}",
+        text_of(&ctx_next)
     );
     assert_eq!(
         ctx_next_sc["title"].as_str(),
@@ -1290,7 +1314,13 @@ fn context_target_refuses_wrong_typed_values_and_cross_scope_paging() {
         .as_str()
         .expect("a legacy render returns a snapshotId")
         .to_string();
-    let legacy_total = legacy_render_sc["totalLines"].as_u64();
+    let legacy_total = legacy_render_sc["totalLines"]
+        .as_u64()
+        .expect("a render reports its totalLines");
+    assert!(
+        legacy_total > 1,
+        "the fixture render needs more than one line for a real window: {legacy_render_sc}"
+    );
     let legacy_next = s.call(
         "browser_snapshot",
         json!({"offset": 1, "snapshotId": legacy_id}),
@@ -1313,8 +1343,27 @@ fn context_target_refuses_wrong_typed_values_and_cross_scope_paging() {
     );
     assert_eq!(
         legacy_next_sc["totalLines"].as_u64(),
-        legacy_total,
+        Some(legacy_total),
         "the continuation keeps the original render's line count: {legacy_next_sc}"
+    );
+    let legacy_first_line = text_of(&legacy_next)
+        .lines()
+        .next()
+        .unwrap_or("")
+        .to_string();
+    let legacy_render_line1 = text_of(&legacy_render)
+        .lines()
+        .nth(1)
+        .unwrap_or("")
+        .to_string();
+    assert!(
+        !legacy_render_line1.is_empty(),
+        "the render has a second line"
+    );
+    assert_eq!(
+        legacy_first_line, legacy_render_line1,
+        "offset 1 returns the shifted window, not the whole render again: {}",
+        text_of(&legacy_next)
     );
     assert_eq!(
         legacy_next_sc["title"].as_str(),
