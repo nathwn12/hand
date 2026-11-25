@@ -965,6 +965,30 @@ fn missing_target(tool: &str, args: &Value, prose: &str) -> ToolErr {
     )
 }
 
+/// A PRESENT optional string argument. Absent stays `None`; present as any
+/// non-string (`5`, `null`, `false`, an object) is a typed refusal, never a
+/// silent absence: a caller that names a context or a page must have it read
+/// or refused, not quietly answered from another page. An empty string is
+/// refused too, because it names nothing.
+pub(crate) fn optional_string_arg(
+    tool: &str,
+    args: &Value,
+    key: &str,
+) -> Result<Option<String>, ToolErr> {
+    match args.get(key) {
+        None => Ok(None),
+        Some(Value::String(s)) if s.is_empty() => Err(ToolErr::typed(
+            format!("{tool}: '{key}' must be a non-empty string when given"),
+            json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": tool, "arg": key}),
+        )),
+        Some(Value::String(s)) => Ok(Some(s.clone())),
+        Some(other) => Err(ToolErr::typed(
+            format!("{tool}: '{key}' must be a string when given, got {other}"),
+            json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": tool, "arg": key}),
+        )),
+    }
+}
+
 pub async fn call(name: &str, args: &Value, browser: &Browser) -> Value {
     let r: Result<Value, ToolErr> = match name {
         "navigate" => {
@@ -1002,14 +1026,25 @@ pub async fn call(name: &str, args: &Value, browser: &Browser) -> Value {
                     }
                 },
             };
+            // A present-but-wrong-typed target is refused BEFORE any browser
+            // read: `and_then(as_str)` would silently turn it into "absent"
+            // and answer from another page.
+            let context = match optional_string_arg("snapshot", args, "context") {
+                Ok(v) => v,
+                Err(e) => return e.envelope(),
+            };
+            let page = match optional_string_arg("snapshot", args, "page") {
+                Ok(v) => v,
+                Err(e) => return e.envelope(),
+            };
             tool_snapshot(
                 browser,
                 args.get("mode").and_then(|v| v.as_str()),
                 args.get("frame").and_then(|v| v.as_str()),
                 offset,
                 args.get("snapshotId").and_then(|v| v.as_str()),
-                args.get("context").and_then(|v| v.as_str()),
-                args.get("page").and_then(|v| v.as_str()),
+                context.as_deref(),
+                page.as_deref(),
             )
             .await
         }
@@ -3175,12 +3210,6 @@ async fn tool_snapshot(
              pass one (frame-scoped refs do not exist for context pages)"
                 .to_string(),
             json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "snapshot", "arg": "frame"}),
-        ));
-    }
-    if context == Some("") {
-        return Err(ToolErr::typed(
-            "snapshot: 'context' must be a non-empty context name".to_string(),
-            json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "snapshot", "arg": "context"}),
         ));
     }
     let page_ctx = match context {

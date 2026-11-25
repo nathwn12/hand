@@ -982,6 +982,237 @@ fn named_context_page_is_addressable_by_snapshot_and_assert() {
     );
 }
 
+/// Cold-review FAIL on 9e6ac5e: a PRESENT but wrong-typed `context`/`page`
+/// (a number, null, a boolean) was read with `get().and_then(as_str)`, so it
+/// silently became "absent" and the call answered from another page - the
+/// legacy page for `context`, or the context's only page for `page`. A value
+/// the caller sent must be honoured or refused, never dropped.
+///
+/// This also locks the two scope guards: an offset:>0 page cannot be sliced
+/// from another realm's cached render, and a legacy `@eN` with `context=` is a
+/// typed argument error on the wire (not an untyped cd engine failure).
+#[test]
+fn context_target_refuses_wrong_typed_values_and_cross_scope_paging() {
+    require_pinned_chromium();
+    let fixture = Fixture::start();
+    let base = fixture.base.clone();
+    let mut s = Session::spawn();
+
+    let nav = navigate_with_retry(&mut s, &format!("{base}/legacy"));
+    assert!(!is_error(&nav), "legacy navigate failed: {}", text_of(&nav));
+    let alpha = ok(
+        &mut s,
+        json!({"action": "create", "name": "alpha", "url": format!("{base}/a")}),
+    );
+    let alpha_page = alpha["page"]["targetId"]
+        .as_str()
+        .expect("create reports its page target")
+        .to_string();
+
+    // Both realms render first, so a silent fallback later is visible as a
+    // success with the wrong document's title.
+    let good_ctx = s.call("browser_snapshot", json!({"context": "alpha"}));
+    assert!(
+        !is_error(&good_ctx),
+        "the valid context snapshot must work before its refusals are tested: {}",
+        text_of(&good_ctx)
+    );
+    let ctx_sc = structured(&good_ctx).clone();
+    assert_eq!(ctx_sc["title"].as_str(), Some("Ctx A"));
+    let ctx_snapshot_id = ctx_sc["snapshotId"]
+        .as_str()
+        .expect("a context render returns a snapshotId")
+        .to_string();
+    let good_legacy = s.call("browser_snapshot", json!({}));
+    let legacy_sc = structured(&good_legacy).clone();
+    assert_eq!(legacy_sc["title"].as_str(), Some("Legacy Fixture"));
+    let legacy_snapshot_id = legacy_sc["snapshotId"]
+        .as_str()
+        .expect("a legacy render returns a snapshotId")
+        .to_string();
+
+    // 1. A number where a context name belongs is not "no context".
+    let numeric = s.call("browser_snapshot", json!({"context": 5}));
+    assert!(
+        is_error(&numeric),
+        "a wrong-typed 'context' must be refused, not answered from the legacy page: {}",
+        text_of(&numeric)
+    );
+    assert_eq!(
+        (
+            structured(&numeric)["code"].as_str(),
+            structured(&numeric)["reason"].as_str()
+        ),
+        (Some("invalid_args"), Some("bad_value")),
+        "a wrong-typed context is a typed argument error: {}",
+        text_of(&numeric)
+    );
+    assert!(
+        text_of(&numeric).contains("context"),
+        "the refusal names the argument: {}",
+        text_of(&numeric)
+    );
+
+    // 2. An explicit null is present, not absent.
+    let nulled = s.call("browser_snapshot", json!({"context": null}));
+    assert!(
+        is_error(&nulled),
+        "a null 'context' must be refused, not answered from the legacy page: {}",
+        text_of(&nulled)
+    );
+    assert_eq!(
+        (
+            structured(&nulled)["code"].as_str(),
+            structured(&nulled)["reason"].as_str()
+        ),
+        (Some("invalid_args"), Some("bad_value")),
+        "a null context is a typed argument error: {}",
+        text_of(&nulled)
+    );
+
+    // 3. A wrong-typed page must not fall through to the context's only page.
+    let bad_page = s.call(
+        "browser_snapshot",
+        json!({"context": "alpha", "page": 5}),
+    );
+    assert!(
+        is_error(&bad_page),
+        "a wrong-typed 'page' must be refused, not answered from the only page: {}",
+        text_of(&bad_page)
+    );
+    assert_eq!(
+        (
+            structured(&bad_page)["code"].as_str(),
+            structured(&bad_page)["reason"].as_str()
+        ),
+        (Some("invalid_args"), Some("bad_value")),
+        "a wrong-typed page is a typed argument error: {}",
+        text_of(&bad_page)
+    );
+    assert!(
+        text_of(&bad_page).contains("page"),
+        "the refusal names the argument: {}",
+        text_of(&bad_page)
+    );
+
+    // 4. The same rules on browser_assert, where a wrong page would mint a
+    //    false verdict instead of a wrong snapshot.
+    let assert_null = s.call(
+        "browser_assert",
+        json!({"context": null, "kind": "url", "expected": {"contains": "/a"}}),
+    );
+    assert!(
+        is_error(&assert_null),
+        "a null 'context' must be refused, not asserted against the legacy page: {}",
+        text_of(&assert_null)
+    );
+    assert_eq!(
+        (
+            structured(&assert_null)["code"].as_str(),
+            structured(&assert_null)["reason"].as_str()
+        ),
+        (Some("invalid_args"), Some("bad_value")),
+        "a null context is a typed argument error: {}",
+        text_of(&assert_null)
+    );
+    let assert_page = s.call(
+        "browser_assert",
+        json!({"context": "alpha", "page": false, "kind": "url", "expected": {"contains": "/a"}}),
+    );
+    assert!(
+        is_error(&assert_page),
+        "a wrong-typed 'page' must be refused, not asserted against the only page: {}",
+        text_of(&assert_page)
+    );
+    assert_eq!(
+        (
+            structured(&assert_page)["code"].as_str(),
+            structured(&assert_page)["reason"].as_str()
+        ),
+        (Some("invalid_args"), Some("bad_value")),
+        "a wrong-typed page is a typed argument error: {}",
+        text_of(&assert_page)
+    );
+
+    // 5. A legacy @eN ref cannot be asserted in a context page; that is an
+    //    argument error, typed on the wire like every other refusal.
+    let ref_ctx = s.call(
+        "browser_assert",
+        json!({"context": "alpha", "kind": "dom", "target": "@e1",
+               "expected": {"exists": true}}),
+    );
+    assert!(
+        is_error(&ref_ctx),
+        "a legacy ref must be refused in a context page: {}",
+        text_of(&ref_ctx)
+    );
+    assert_eq!(
+        (
+            structured(&ref_ctx)["code"].as_str(),
+            structured(&ref_ctx)["reason"].as_str()
+        ),
+        (Some("invalid_args"), Some("bad_value")),
+        "a legacy ref with context= is a typed argument error, never an untyped failure: {}",
+        text_of(&ref_ctx)
+    );
+
+    // 6. Paging is per realm: a cached render from one space cannot be sliced
+    //    by a call aimed at the other, in either direction.
+    let ctx_pages_legacy = s.call(
+        "browser_snapshot",
+        json!({"context": "alpha", "page": alpha_page, "offset": 1,
+               "snapshotId": legacy_snapshot_id}),
+    );
+    assert!(
+        is_error(&ctx_pages_legacy),
+        "a context call must not page a legacy render: {}",
+        text_of(&ctx_pages_legacy)
+    );
+    assert_eq!(
+        (
+            structured(&ctx_pages_legacy)["code"].as_str(),
+            structured(&ctx_pages_legacy)["reason"].as_str()
+        ),
+        (Some("invalid_args"), Some("snapshot_expired")),
+        "cross-scope paging is a typed expired render: {}",
+        text_of(&ctx_pages_legacy)
+    );
+    let legacy_pages_ctx = s.call(
+        "browser_snapshot",
+        json!({"offset": 1, "snapshotId": ctx_snapshot_id}),
+    );
+    assert!(
+        is_error(&legacy_pages_ctx),
+        "a legacy call must not page a context render: {}",
+        text_of(&legacy_pages_ctx)
+    );
+    assert_eq!(
+        (
+            structured(&legacy_pages_ctx)["code"].as_str(),
+            structured(&legacy_pages_ctx)["reason"].as_str()
+        ),
+        (Some("invalid_args"), Some("snapshot_expired")),
+        "cross-scope paging is a typed expired render: {}",
+        text_of(&legacy_pages_ctx)
+    );
+
+    // 7. Nothing above moved either page.
+    let legacy_after = s.call("browser_snapshot", json!({}));
+    assert_eq!(
+        structured(&legacy_after)["title"].as_str(),
+        Some("Legacy Fixture"),
+        "the legacy page still answers its own snapshot: {}",
+        text_of(&legacy_after)
+    );
+    let ctx_after = s.call("browser_snapshot", json!({"context": "alpha"}));
+    assert_eq!(
+        structured(&ctx_after)["title"].as_str(),
+        Some("Ctx A"),
+        "the context page still answers its own snapshot: {}",
+        text_of(&ctx_after)
+    );
+}
+
 /// An engine this test launched but hand does not own: it stands in for
 /// "someone else's browser" that a client attaches to.
 struct ExternalEngine {

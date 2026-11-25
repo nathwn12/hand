@@ -12,7 +12,9 @@ use std::time::{Duration, Instant};
 use serde_json::{json, Value};
 
 use crate::browser::Browser;
-use crate::tools::{check_unknown, ok_text, typed_marker, ToolCode, ToolErr, ToolReason};
+use crate::tools::{
+    check_unknown, ok_text, optional_string_arg, typed_marker, ToolCode, ToolErr, ToolReason,
+};
 
 /// Row id this module owns. The stub test reads it; lib code does not.
 #[cfg_attr(not(test), allow(dead_code))]
@@ -463,20 +465,18 @@ pub async fn handle(browser: &Browser, args: &Value) -> Result<Value, ToolErr> {
         return Err(invalid("browser_assert: dom 'expected' must be an object".to_string(), ToolReason::BadValue, "expected"));
     }
     let target = args.get("target").and_then(|v| v.as_str());
-    let want_context = args.get("context").and_then(|v| v.as_str());
-    let want_page = args.get("page").and_then(|v| v.as_str());
+    // Present-but-wrong-typed targets are refused before any browser read
+    // (`and_then(as_str)` would turn them into "absent" and assert another
+    // page, minting a verdict from the wrong document).
+    let want_context = optional_string_arg("browser_assert", args, "context")?;
+    let want_page = optional_string_arg("browser_assert", args, "page")?;
+    let want_context = want_context.as_deref();
+    let want_page = want_page.as_deref();
     if want_page.is_some() && want_context.is_none() {
         return Err(invalid(
             "browser_assert: 'page' names a page inside a named context; pass 'context' with it"
                 .to_string(),
             ToolReason::MissingArg,
-            "context",
-        ));
-    }
-    if want_context == Some("") {
-        return Err(invalid(
-            "browser_assert: 'context' must be a non-empty context name".to_string(),
-            ToolReason::BadValue,
             "context",
         ));
     }
@@ -530,7 +530,7 @@ pub async fn handle(browser: &Browser, args: &Value) -> Result<Value, ToolErr> {
             "text" => observe_text(browser, target, session).await,
             _ => observe_url(browser, session).await,
         }
-        .map_err(ToolErr::fallback)?;
+        .map_err(ToolErr::from)?;
         let this_checks = match kind {
             "dom" => compare_dom(&expected, &current),
             "ax" => compare_ax(&expected, &current),
