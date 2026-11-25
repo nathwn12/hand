@@ -33,6 +33,10 @@
       "properties.selector",
       "anyOf"
     ],
+    "browser_snapshot": [
+      "properties.context",
+      "properties.page"
+    ],
     "browser_type": [
       "properties.selector",
       "anyOf"
@@ -64,7 +68,9 @@
       "properties.viewport"
     ],
     "browser_snapshot": [
-      "properties.viewport"
+      "properties.viewport",
+      "properties.context",
+      "properties.target"
     ],
     "browser_screenshot": [
       "properties.clip",

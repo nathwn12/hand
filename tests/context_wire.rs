@@ -25,6 +25,13 @@
 //!   reaches a context (and a context cookie never reaches the legacy page),
 //!   and legacy `evaluate` keeps acting on the default page through
 //!   create/select/destroy;
+//! - H12: a context page is READ by `browser_snapshot` and `browser_assert`
+//!   only when the call names it (`context:` plus optional `page:`). The reply
+//!   names the context and page target read, an unknown context or page is a
+//!   typed `invalid_target`/`not_found` that never falls back to the legacy
+//!   page, more than one page without `page:` is a typed
+//!   `invalid_args`/`ambiguous_target` listing them, and a call without
+//!   `context:` still reads the legacy page;
 //! - EOF shutdown with a live isolated context exits 0 in bounded time; in the
 //!   attached case it closes only what hand owns: a second hand client's
 //!   context, page and cookie survive, and the external engine keeps running;
@@ -713,6 +720,267 @@ fn two_contexts_isolate_cookies_and_the_legacy_page_stays_separate() {
     );
 }
 
+
+/// H12: a page in a named context is reachable by `browser_snapshot` and
+/// `browser_assert` through an EXPLICIT `context` argument, and only that way.
+///
+/// The contract this locks:
+/// - `context: "<name>"` renders that context page's own AX tree / text and
+///   runs assertions in its own realm; the reply names the context and the
+///   page target it read;
+/// - `page: "<targetId>"` picks one page when the context holds several; a
+///   context with more than one page and no `page` is a typed
+///   `invalid_args`/`ambiguous_target`, never a first-page guess;
+/// - an unknown context or page is a typed `invalid_target`/`not_found` that
+///   names what was asked for, and NEVER falls back to the legacy page;
+/// - a call without `context` still reads the legacy default page, so a
+///   context snapshot never moves the legacy selection.
+#[test]
+fn named_context_page_is_addressable_by_snapshot_and_assert() {
+    require_pinned_chromium();
+    let fixture = Fixture::start();
+    let base = fixture.base.clone();
+    let mut s = Session::spawn();
+
+    let nav = navigate_with_retry(&mut s, &format!("{base}/legacy"));
+    assert!(!is_error(&nav), "legacy navigate failed: {}", text_of(&nav));
+    assert_eq!(
+        structured(&nav)["title"].as_str(),
+        Some("Legacy Fixture"),
+        "the legacy page must be the fixture's legacy route"
+    );
+
+    let alpha = ok(
+        &mut s,
+        json!({"action": "create", "name": "alpha", "url": format!("{base}/a")}),
+    );
+    assert_eq!(alpha["title"].as_str(), Some("Ctx A"));
+    let alpha_page = alpha["page"]["targetId"]
+        .as_str()
+        .expect("create reports its page target")
+        .to_string();
+
+    let snap = s.call("browser_snapshot", json!({"context": "alpha"}));
+    assert!(
+        !is_error(&snap),
+        "browser_snapshot must reach a named context page: {}",
+        text_of(&snap)
+    );
+    let sc = structured(&snap);
+    assert_eq!(
+        sc["title"].as_str(),
+        Some("Ctx A"),
+        "the snapshot must be the context page's own document: {sc}"
+    );
+    assert_eq!(
+        sc["context"].as_str(),
+        Some("alpha"),
+        "the reply names the context it read: {sc}"
+    );
+    assert_eq!(
+        sc["target"].as_str(),
+        Some(alpha_page.as_str()),
+        "the reply names the page target it read: {sc}"
+    );
+    let nodes = sc["nodes"].as_array().cloned().unwrap_or_default();
+    assert!(
+        nodes.iter().any(|n| {
+            n["role"].as_str() == Some("heading") && n["name"].as_str() == Some("Ctx A")
+        }),
+        "the context page's own AX nodes must be rendered: {sc}"
+    );
+    assert!(
+        text_of(&snap).contains("Ctx A"),
+        "the rendered text is the context page's: {}",
+        text_of(&snap)
+    );
+
+    let text = s.call(
+        "browser_snapshot",
+        json!({"context": "alpha", "mode": "text"}),
+    );
+    assert!(
+        !is_error(&text),
+        "text-mode snapshot must reach a named context page: {}",
+        text_of(&text)
+    );
+    let tsc = structured(&text);
+    assert_eq!(tsc["context"].as_str(), Some("alpha"), "{tsc}");
+    assert!(
+        tsc["text"].as_str().unwrap_or("").contains("Ctx A"),
+        "the text is the context page's own body text: {tsc}"
+    );
+
+    let legacy_after = s.call("browser_snapshot", json!({}));
+    assert_eq!(
+        structured(&legacy_after)["title"].as_str(),
+        Some("Legacy Fixture"),
+        "a context snapshot must not move the legacy snapshot: {}",
+        text_of(&legacy_after)
+    );
+    let legacy_title = s.call("browser_evaluate", json!({"expression": "document.title"}));
+    assert_eq!(
+        structured(&legacy_title)["value"].as_str(),
+        Some("Legacy Fixture"),
+        "a context snapshot must not move the legacy page: {legacy_title}"
+    );
+
+    let unknown = s.call("browser_snapshot", json!({"context": "nope"}));
+    assert!(
+        is_error(&unknown),
+        "an unknown context must be refused, not answered from the legacy page: {}",
+        text_of(&unknown)
+    );
+    assert_eq!(
+        (
+            structured(&unknown)["code"].as_str(),
+            structured(&unknown)["reason"].as_str()
+        ),
+        (Some("invalid_target"), Some("not_found")),
+        "an unknown context is a typed not-found: {}",
+        text_of(&unknown)
+    );
+    assert!(
+        text_of(&unknown).contains("nope"),
+        "the refusal names the context asked for: {}",
+        text_of(&unknown)
+    );
+
+    let checks = [
+        (
+            "url",
+            json!({"context": "alpha", "kind": "url", "expected": {"contains": "/a"}}),
+            true,
+        ),
+        (
+            "dom",
+            json!({"context": "alpha", "kind": "dom", "target": "#next",
+                   "expected": {"exists": true, "text": "legacy"}}),
+            true,
+        ),
+        (
+            "text",
+            json!({"context": "alpha", "kind": "text", "expected": {"contains": "Ctx A"}}),
+            true,
+        ),
+        (
+            "ax",
+            json!({"context": "alpha", "kind": "ax",
+                   "target": "role=heading[name=\"Ctx A\"]",
+                   "expected": {"role": "heading", "name": "Ctx A"}}),
+            true,
+        ),
+    ];
+    for (kind, args, want) in checks {
+        let resp = s.call("browser_assert", args);
+        assert!(
+            !is_error(&resp),
+            "browser_assert kind {kind} must run on the named context page: {}",
+            text_of(&resp)
+        );
+        let asc = structured(&resp);
+        assert_eq!(
+            asc["evidence"]["kind"].as_str(),
+            Some(kind),
+            "the evidence names the kind: {asc}"
+        );
+        let got = match asc["verdict"].as_bool() {
+            Some(b) => b,
+            None => asc["verdict"].as_str() == Some("pass"),
+        };
+        assert_eq!(got, want, "assert kind {kind} on the context page: {asc}");
+    }
+
+    let bad_assert = s.call(
+        "browser_assert",
+        json!({"context": "nope", "kind": "url", "expected": {"contains": "/"}}),
+    );
+    assert!(
+        is_error(&bad_assert),
+        "an assert on an unknown context must be refused: {}",
+        text_of(&bad_assert)
+    );
+    assert_eq!(
+        (
+            structured(&bad_assert)["code"].as_str(),
+            structured(&bad_assert)["reason"].as_str()
+        ),
+        (Some("invalid_target"), Some("not_found")),
+        "an unknown context is a typed not-found: {}",
+        text_of(&bad_assert)
+    );
+
+    let opened = ok(
+        &mut s,
+        json!({"action": "open", "name": "alpha", "url": format!("{base}/b")}),
+    );
+    let second_page = opened["page"]["targetId"]
+        .as_str()
+        .expect("open reports its page target")
+        .to_string();
+    let ambiguous = s.call("browser_snapshot", json!({"context": "alpha"}));
+    assert!(
+        is_error(&ambiguous),
+        "two pages in one context must not be guessed from: {}",
+        text_of(&ambiguous)
+    );
+    assert_eq!(
+        (
+            structured(&ambiguous)["code"].as_str(),
+            structured(&ambiguous)["reason"].as_str()
+        ),
+        (Some("invalid_args"), Some("ambiguous_target")),
+        "the ambiguity is typed: {}",
+        text_of(&ambiguous)
+    );
+    let prose = text_of(&ambiguous);
+    assert!(
+        prose.contains(&alpha_page) && prose.contains(&second_page),
+        "the refusal lists every page it refused to choose between: {prose}"
+    );
+
+    let pinned_page = s.call(
+        "browser_snapshot",
+        json!({"context": "alpha", "page": alpha_page}),
+    );
+    assert!(
+        !is_error(&pinned_page),
+        "an explicit page must select that page: {}",
+        text_of(&pinned_page)
+    );
+    assert_eq!(
+        structured(&pinned_page)["title"].as_str(),
+        Some("Ctx A"),
+        "the pinned page is the one read: {}",
+        text_of(&pinned_page)
+    );
+
+    let wrong_page = s.call(
+        "browser_snapshot",
+        json!({"context": "alpha", "page": "not-a-target"}),
+    );
+    assert!(
+        is_error(&wrong_page),
+        "an unknown page in a known context must be refused: {}",
+        text_of(&wrong_page)
+    );
+    assert_eq!(
+        (
+            structured(&wrong_page)["code"].as_str(),
+            structured(&wrong_page)["reason"].as_str()
+        ),
+        (Some("invalid_target"), Some("not_found")),
+        "an unknown page is a typed not-found: {}",
+        text_of(&wrong_page)
+    );
+
+    let legacy_final = s.call("browser_evaluate", json!({"expression": "document.title"}));
+    assert_eq!(
+        structured(&legacy_final)["value"].as_str(),
+        Some("Legacy Fixture"),
+        "no context call moved the legacy page: {legacy_final}"
+    );
+}
 
 /// An engine this test launched but hand does not own: it stands in for
 /// "someone else's browser" that a client attaches to.

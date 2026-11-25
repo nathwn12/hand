@@ -270,7 +270,14 @@ total.
      call stays valid; `browser_type` still requires `text` and `browser_upload`
      still requires `paths`. `browser_screenshot` never required a target and
      has no `anyOf`. The dispatcher refuses a call that passes both keys with a
-     typed `invalid_args`/`ambiguous_target` error.
+     typed `invalid_args`/`ambiguous_target` error. `browser_snapshot` adds
+     `properties.context` and `properties.page`: they address a page of a named
+     isolated browser context explicitly (the context's own page session), and
+     a call that passes neither is the historic legacy-page snapshot. Its
+     output adds `properties.context` and `properties.target`, naming the
+     context and page target that answered. `browser_assert` is a hand
+     addition, so its `context`/`page` inputs and its `context`/`target`
+     evidence are not a floor comparison.
    - `metadata.description`: `browser_click`, `browser_type`, `browser_upload`,
      `browser_hover`, `browser_select`, `browser_snapshot` and
      `browser_screenshot` have a rewritten description, because each one now

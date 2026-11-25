@@ -20,7 +20,13 @@
 //!   any session the caller supplies, and that is documented, not hidden;
 //! - `select` sets the default for THIS tool's actions only. Legacy
 //!   `browser_*` tools keep acting on the legacy default page, and every
-//!   result that could be misread says so (`selectedAffects`).
+//!   result that could be misread says so (`selectedAffects`). The one
+//!   exception is EXPLICIT addressing, never implicit routing:
+//!   `browser_snapshot`/`browser_assert` take `context: "<name>"` (plus
+//!   `page: "<targetId>"` when the context holds several pages) and then read
+//!   that context page's own AX tree or realm through the page's own session
+//!   (`Browser::context_page`). Nothing about that call moves the legacy
+//!   selection, the legacy ref table or this tool's registry default.
 //!
 //! Resource ownership (the part that has to survive cancellation):
 //! - a context is registered as `phase: creating` BEFORE the first CDP call,

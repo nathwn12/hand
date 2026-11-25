@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- H12: `browser_snapshot` and `browser_assert` reach a named isolated browser context page through an explicit `context:` argument (plus `page:` when the context holds several pages). The reply names the context and page target read. An unknown context or page is a typed `invalid_target`/`not_found` that never falls back to the legacy page; several pages without `page:` is a typed `invalid_args`/`ambiguous_target` listing them. A call without `context:` reads the legacy page unchanged, and `targets select` still refuses a context page.
+
 ## [0.3.2] - 2026-11-24
 
 ### Fixed

@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 use serde_json::{json, Value};
 
 use crate::browser::Browser;
-use crate::tools::{check_unknown, ok_text, ToolCode, ToolErr, ToolReason};
+use crate::tools::{check_unknown, ok_text, typed_marker, ToolCode, ToolErr, ToolReason};
 
 /// Row id this module owns. The stub test reads it; lib code does not.
 #[cfg_attr(not(test), allow(dead_code))]
@@ -23,13 +23,15 @@ pub fn schema() -> Value {
     json!({
         "name": "assert",
         "title": "Browser assert",
-        "description": "Assert against the live page with bounded polling. kind dom checks a CSS selector or @eN ref for existence, text and attributes; kind ax matches a role and accessible name on the same Accessibility tree browser_snapshot reads (target forms: role=<role>, role=<role>[name=\\\"<name>\\\"], name=\\\"<name>\\\"; expected {role, name}); kind text checks visible text with contains/equals; kind url checks the current location with equals/contains or a small bounded wildcard pattern (^, $, .*). Every reply carries expected, observed, verdict, evidence and elapsedMs. dom/text/url return a boolean verdict; ax returns the string pass or fail. A check still false at the poll budget returns that verdict with the last observed value, not a timeout. network is typed not_implemented.",
+        "description": "Assert against the live page with bounded polling. kind dom checks a CSS selector or @eN ref for existence, text and attributes; kind ax matches a role and accessible name on the same Accessibility tree browser_snapshot reads (target forms: role=<role>, role=<role>[name=\\\"<name>\\\"], name=\\\"<name>\\\"; expected {role, name}); kind text checks visible text with contains/equals; kind url checks the current location with equals/contains or a small bounded wildcard pattern (^, $, .*). Every reply carries expected, observed, verdict, evidence and elapsedMs. dom/text/url return a boolean verdict; ax returns the string pass or fail. A check still false at the poll budget returns that verdict with the last observed value, not a timeout. network is typed not_implemented. context=<name> asserts against a page of that NAMED isolated browser context instead of the legacy page (without page=, a context holding more than one page is a typed invalid_args/ambiguous_target listing every targetId; an unknown context or page is a typed invalid_target/not_found and never falls back to the legacy page). A @eN ref is legacy-page bound, so target= with context= must be a CSS or AX selector.",
         "inputSchema": {"type": "object", "properties": {
             "kind": {"type": "string", "enum": ["dom", "ax", "text", "url", "network"]},
             "target": {},
             "expected": {},
             "timeoutMs": {"type": "integer", "minimum": 0},
-            "pollMs": {"type": "integer", "minimum": 0}
+            "pollMs": {"type": "integer", "minimum": 0},
+            "context": {"type": "string", "description": "assert against a page of this named isolated browser context instead of the legacy page"},
+            "page": {"type": "string", "description": "targetId of the context page to assert against; required when the context holds more than one page"}
         }, "required": ["kind", "expected"], "additionalProperties": false},
         "outputSchema": {"type": "object", "properties": {
             "expected": {},
@@ -169,7 +171,24 @@ fn compare_url(expected: &Value, observed: &Value) -> Vec<Value> {
     vec![check(name, json!(want), json!(got), pass)]
 }
 
-async fn observe_dom(browser: &Browser, target: Option<&str>) -> Result<Value, String> {
+/// Evaluate in the assertion's realm: a named context page session when one
+/// was resolved, the legacy active page otherwise.
+async fn eval_in(
+    browser: &Browser,
+    session: Option<&str>,
+    expression: &str,
+) -> Result<Value, String> {
+    match session {
+        Some(s) => browser.eval_in_session(s, expression).await,
+        None => browser.eval(expression).await,
+    }
+}
+
+async fn observe_dom(
+    browser: &Browser,
+    target: Option<&str>,
+    session: Option<&str>,
+) -> Result<Value, String> {
     let node_fn = "function(el){var a={};var isEl=!!(el&&el.nodeType===1);if(isEl){for(var i=0;i<el.attributes.length;i++)a[el.attributes[i].name]=el.attributes[i].value;}var t=(el&&(el.innerText||el.textContent))||'';return JSON.stringify({exists:true,tag:isEl?el.tagName:(el?el.nodeName:''),text:String(t).trim(),attributes:a,count:1});}";
     if let Some(raw) = target {
         // Snapshot nodes carry `ref: "eN"` while the prose form is `@eN`.
@@ -179,6 +198,17 @@ async fn observe_dom(browser: &Browser, target: Option<&str>) -> Result<Value, S
             (!digits.is_empty() && digits.chars().all(|c| c.is_ascii_digit())).then_some(raw)
         });
         if let Some(id) = as_ref {
+            if session.is_some() {
+                return Err(typed_marker(
+                    ToolCode::InvalidArgs,
+                    ToolReason::BadValue,
+                    &format!(
+                        "browser_assert: ref @{id} is bound to the legacy page's last snapshot, so it \
+                         cannot be asserted in a named context page; pass a CSS or AX selector with \
+                         context="
+                    ),
+                ));
+            }
             let backend = browser
                 .ref_backend(id)
                 .await
@@ -214,14 +244,18 @@ async fn observe_dom(browser: &Browser, target: Option<&str>) -> Result<Value, S
          var a={{}};for(var i=0;i<el.attributes.length;i++)a[el.attributes[i].name]=el.attributes[i].value; \
          return JSON.stringify({{exists:true,text:((el.innerText||el.textContent||'')+'').trim(),attributes:a,count:document.querySelectorAll({sel}).length}}); }})()"
     );
-    let value = browser.eval(&expr).await?;
+    let value = eval_in(browser, session, &expr).await?;
     let text = value
         .as_str()
         .ok_or_else(|| "browser_assert: DOM evaluation returned no string".to_string())?;
     serde_json::from_str(text).map_err(|e| format!("browser_assert: bad DOM observation: {e}"))
 }
 
-async fn observe_text(browser: &Browser, target: Option<&str>) -> Result<Value, String> {
+async fn observe_text(
+    browser: &Browser,
+    target: Option<&str>,
+    session: Option<&str>,
+) -> Result<Value, String> {
     let expr = match target {
         Some(sel) => format!(
             "(() => {{ var el = document.querySelector({}); return ((el && (el.innerText||el.textContent)) || '') + ''; }})()",
@@ -229,12 +263,12 @@ async fn observe_text(browser: &Browser, target: Option<&str>) -> Result<Value, 
         ),
         None => "(() => ((document.body||document.documentElement).innerText||'') + '')()".to_string(),
     };
-    let value = browser.eval(&expr).await?;
+    let value = eval_in(browser, session, &expr).await?;
     Ok(json!({"text": value.as_str().unwrap_or("").trim()}))
 }
 
-async fn observe_url(browser: &Browser) -> Result<Value, String> {
-    let value = browser.eval("location.href").await?;
+async fn observe_url(browser: &Browser, session: Option<&str>) -> Result<Value, String> {
+    let value = eval_in(browser, session, "location.href").await?;
     Ok(json!({"url": value.as_str().unwrap_or("")}))
 }
 
@@ -297,9 +331,17 @@ fn ax_target(target: Option<&str>, expected: &Value) -> (Option<String>, Option<
 /// lowercased, and names are whitespace-collapsed and capped at 80 characters.
 /// No DOM write, no synthetic AX node, no verdict minted from a tree this read
 /// did not return.
-async fn observe_ax(browser: &Browser, target: Option<&str>, expected: &Value) -> Result<Value, String> {
+async fn observe_ax(
+    browser: &Browser,
+    target: Option<&str>,
+    expected: &Value,
+    session: Option<&str>,
+) -> Result<Value, String> {
     let (want_role, want_name) = ax_target(target, expected);
-    let tree = browser.ax_tree(None).await?;
+    let tree = match session {
+        Some(s) => browser.ax_tree_in_session(s, None).await?,
+        None => browser.ax_tree(None).await?,
+    };
     let empty = Vec::new();
     let nodes = tree.get("nodes").and_then(|v| v.as_array()).unwrap_or(&empty);
     let mut candidates: Vec<Value> = Vec::new();
@@ -395,7 +437,7 @@ pub async fn handle(browser: &Browser, args: &Value) -> Result<Value, ToolErr> {
     if let Err(e) = check_unknown(
         "browser_assert",
         args,
-        &["kind", "target", "expected", "timeoutMs", "pollMs"],
+        &["kind", "target", "expected", "timeoutMs", "pollMs", "context", "page"],
     ) {
         return Err(e);
     }
@@ -421,6 +463,23 @@ pub async fn handle(browser: &Browser, args: &Value) -> Result<Value, ToolErr> {
         return Err(invalid("browser_assert: dom 'expected' must be an object".to_string(), ToolReason::BadValue, "expected"));
     }
     let target = args.get("target").and_then(|v| v.as_str());
+    let want_context = args.get("context").and_then(|v| v.as_str());
+    let want_page = args.get("page").and_then(|v| v.as_str());
+    if want_page.is_some() && want_context.is_none() {
+        return Err(invalid(
+            "browser_assert: 'page' names a page inside a named context; pass 'context' with it"
+                .to_string(),
+            ToolReason::MissingArg,
+            "context",
+        ));
+    }
+    if want_context == Some("") {
+        return Err(invalid(
+            "browser_assert: 'context' must be a non-empty context name".to_string(),
+            ToolReason::BadValue,
+            "context",
+        ));
+    }
     if kind == "dom" && target.is_none() {
         return Err(invalid("browser_assert: dom needs 'target' (a selector or @eN ref)".to_string(), ToolReason::MissingArg, "target"));
     }
@@ -431,6 +490,18 @@ pub async fn handle(browser: &Browser, args: &Value) -> Result<Value, ToolErr> {
             "target",
         ));
     }
+    // Resolved ONCE: every poll observes the same page, and a page that
+    // disappears mid-assert surfaces the failed read instead of a retarget.
+    let page_ctx = match want_context {
+        Some(name) => Some(
+            browser
+                .context_page(name, want_page)
+                .await
+                .map_err(ToolErr::from)?,
+        ),
+        None => None,
+    };
+    let session = page_ctx.as_ref().map(|p| p.session.as_str());
     let timeout_ms = match args.get("timeoutMs") {
         None => 5_000u64,
         Some(v) => v.as_u64().ok_or_else(|| {
@@ -454,10 +525,10 @@ pub async fn handle(browser: &Browser, args: &Value) -> Result<Value, ToolErr> {
     let verdict: bool;
     loop {
         let current = match kind {
-            "dom" => observe_dom(browser, target).await,
-            "ax" => observe_ax(browser, target, &expected).await,
-            "text" => observe_text(browser, target).await,
-            _ => observe_url(browser).await,
+            "dom" => observe_dom(browser, target, session).await,
+            "ax" => observe_ax(browser, target, &expected, session).await,
+            "text" => observe_text(browser, target, session).await,
+            _ => observe_url(browser, session).await,
         }
         .map_err(ToolErr::fallback)?;
         let this_checks = match kind {
@@ -490,11 +561,16 @@ pub async fn handle(browser: &Browser, args: &Value) -> Result<Value, ToolErr> {
     } else {
         json!(verdict)
     };
+    let mut evidence = json!({"kind": kind, "checks": checks, "polls": polls, "budgetMs": timeout_ms});
+    if let (Some(cp), Some(obj)) = (&page_ctx, evidence.as_object_mut()) {
+        obj.insert("context".to_string(), json!(cp.context));
+        obj.insert("target".to_string(), json!(cp.target));
+    }
     let body = json!({
         "expected": expected,
         "observed": observed,
         "verdict": verdict_value,
-        "evidence": {"kind": kind, "checks": checks, "polls": polls, "budgetMs": timeout_ms},
+        "evidence": evidence,
         "elapsedMs": started.elapsed().as_millis() as u64
     });
     Ok(ok_text(body.to_string()))

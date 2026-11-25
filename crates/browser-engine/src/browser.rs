@@ -549,12 +549,27 @@ pub struct SnapshotCache {
     pub id: String,
     pub mode: String,
     pub frame: String,
+    /// Which realm the render read: empty for the legacy page, otherwise the
+    /// context scope (`context:<name>#<targetId>`). Paging validates it, so a
+    /// context render never pages a legacy snapshot or another page's render.
+    pub scope: String,
     pub lines: Vec<String>,
     pub text: String,
     pub url: String,
     pub title: String,
     pub nodes: Vec<Value>,
     pub start: usize,
+}
+
+/// One page of a named isolated browser context, resolved for an explicit
+/// context-scoped tool call. `session` is the child session that reads and
+/// evaluates on that page; the legacy page session is untouched.
+pub struct ContextPage {
+    pub context: String,
+    pub target: String,
+    pub session: String,
+    pub url: String,
+    pub title: String,
 }
 
 /// Restores CDP drag interception whenever it goes out of scope. `disable`
@@ -836,6 +851,188 @@ impl Browser {
             .unwrap()
             .get(browser_context_id)
             .cloned()
+    }
+
+    /// One page of a named isolated browser context, resolved for an EXPLICIT
+    /// context-scoped tool call (`context:` on `snapshot`/`assert`).
+    ///
+    /// The legacy active page is never involved: a context page is addressed
+    /// only when the caller names its context, and nothing here changes the
+    /// legacy selection, the legacy ref table or a context's registry default.
+    pub async fn context_page(
+        &self,
+        name: &str,
+        page: Option<&str>,
+    ) -> Result<ContextPage, String> {
+        let shared = self.shared().await?;
+        let excluded = self.excluded_browser_contexts();
+        let mut known: Vec<&str> = excluded.values().map(String::as_str).collect();
+        known.sort_unstable();
+        let known_list = if known.is_empty() {
+            "none".to_string()
+        } else {
+            known.join(", ")
+        };
+        let Some(context_id) = excluded
+            .iter()
+            .find(|(_, n)| n.as_str() == name)
+            .map(|(id, _)| id.clone())
+        else {
+            return Err(typed_marker(
+                ToolCode::InvalidTarget,
+                ToolReason::NotFound,
+                &format!(
+                    "context: no isolated browser context named '{name}' on this connection \
+                     (known: {known_list}); nothing was read and the legacy page was not used \
+                     instead - list them with browser_context list"
+                ),
+            ));
+        };
+        let targets = send_raw(&shared, "Target.getTargets", json!({}), None).await?;
+        let empty = Vec::new();
+        let infos = targets
+            .get("targetInfos")
+            .and_then(|v| v.as_array())
+            .unwrap_or(&empty);
+        let mut pages: Vec<(String, String, String)> = infos
+            .iter()
+            .filter(|t| {
+                t.get("type").and_then(|v| v.as_str()) == Some("page")
+                    && t.get("browserContextId").and_then(|v| v.as_str())
+                        == Some(context_id.as_str())
+            })
+            .map(|t| {
+                (
+                    t.get("targetId").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                    t.get("url").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                    t.get("title").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                )
+            })
+            .filter(|(id, _, _)| !id.is_empty())
+            .collect();
+        pages.sort_by(|a, b| a.0.cmp(&b.0));
+        let described = |list: &[(String, String, String)]| {
+            list.iter()
+                .map(|(id, url, _)| format!("{id} ({url})"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        let (target, url, title) = match page {
+            Some(want) => match pages.iter().find(|(id, _, _)| id == want) {
+                Some((id, url, title)) => (id.clone(), url.clone(), title.clone()),
+                None => {
+                    return Err(typed_marker(
+                        ToolCode::InvalidTarget,
+                        ToolReason::NotFound,
+                        &format!(
+                            "context '{name}' holds no page with targetId '{want}' (pages: {}); \
+                             nothing was read",
+                            described(&pages)
+                        ),
+                    ))
+                }
+            },
+            None => match pages.as_slice() {
+                [] => {
+                    let present = send_raw(
+                        &shared,
+                        "Target.getBrowserContexts",
+                        json!({}),
+                        None,
+                    )
+                    .await
+                    .ok()
+                    .and_then(|v| {
+                        v.get("browserContextIds")
+                            .and_then(|x| x.as_array())
+                            .map(|ids| {
+                                ids.iter()
+                                    .any(|i| i.as_str() == Some(context_id.as_str()))
+                            })
+                    });
+                    let why = match present {
+                        Some(false) => format!(
+                            "context '{name}' is not present in this engine any more (it was \
+                             created on an engine that is gone); browser_context list reconciles \
+                             the registry, and nothing was read"
+                        ),
+                        _ => format!(
+                            "context '{name}' has no page in this engine; open one with \
+                             browser_context open, then retry"
+                        ),
+                    };
+                    return Err(typed_marker(
+                        ToolCode::InvalidTarget,
+                        ToolReason::NotFound,
+                        &why,
+                    ))
+                }
+                [only] => (only.0.clone(), only.1.clone(), only.2.clone()),
+                many => {
+                    return Err(typed_marker(
+                        ToolCode::InvalidArgs,
+                        ToolReason::AmbiguousTarget,
+                        &format!(
+                            "context '{name}' holds {} pages and this tool will not guess which \
+                             one you meant; pass 'page' with one targetId: {}",
+                            many.len(),
+                            described(many)
+                        ),
+                    ))
+                }
+            },
+        };
+        let cached = shared.extra_sessions.lock().await.get(&target).cloned();
+        let session = match cached {
+            Some(s) => s,
+            None => {
+                let attached = send_raw(
+                    &shared,
+                    "Target.attachToTarget",
+                    json!({"targetId": target, "flatten": true}),
+                    None,
+                )
+                .await
+                .map_err(|e| {
+                    typed_marker(
+                        ToolCode::InvalidTarget,
+                        ToolReason::Unreachable,
+                        &format!(
+                            "context '{name}': cannot attach to its page {target} ({e}); nothing \
+                             was read"
+                        ),
+                    )
+                })?;
+                let s = attached
+                    .get("sessionId")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| {
+                        typed_marker(
+                            ToolCode::InvalidTarget,
+                            ToolReason::Unreachable,
+                            &format!(
+                                "context '{name}': attaching to its page {target} returned no \
+                                 sessionId; nothing was read"
+                            ),
+                        )
+                    })?
+                    .to_string();
+                let _ = send_raw(&shared, "Runtime.enable", json!({}), Some(s.clone())).await;
+                shared
+                    .extra_sessions
+                    .lock()
+                    .await
+                    .insert(target.clone(), s.clone());
+                s
+            }
+        };
+        Ok(ContextPage {
+            context: name.to_string(),
+            target,
+            session,
+            url,
+            title,
+        })
     }
 
     /// Store the ref table from the latest AX snapshot (`eN` -> entry).
@@ -2640,8 +2837,10 @@ impl Browser {
                 ToolReason::NotFound,
                 &format!(
                     "targets: target {target_id} belongs to isolated browser context '{name}' \
-                     (legacy tabs and select cover the default context only; use the context \
-                     tool for that page)"
+                     (legacy tabs and select cover the default context only, and select never moves \
+                     the legacy page onto a context page; address it explicitly with \
+                     browser_snapshot or browser_assert context=\"{name}\", or use the context tool \
+                     for that page)"
                 ),
             ));
         }

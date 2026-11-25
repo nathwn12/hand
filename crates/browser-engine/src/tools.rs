@@ -31,8 +31,8 @@ pub fn list() -> Value {
             "required": ["url", "title"], "additionalProperties": false},
          "annotations": {"readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": true}},
         {"name": "snapshot", "title": "Snapshot",
-         "description": "Snapshot: one line per node with a stable ref (@eN, unique per snapshot), role/name/value, plus page text. Default is the real Accessibility tree of the page itself: open shadow roots are included, iframe content is NOT part of this tree (snapshot the frame with frame= to see inside it), and hidden/ignored subtrees are excluded. mode:\"legacy\" keeps the old DOM heuristic (the only path that stamps an attribute into the page); mode:\"text\" is text-only. frame=<CDP frameId> from targets scopes the snapshot to that iframe: a same-process frame is read on the page session, a mapped out-of-process frame (OOPIF) is read on its own session, and an OOPIF with no mapped session is a typed error rather than the page's tree. AX refs resolve by backend node id, so a shadow ref is actionable exactly like a light-DOM ref. Paging: pass the snapshotId from the offset:0 render with offset>0 (required; paging slices that render and never re-renders).",
-         "inputSchema": {"type": "object", "properties": {"mode": {"type": "string", "enum": ["ax", "legacy", "text"]}, "frame": {"type": "string"}, "offset": {"type": "integer", "minimum": 0, "default": 0}, "snapshotId": {"type": "string", "description": "required when offset > 0: the id returned by the offset:0 render"}}, "additionalProperties": false},
+         "description": "Snapshot: one line per node with a stable ref (@eN, unique per snapshot), role/name/value, plus page text. Default is the real Accessibility tree of the page itself: open shadow roots are included, iframe content is NOT part of this tree (snapshot the frame with frame= to see inside it), and hidden/ignored subtrees are excluded. mode:\"legacy\" keeps the old DOM heuristic (the only path that stamps an attribute into the page); mode:\"text\" is text-only. frame=<CDP frameId> from targets scopes the snapshot to that iframe: a same-process frame is read on the page session, a mapped out-of-process frame (OOPIF) is read on its own session, and an OOPIF with no mapped session is a typed error rather than the page's tree. AX refs resolve by backend node id, so a shadow ref is actionable exactly like a light-DOM ref. Paging: pass the snapshotId from the offset:0 render with offset>0 (required; paging slices that render and never re-renders). context=<name> reads a page of that NAMED isolated browser context instead of the legacy page (the name from browser_context create/list): the reply names the context and the page targetId it read, and the legacy page, its selection and its refs are untouched. Without page=, a context holding exactly one page is read; a context holding several is a typed invalid_args/ambiguous_target listing every targetId, and an unknown context or page is a typed invalid_target/not_found that never falls back to the legacy page. Refs minted from a context page are read-only labels for that render: the legacy action tools still address the legacy page. mode:\"legacy\" and frame= are refused with context= (frame-scoped refs do not exist for context pages).",
+         "inputSchema": {"type": "object", "properties": {"mode": {"type": "string", "enum": ["ax", "legacy", "text"]}, "frame": {"type": "string"}, "offset": {"type": "integer", "minimum": 0, "default": 0}, "snapshotId": {"type": "string", "description": "required when offset > 0: the id returned by the offset:0 render"}, "context": {"type": "string", "description": "read a page of this named isolated browser context instead of the legacy page"}, "page": {"type": "string", "description": "targetId of the context page to read; required when the context holds more than one page"}}, "additionalProperties": false},
          "outputSchema": {"type": "object",
             "properties": {
                 "url": {"type": "string"}, "title": {"type": "string"},
@@ -47,6 +47,7 @@ pub fn list() -> Value {
                 "offset": {"type": "integer", "minimum": 0},
                 "totalLines": {"type": "integer", "minimum": 0},
                 "nextOffset": {"type": ["integer", "null"]},
+                "context": {"type": "string"}, "target": {"type": "string"},
                 "mode": {"type": "string"}, "text": {"type": "string"},
                 "viewport": {"type": "object", "properties": {"width": {"type": "integer"}, "height": {"type": "integer"}}, "required": ["width", "height"]}},
             "required": [], "additionalProperties": false,
@@ -981,9 +982,11 @@ pub async fn call(name: &str, args: &Value, browser: &Browser) -> Value {
             tool_navigate(browser, &url).await
         }
         "snapshot" => {
-            if let Err(e) =
-                check_unknown("snapshot", args, &["mode", "frame", "offset", "snapshotId"])
-            {
+            if let Err(e) = check_unknown(
+                "snapshot",
+                args,
+                &["mode", "frame", "offset", "snapshotId", "context", "page"],
+            ) {
                 return e.envelope();
             }
             let offset = match args.get("offset") {
@@ -1005,6 +1008,8 @@ pub async fn call(name: &str, args: &Value, browser: &Browser) -> Value {
                 args.get("frame").and_then(|v| v.as_str()),
                 offset,
                 args.get("snapshotId").and_then(|v| v.as_str()),
+                args.get("context").and_then(|v| v.as_str()),
+                args.get("page").and_then(|v| v.as_str()),
             )
             .await
         }
@@ -2914,6 +2919,7 @@ async fn emit_paged_snapshot(
     title: String,
     items: Vec<Value>,
     text: String,
+    scope: &SnapScope,
 ) -> Result<Value, ToolErr> {
     if offset > 0 && snapshot_id.is_none() {
         return Err(ToolErr::typed(
@@ -2950,6 +2956,7 @@ async fn emit_paged_snapshot(
             id: browser.next_snapshot_id(),
             mode: mode.to_string(),
             frame: frame.unwrap_or("").to_string(),
+            scope: scope.label.clone(),
             lines,
             text,
             url,
@@ -2982,6 +2989,24 @@ async fn emit_paged_snapshot(
         if c.mode != mode || c.frame != frame.unwrap_or("") {
             return Err(ToolErr::typed(
                 "snapshot: offset paging must use the same mode/frame as the cached render; re-snapshot from offset 0".to_string(),
+                json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::SnapshotExpired.as_str(), "tool": "snapshot", "offset": offset}),
+            ));
+        }
+        if c.scope != scope.label {
+            return Err(ToolErr::typed(
+                format!(
+                    "snapshot: the cached render belongs to {} and this call reads {}; re-snapshot from offset 0",
+                    if c.scope.is_empty() {
+                        "the legacy page".to_string()
+                    } else {
+                        c.scope.clone()
+                    },
+                    if scope.label.is_empty() {
+                        "the legacy page".to_string()
+                    } else {
+                        scope.label.clone()
+                    }
+                ),
                 json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::SnapshotExpired.as_str(), "tool": "snapshot", "offset": offset}),
             ));
         }
@@ -3075,14 +3100,21 @@ async fn emit_paged_snapshot(
     } else {
         Vec::new()
     };
+    let mut structured = json!({
+        "url": cache.url, "title": cache.title, "truncated": truncated,
+        "nodes": nodes, "snapshotId": cache.id,
+        "offset": offset, "totalLines": total_lines,
+        "nextOffset": match next { Some(n) => json!(n), None => Value::Null },
+    });
+    if let Some(obj) = structured.as_object_mut() {
+        if let (Some(ctx), Some(tgt)) = (&scope.context, &scope.target) {
+            obj.insert("context".to_string(), json!(ctx));
+            obj.insert("target".to_string(), json!(tgt));
+        }
+    }
     Ok(ok_snapshot(
         full,
-        json!({
-            "url": cache.url, "title": cache.title, "truncated": truncated,
-            "nodes": nodes, "snapshotId": cache.id,
-            "offset": offset, "totalLines": total_lines,
-            "nextOffset": match next { Some(n) => json!(n), None => Value::Null },
-        }),
+        structured,
     ))
 }
 
@@ -3111,13 +3143,63 @@ fn echo_viewport(mut envelope: Value, viewport: &Value) -> Value {
     envelope
 }
 
+/// Which realm a snapshot read. The empty scope is the legacy page; a context
+/// read is labelled `context:<name>#<targetId>` so paging can never slice
+/// another realm's render.
+#[derive(Clone, Default)]
+struct SnapScope {
+    label: String,
+    context: Option<String>,
+    target: Option<String>,
+}
+
 async fn tool_snapshot(
     browser: &Browser,
     mode: Option<&str>,
     frame: Option<&str>,
     offset: usize,
     snapshot_id: Option<&str>,
+    context: Option<&str>,
+    page: Option<&str>,
 ) -> Result<Value, ToolErr> {
+    if page.is_some() && context.is_none() {
+        return Err(ToolErr::typed(
+            "snapshot: 'page' names a page inside a named context; pass 'context' with it"
+                .to_string(),
+            json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::MissingArg.as_str(), "tool": "snapshot", "arg": "context"}),
+        ));
+    }
+    if context.is_some() && frame.is_some() {
+        return Err(ToolErr::typed(
+            "snapshot: 'frame' scopes the legacy page's tree and 'context' reads a context page; \
+             pass one (frame-scoped refs do not exist for context pages)"
+                .to_string(),
+            json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "snapshot", "arg": "frame"}),
+        ));
+    }
+    if context == Some("") {
+        return Err(ToolErr::typed(
+            "snapshot: 'context' must be a non-empty context name".to_string(),
+            json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "snapshot", "arg": "context"}),
+        ));
+    }
+    let page_ctx = match context {
+        Some(name) => Some(
+            browser
+                .context_page(name, page)
+                .await
+                .map_err(ToolErr::from)?,
+        ),
+        None => None,
+    };
+    let scope = match &page_ctx {
+        Some(cp) => SnapScope {
+            label: format!("context:{}#{}", cp.context, cp.target),
+            context: Some(cp.context.clone()),
+            target: Some(cp.target.clone()),
+        },
+        None => SnapScope::default(),
+    };
     let result = match mode {
         Some("text") => {
             if offset > 0 {
@@ -3126,8 +3208,14 @@ async fn tool_snapshot(
                     json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "snapshot", "arg": "offset"}),
                 ));
             }
-            tool_snapshot_text_frame(browser, frame).await
+            tool_snapshot_text_frame(browser, frame, page_ctx.as_ref()).await
         }
+        Some("legacy") if page_ctx.is_some() => Err(ToolErr::typed(
+            "snapshot: mode 'legacy' reads the legacy DOM and stamps refs into it, so it does not \
+             read a context page; use the default AX mode (or mode \"text\") with context="
+                .to_string(),
+            json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "snapshot", "arg": "mode"}),
+        )),
         Some("legacy") if offset > 0 => {
             emit_paged_snapshot(
                 browser,
@@ -3140,6 +3228,7 @@ async fn tool_snapshot(
                 String::new(),
                 Vec::new(),
                 String::new(),
+                &scope,
             )
             .await
         }
@@ -3155,17 +3244,25 @@ async fn tool_snapshot(
                 String::new(),
                 Vec::new(),
                 String::new(),
+                &scope,
             )
             .await
         }
         Some("legacy") => tool_snapshot_legacy(browser, frame, offset, snapshot_id).await,
-        Some("ax") | None => tool_snapshot_ax(browser, frame, offset, snapshot_id).await,
+        Some("ax") | None => {
+            tool_snapshot_ax(browser, frame, offset, snapshot_id, page_ctx.as_ref()).await
+        }
         Some(other) => Err(ToolErr::typed(
             format!("snapshot: unknown mode '{other}' (want 'ax'|'legacy'|'text')"),
             json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "snapshot", "arg": "mode", "want": other}),
         )),
     };
     let result = result?;
+    if page_ctx.is_some() {
+        // The context page's viewport is not the legacy one, so the legacy
+        // read-back would be a claim about the wrong page. Omit it.
+        return Ok(result);
+    }
     if let Ok((w, h, _)) = browser.viewport_readback().await {
         Ok(echo_viewport(result, &json!({"width": w, "height": h})))
     } else {
@@ -3304,6 +3401,7 @@ async fn tool_snapshot_legacy(
         title,
         items_owned,
         text,
+        &SnapScope::default(),
     )
     .await
 }
@@ -3540,10 +3638,22 @@ async fn tool_snapshot_ax(
     frame: Option<&str>,
     offset: usize,
     snapshot_id: Option<&str>,
+    page: Option<&crate::browser::ContextPage>,
 ) -> Result<Value, ToolErr> {
     let _snap_guard = browser.lock_snapshot().await;
     let start = browser.ref_start();
-    let (tree, frame_session) = frame_ax_tree(browser, "snapshot", frame).await?;
+    let (tree, frame_session) = match page {
+        // A context page owns its own session: its AX tree and every backend
+        // id in it are read there, never on the legacy page session.
+        Some(cp) => (
+            browser
+                .ax_tree_in_session(&cp.session, None)
+                .await
+                .map_err(ToolErr::from)?,
+            Some(cp.session.clone()),
+        ),
+        None => frame_ax_tree(browser, "snapshot", frame).await?,
+    };
     let empty_nodes = Vec::new();
     let ax_nodes = tree
         .get("nodes")
@@ -3619,7 +3729,9 @@ async fn tool_snapshot_ax(
             ax_disabled: disabled,
         });
     }
-    browser.command("DOM.enable", json!({}), true).await?;
+    if page.is_none() {
+        browser.command("DOM.enable", json!({}), true).await?;
+    }
     let mut resolves = Vec::with_capacity(cands.len());
     for c in cands.iter() {
         let backend = c.backend;
@@ -3724,8 +3836,43 @@ async fn tool_snapshot_ax(
             }
         }
     }
-    let (url, title, text) = match frame {
-        Some(fid) => {
+    let (url, title, text) = match (page, frame) {
+        (Some(cp), _) => {
+            let pair = browser
+                .eval_in_session(&cp.session, "[window.location.href, document.title]")
+                .await
+                .ok();
+            // A live read is the evidence; the target record is the stated
+            // fallback (and the reply never invents an empty title).
+            let u = pair
+                .as_ref()
+                .and_then(|v| v.get(0))
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .unwrap_or_else(|| cp.url.clone());
+            let t = pair
+                .as_ref()
+                .and_then(|v| v.get(1))
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .unwrap_or_else(|| cp.title.clone());
+            let tx = browser
+                .eval_in_session(
+                    &cp.session,
+                    "((((document.body && document.body.innerText) || (document.documentElement && document.documentElement.innerText) || '')) + '').slice(0, 12000)",
+                )
+                .await
+                .ok()
+                .and_then(|x| x.as_str().map(|s| s.to_string()))
+                .unwrap_or_default()
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ");
+            (u, t, tx)
+        }
+        (None, Some(fid)) => {
             let pair = frame_realm_eval(
                 browser,
                 "snapshot",
@@ -3759,7 +3906,7 @@ async fn tool_snapshot_ax(
             let tx = tv.split_whitespace().collect::<Vec<_>>().join(" ");
             (u, t, tx)
         }
-        None => {
+        (None, None) => {
             let uv = browser.eval("window.location.href").await.ok();
             let u = uv
                 .and_then(|x| x.as_str().map(|s| s.to_string()))
@@ -3797,16 +3944,26 @@ async fn tool_snapshot_ax(
             );
         }
     }
-    let snap_url = match frame {
-        Some(_) => browser
-            .eval("window.location.href")
-            .await
-            .ok()
-            .and_then(|v| v.as_str().map(str::to_string))
-            .unwrap_or_default(),
-        None => url.clone(),
+    let scope = match page {
+        Some(cp) => SnapScope {
+            label: format!("context:{}#{}", cp.context, cp.target),
+            context: Some(cp.context.clone()),
+            target: Some(cp.target.clone()),
+        },
+        None => SnapScope::default(),
     };
-    browser.store_refs(snap_url, table).await;
+    if page.is_none() {
+        let snap_url = match frame {
+            Some(_) => browser
+                .eval("window.location.href")
+                .await
+                .ok()
+                .and_then(|v| v.as_str().map(str::to_string))
+                .unwrap_or_default(),
+            None => url.clone(),
+        };
+        browser.store_refs(snap_url, table).await;
+    }
     let total = items.len();
     browser.ref_advance(total);
     let mut text = text;
@@ -3824,6 +3981,7 @@ async fn tool_snapshot_ax(
         title,
         items,
         text,
+        &scope,
     )
     .await
 }
@@ -3831,21 +3989,13 @@ async fn tool_snapshot_ax(
 async fn tool_snapshot_text_frame(
     browser: &Browser,
     frame: Option<&str>,
+    page: Option<&crate::browser::ContextPage>,
 ) -> Result<Value, ToolErr> {
-    let v = match frame {
-        Some(fid) => {
-            browser
-                .eval_in_frame(
-                    fid,
-                    "((((document.body && document.body.innerText) || (document.documentElement && document.documentElement.innerText) || '')) + '').slice(0, 12000)",
-                )
-                .await?
-        }
-        None => {
-            browser
-                .eval("((((document.body && document.body.innerText) || (document.documentElement && document.documentElement.innerText) || '')) + '').slice(0, 12000)")
-                .await?
-        }
+    const TEXT_JS: &str = "((((document.body && document.body.innerText) || (document.documentElement && document.documentElement.innerText) || '')) + '').slice(0, 12000)";
+    let v = match (page, frame) {
+        (Some(cp), _) => browser.eval_in_session(&cp.session, TEXT_JS).await?,
+        (None, Some(fid)) => browser.eval_in_frame(fid, TEXT_JS).await?,
+        (None, None) => browser.eval(TEXT_JS).await?,
     };
     let raw = v.as_str().unwrap_or("").to_string();
     let collapsed = raw.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -3858,8 +4008,13 @@ async fn tool_snapshot_text_frame(
         collapsed
     };
     let prose = format!("{capped}{suffix}");
+    let mut structured = json!({"mode": "text", "text": prose});
+    if let (Some(cp), Some(obj)) = (page, structured.as_object_mut()) {
+        obj.insert("context".to_string(), json!(cp.context));
+        obj.insert("target".to_string(), json!(cp.target));
+    }
     Ok(json!({"content": [{"type": "text", "text": prose.clone()}],
-              "structuredContent": {"mode": "text", "text": prose}}))
+              "structuredContent": structured}))
 }
 
 /// Write an already-decoded screenshot PNG to `path`. There is no
