@@ -98,7 +98,7 @@ hand serves 41 tools: 34 browser tools (25 mapped one-to-one from Gladius plus `
 
 The current release adds `selector` as an alias for `element`, a `void` flag on `browser_evaluate`, a generated parameter index in `initialize.instructions`, a 1440x900 owned-launch viewport echoed by navigate/snapshot/screenshot, screenshot `freeze`, `waitForStable`, `force` and `scale` with motion evidence and jpeg/webp `size`, and the `browser_run` ordered batch. `format`, `quality` and `fullPage` were already present in the previous release; discovery was the gap. Known limits are named in `docs/CAPABILITIES.md`.
 
-Engines: Gladius 0.8.0 (`59c6d77`) and Puppet 8.0.0 (`0f790be`), MIT, credited in `THIRD-PARTY-NOTICES.md`.
+Engine versions and source pins live under `sources` in `baseline/pins.json` and in the table in `docs/COMPATIBILITY.md`; both engines are MIT, credited in `THIRD-PARTY-NOTICES.md`.
 
 ## Compared
 
