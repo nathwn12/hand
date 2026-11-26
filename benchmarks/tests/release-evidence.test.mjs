@@ -707,6 +707,40 @@ test("delayed visibility resolves through authoritative reads but strands the ca
   assert.equal(authoritative.gitHead, SOURCE);
 });
 
+// Public run 45744131332: npm publish SUCCEEDED (hand-mcp@0.3.4, gitHead
+// 84af90f, provenance signed) but the CDN replicas were still 404 at
+// 18 x 5s = 90s, so waitForPublishedVersion exited PENDING/code 2 and did not
+// tag; the rerun tagged only after the version became visible. This fixture
+// deliberately leaves attempts/delayMs at the module defaults (only sleep is
+// injected), so it is RED at the old 18-attempt bound and GREEN once the
+// read-back window is widened. The identity checks are unchanged.
+test("a slow replica visible past the old 90s bound verifies in one run", async () => {
+  const VISIBLE_AT_READ = 24; // ~115s of 5s reads: beyond 90s, inside 180s
+  let reads = 0;
+  const verdict = await release.waitForPublishedVersion({
+    read: async () => {
+      reads += 1;
+      return reads < VISIBLE_AT_READ
+        ? { status: "absent", reason: "CDN replica not yet updated" }
+        : { status: "present", gitHead: SOURCE, version: "9.9.9" };
+    },
+    expected: SOURCE,
+    sleep: async () => {}, // no wall-clock wait; reads still count toward the bound
+  });
+  assert.equal(verdict.kind, "verified", "a publish visible after 90s must still verify in one run");
+  assert.equal(verdict.reads, VISIBLE_AT_READ, "the loop must keep reading until the replica appears");
+  assert.equal(verdict.gitHead, SOURCE, "only the authoritative gitHead may tag");
+
+  const neverVisible = await release.waitForPublishedVersion({
+    read: async () => ({ status: "absent", reason: "never replicated" }),
+    expected: SOURCE,
+    sleep: async () => {},
+  });
+  assert.equal(neverVisible.kind, "pending");
+  assert.ok(neverVisible.reads > 18, "the default read budget must exceed the old 18 attempts");
+  assert.match(neverVisible.reason, /180s/, "the default window must be 180s, not the old 90s");
+});
+
 test("a published version from another commit is a conflict, never a tag", async () => {
   const verdict = await release.waitForPublishedVersion({
     read: async () => ({ status: "present", gitHead: OTHER, version: "9.9.9" }),

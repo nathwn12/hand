@@ -23,7 +23,12 @@ const GITHUB_REPO = 'nathwn12/hand';
 // registry revalidates its cache before replying. `npm view --prefer-online`
 // reads a cached packument and can miss a just-published version for minutes.
 const REGISTRY = 'https://registry.npmjs.org';
-const READ_ATTEMPTS = 18;
+// Public run 45744131332: the publish succeeded (hand-mcp@0.3.4, gitHead
+// 84af90f, provenance signed) but npm CDN replicas were still 404 after
+// 18 x 5s = 90s, so read-back exited PENDING/code 2 and held the tag until a
+// rerun. Widen the window to 36 x 5s = 180s so a version visible in ~2-3 min
+// verifies in one run. Identity, conflict, pending and exit semantics are unchanged.
+const READ_ATTEMPTS = 36;
 const READ_DELAY_MS = 5000;
 
 // Closed history, not a rule. hand-mcp@0.3.0 was published from 2065697...
