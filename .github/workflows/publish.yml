@@ -4,6 +4,15 @@
 # is created at the published source commit, once, and never moved.
 # workflow_dispatch is the escape hatch. The full gate is local; this job only
 # builds, packs, proves, publishes and tags. No token, OTP or manual publish.
+#
+# No GitHub Release page exists for this product, and none may be created here.
+# hand is npm-only: the server binary ships inside the npm tarball, so the npm
+# registry is the download. A Releases page would be a second, stale home for
+# the same fact (AGENTS.md public surface). This lane writes exactly two
+# artifacts -- the npm version and the immutable v* tag -- and makes no call
+# to the Releases API. Do not add a release action or a Releases API write to
+# this workflow; if the shipping shape ever changes, record that decision in
+# an ADR and the spec before editing this file.
 name: publish
 
 on:
