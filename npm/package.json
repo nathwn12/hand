@@ -1,7 +1,8 @@
 {
   "name": "hand-mcp",
   "version": "0.3.3",
-  "description": "hand-mcp: one MCP server for headless browser testing (CDP) and Windows desktop computer use",
+  "description": "The MCP server that sees and touches both the browser and Windows desktop.",
+  "keywords": ["mcp", "mcp-server", "model-context-protocol", "browser-automation", "computer-use", "rust", "windows", "cdp", "tooling", "agent", "server", "browser"],
   "type": "module",
   "license": "MIT",
   "repository": {

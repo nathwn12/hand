@@ -1,11 +1,11 @@
 <h1 align="center">hand-mcp</h1>
-<p align="center"><strong>The MCP server that can see and touch both the browser and Windows.</strong></p>
+<p align="center"><strong>The MCP server that sees and touches both the browser and Windows desktop.</strong></p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/hand-mcp"><img src="https://img.shields.io/npm/v/hand-mcp" alt="npm version"></a>
-  <img src="https://img.shields.io/badge/platform-windows%20x64-blue" alt="platform">
-  <img src="https://img.shields.io/badge/tools-41-brightgreen" alt="41 tools">
-  <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT">
+  <a href="https://www.npmjs.com/package/hand-mcp"><img src="https://img.shields.io/npm/v/hand-mcp" alt="npm version" /></a>
+  <img src="https://img.shields.io/badge/platform-windows%20x64-blue" alt="Windows x64" />
+  <img src="https://img.shields.io/badge/tools-41-brightgreen" alt="41 tools" />
+  <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT licence" />
 </p>
 
 ## Install
@@ -45,7 +45,7 @@ If it fails, stop and paste the full output; do not improvise a fix.
 
 The client spawns npx, which runs the bundled binary and speaks newline-delimited JSON-RPC 2.0 on stdio. stdout carries protocol frames only.
 
-## What it does
+## Tools
 
 One connection, two domains, 41 tools:
 
@@ -54,23 +54,13 @@ One connection, two domains, 41 tools:
 
 A desktop action posts to the chosen window: no global mouse, no physical pointer movement, no window activation, no clipboard write. A refusal names its reason: a cancelled or expired call answers `outcome: unknown` with `retry: unsafe` instead of implying the work stopped. A healthy run writes nothing to the terminal.
 
-## Configure it
-
-| Variable | Default | Effect |
-|---|---|---|
-| `GLADIUS_CDP_URL` | unset | Attach to a browser you already run instead of launching one. hand does not launch, kill or sweep it, and closes only pages it created. |
-| `HAND_DEBUG` | unset | Print engine diagnostics to stderr. Off by default. |
-
-The first browser call provisions the pinned `chrome-headless-shell` into a per-user cache and reuses it after that.
+Set `GLADIUS_CDP_URL` to attach to a browser you already run instead of launching one; hand does not launch, kill or sweep it, and closes only pages it created. `HAND_DEBUG` prints engine diagnostics to stderr (off by default). The first browser call provisions the pinned `chrome-headless-shell` into a per-user cache and reuses it after that.
 
 ## Requirements
 
 - Windows 10 or 11, x64. The manifest declares `os: win32` and `cpu: x64`.
 - Node 22.14.0 or newer, to run the launcher.
 - An MCP client that speaks stdio.
-
-## Known limits
-
 - WebP screenshot `size` parsing ships but is not live-measured; JPEG and PNG are.
 - The 500 KB target for a 2560-wide JPEG q80 shot is page-dependent: on the seeded-noise fixture, JPEG q80 is 40,392 B against PNG 89,983 B.
 - The desktop test suite serializes its live tests inside one binary; an external pointer or foreground actor can still flake a no-steal assertion.
@@ -78,16 +68,11 @@ The first browser call provisions the pinned `chrome-headless-shell` into a per-
 
 ## Status
 
-**Experimental**: pre-release; interfaces may change.
+**Experimental** — pre-release; interfaces may change.
 
 ## Links
 
-- [Repository](https://github.com/nathwn12/hand)
 - [Issues](https://github.com/nathwn12/hand/issues)
 - [Releases](https://github.com/nathwn12/hand/releases)
-- [MIT licence](https://opensource.org/license/mit)
-
-<p align="center">
-  <img src="signature-glyph.svg" width="120" alt="nathwn12 signature" />
-  <br />Built by nathwn12
-</p>
+- [npm package](https://www.npmjs.com/package/hand-mcp)
+- [MIT licence](LICENSE)
