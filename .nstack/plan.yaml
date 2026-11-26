@@ -1,0 +1,16 @@
+project: .
+name: hand
+goal: |-
+  Adopt the canonical phase-1 docs gate locally, report-only, in one isolated docs commit.
+seam: |-
+  .nstack/plan.yaml, spec/docs-structure.md, spec/checker.md, adr/0001-vendor-docs-gate.yaml,
+  AGENTS.md, docs-check.mjs, docs-check.json, .gitattributes, .github/workflows/docs-report.yml
+check: |-
+  node docs-check.mjs --report exits 0; a planted wrong SHA makes --strict exit 1 with the exact mismatch; the byte-exact restored config exits 0; final --strict exits 0; git diff --cached --check exits 0; staged paths exact; clean after commit.
+undo: |-
+  git revert <sha>
+state: |-
+  Plan, spec and ADR written before the vendored pair. Local-only: no network, no push; ahead baseline preserved.
+log:
+  - cycle: 0
+    note: report green; strict proven red then green; commit records actual receipts with repo-relative trailers.
