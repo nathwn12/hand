@@ -37,7 +37,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo test --locked -p browser-engine
       - run: cargo test --locked -p desktop-engine -- --skip live_
-      - run: HAND_BASELINE_SKIP_LIVE=1 node --test baseline/test/
+      - run: HAND_BASELINE_SKIP_LIVE=1 node --test baseline/test/*.test.mjs
         shell: bash
       - run: cargo build --locked --release
       - run: node baseline/scripts/compare-catalog.mjs --serve target\release\hand.exe
