@@ -25,7 +25,25 @@ permissions:
   id-token: write
 
 jobs:
+  ci:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test --locked -p browser-engine
+      - run: cargo test --locked -p desktop-engine -- --skip live_
+      - run: HAND_BASELINE_SKIP_LIVE=1 node --test baseline/test/
+        shell: bash
+      - run: cargo build --locked --release
+      - run: node baseline/scripts/compare-catalog.mjs --serve target\release\hand.exe
+      - run: node docs-check.mjs --strict
   publish:
+    needs: [ci]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
