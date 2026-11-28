@@ -113,13 +113,16 @@ test("the live block records the server's own tools/list beside the 32-name floo
   assert.deepEqual(live.extra, [
     "browser_assert",
     "browser_audit",
+    "browser_clipboard",
     "browser_context",
     "browser_download",
     "browser_drag",
     "browser_form",
+    "browser_metrics",
     "browser_run",
     "browser_trace",
     "browser_wheel",
+    "desktop_record",
   ]);
 
   assert.deepEqual(Object.keys(live.capture).sort(), ["executable", "executableSha256", "reportedVersion"]);

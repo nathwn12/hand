@@ -8,12 +8,10 @@
     "browser_click": [
       "properties.button",
       "properties.clickCount",
-      "properties.selector",
-      "anyOf"
+      "properties.selector"
     ],
     "browser_hover": [
-      "properties.selector",
-      "anyOf"
+      "properties.selector"
     ],
     "browser_layout": [
       "properties.frame"
@@ -30,20 +28,17 @@
       "properties.scale"
     ],
     "browser_select": [
-      "properties.selector",
-      "anyOf"
+      "properties.selector"
     ],
     "browser_snapshot": [
       "properties.context",
       "properties.page"
     ],
     "browser_type": [
-      "properties.selector",
-      "anyOf"
+      "properties.selector"
     ],
     "browser_upload": [
-      "properties.selector",
-      "anyOf"
+      "properties.selector"
     ],
     "browser_visual": [
       "properties.frame"

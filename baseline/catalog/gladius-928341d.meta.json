@@ -1,0 +1,236 @@
+{
+  "args": [],
+  "capturedAtLocal": "Sat Nov 28 2026 22:56:30 GMT+0800 (Philippine Standard Time)",
+  "capturedAtUtc": "2026-11-28T14:56:30.475Z",
+  "catalog": {
+    "canonicalHash": "sha256:88334ed7ff2d6d873bdd8e9bf231ee3d6998e3c6a5aba37ba98537101a984476",
+    "duplicateNames": [],
+    "legacyVsModernResultDiff": [
+      "cacheScope",
+      "resultType",
+      "ttlMs"
+    ],
+    "schemaHashes": {
+      "assert_layout": {
+        "input": "sha256:65768d8116f1e312d61f5778486f362690bc78f7dad86246032316f8e9df4179",
+        "output": "sha256:e0c1220eb212e694cd1b75a5c5dc26ff71e70df986882861eb021cbdd5296df1"
+      },
+      "cdp": {
+        "input": "sha256:684ee6ba929e8466ff216639aee2452325640f6270151313462603f2e8219027",
+        "output": "sha256:0fc23b3e46107654526a647daa16a371937803c5534e0c1b509a64897ff080d8"
+      },
+      "click": {
+        "input": "sha256:d9c46ddb92269df76000545b4ee73fe0b28820ebef3bcbc24480caf9fde0be3b",
+        "output": "sha256:5402bffe867b3c93ec51014da4f3401e04f95e560c0e695e13e53b4125c11c6b"
+      },
+      "close": {
+        "input": "sha256:99334726611ccf58a148b0814696bfa6fe08c1b2d027e946beccf5a74331c9aa",
+        "output": "sha256:4528a3c79c4aaee242a31e586366657f8e9a3f11cc8d2cb040d9bf61ab1bbb63"
+      },
+      "console": {
+        "input": "sha256:d448698bc4a13faa83a2ca8d44ed1232f31c3ef9afc5ca3005846321717354e8",
+        "output": "sha256:d5b89e0ef11d649ea5fa0b028abda71ee7cd31e9bc39545ce2ce71a0c0ec5620"
+      },
+      "dialog": {
+        "input": "sha256:7ca8820915023b5ee827d700d5c942d859a4a7ebf2093f2252f27e1dffe202b8",
+        "output": "sha256:d0c730531ecfaf5552b81f88fb789c642a3e4b785fdded75897e8b16f2920d15"
+      },
+      "evaluate": {
+        "input": "sha256:a2ee4a7c29931db191701d2bd741628bfa020d0110f6761bb04e5afcd6195d4b",
+        "output": "sha256:a1bea6d33ad9d7c49df5b1af70829e410f0128c136f21ecf26736d421f1166e9"
+      },
+      "fetch_text": {
+        "input": "sha256:70a0ee4ad267a54f0f15e23c0f816a1f1920eacbeb10283a06dca6c593c3ca2d",
+        "output": "sha256:7820ec3140f948d1e53d760ada41fd6452b692c4d812f1b81c49f499c489e65e"
+      },
+      "history": {
+        "input": "sha256:25a7b81ea433fe28a84fd797151f656c2c559ce52abaef0ad5171aca3c6c0585",
+        "output": "sha256:add084c1c449d495425627983c2f26fdb07055243da68fa8a12a79fde08a8312"
+      },
+      "hover": {
+        "input": "sha256:15be951f597f669ad48c3f9961bd91c97637b33cc9cd40dcddd22804b29186df",
+        "output": "sha256:4528a3c79c4aaee242a31e586366657f8e9a3f11cc8d2cb040d9bf61ab1bbb63"
+      },
+      "key": {
+        "input": "sha256:71b7b4e2e3db1026349e712236f9d3231abdec149243becc4ac6fd1f85f6f08d",
+        "output": "sha256:4528a3c79c4aaee242a31e586366657f8e9a3f11cc8d2cb040d9bf61ab1bbb63"
+      },
+      "layout": {
+        "input": "sha256:d2ebc28181c4da4ca5cf5003b2305c0276367896b7190617343cfacf41e39214",
+        "output": "sha256:030657b033a9e7cd08715aee5f5ee934f1d2616b7a1f574b51ffa00c2d76273c"
+      },
+      "navigate": {
+        "input": "sha256:ac03174c20bf54e89e4f6bc8179f6ff9361ec8d90a8c7f10a6d020093c35e9fd",
+        "output": "sha256:7afe51eadb3f43198a6d3dc77300bc50e226d22ec46c7b2065780e47a06589a9"
+      },
+      "network": {
+        "input": "sha256:6a7c2f55d2ac43b40ea708f7c09444cebad6f1f63e8e16e8d4881e461773f585",
+        "output": "sha256:3a713cd510364703cb6e8852a3a1879c09d44616dbac600916114dc71d003f08"
+      },
+      "screenshot": {
+        "input": "sha256:b4235e3c722351e9ca197968b1263133016024ead279d5fa7d75c8078ae26afa",
+        "output": "sha256:cdf44a305ceefa369d682978d707d6059f730e2054b9762b2c9021020b067ff5"
+      },
+      "select": {
+        "input": "sha256:9dbc7cb1735a57b133cdd733d6e8a16b542f50a0125f36d037807f8e9b4eda43",
+        "output": "sha256:4528a3c79c4aaee242a31e586366657f8e9a3f11cc8d2cb040d9bf61ab1bbb63"
+      },
+      "snapshot": {
+        "input": "sha256:151fefc14d20a6b19851dc227a4d9dd22925124d57d0b1aa2e245213d77e7fff",
+        "output": "sha256:2ed2c3748043a2aa2fe17cd34bab19625086894f1d6c453b0144cc014327e8f8"
+      },
+      "storage": {
+        "input": "sha256:e5df4f8659239d31a94ef511424753a7a29e5f770bbc5f3e2c4c169069b49e28",
+        "output": "sha256:b7c577f880a4f56bc287e1e205976e5f134d706037e2e60bf015afcbff575933"
+      },
+      "tabs": {
+        "input": "sha256:f43e977e03b8b4e7852c462d90749bd962deaf5cad1f9bf377390122791b8b86",
+        "output": "sha256:58f1a68da86733841ea57c38e965aae4af20377ae9f8d1506b1a70b107e71fea"
+      },
+      "targets": {
+        "input": "sha256:025a1aeb98b86530a9430a66aa5c30e2ace0fc4b3b4fe209888faf9f163c5dd6",
+        "output": "sha256:4deca09060001141ff263f67a61500e2c372deb62c80c83697d095adbce31112"
+      },
+      "type": {
+        "input": "sha256:165f10e18427fdfaefd99ac7f82709b479123ad23846df7406074b22e089fefe",
+        "output": "sha256:ebd3e080287144eaca631b0662d1d85531fdd8820c5a87eab2d6c73401cbb0dd"
+      },
+      "upload": {
+        "input": "sha256:81f5031879fd69c37c67c06388c7137476353157cbda7f20f62315f571e98256",
+        "output": "sha256:d480e2380e72cb589980474dbe72365c1b0d6d8d99813dc33a13a568a39e42a0"
+      },
+      "viewport": {
+        "input": "sha256:0a19728ee04529ae21172b87875e8cddd97dd345945300332ac84223c4e7e7c7",
+        "output": "sha256:4ce0c943cf4e69fd83289292216c5cfb49fdcef0667cd6e958819d91ed8acc59"
+      },
+      "visual": {
+        "input": "sha256:5c1460080cefc84efa2b6373d570ffe5a363f625aad72754cf13e3ef440c813a",
+        "output": "sha256:5b90342aac3efad4580607ef4f6ae155c8b3ccb5fb425a46099ff87ea9535d74"
+      },
+      "wait_for": {
+        "input": "sha256:6855bbc24ed324cc7b164f6330d2516a1203587deefcd9c7e674907a426370b4",
+        "output": "sha256:4528a3c79c4aaee242a31e586366657f8e9a3f11cc8d2cb040d9bf61ab1bbb63"
+      }
+    },
+    "toolCount": 25,
+    "toolNames": [
+      "navigate",
+      "snapshot",
+      "screenshot",
+      "click",
+      "type",
+      "evaluate",
+      "wait_for",
+      "targets",
+      "dialog",
+      "history",
+      "network",
+      "cdp",
+      "console",
+      "upload",
+      "fetch_text",
+      "hover",
+      "select",
+      "key",
+      "viewport",
+      "tabs",
+      "storage",
+      "assert_layout",
+      "layout",
+      "visual",
+      "close"
+    ]
+  },
+  "command": "C:\\Users\\nathan\\AppData\\Local\\Temp\\opencode\\hand-pin-capture-20261128\\gladius\\target\\release\\gladius.exe",
+  "cwd": "Q:\\PROJECTS\\PERSONAL\\public\\hand",
+  "executable": {
+    "bytes": 14319616,
+    "path": "C:\\Users\\nathan\\AppData\\Local\\Temp\\opencode\\hand-pin-capture-20261128\\gladius\\target\\release\\gladius.exe",
+    "sha256": "sha256:768c06e2ed343f467226fba3a9527a9e98b6d417eca16dc74a8734bd673e40a0"
+  },
+  "files": {
+    "discover.json": {
+      "bytes": 1261,
+      "canonical": "sha256:6b99ded8096c3d86226134c05676593a8e2ada2e973334e92ced0fd2e27476dd",
+      "path": "baseline/catalog/gladius-928341d.discover.json",
+      "sha256": "sha256:3c951290b2328cbb20ad7efffcb2512cfa9aa0f1e938492579df63e45b80b0f7"
+    },
+    "initialize.json": {
+      "bytes": 1144,
+      "canonical": "sha256:38ce30a9f33343a4d91a03f4fbc5509d5f80f37edb768ef6733a643e69881c8e",
+      "path": "baseline/catalog/gladius-928341d.initialize.json",
+      "sha256": "sha256:6f49c1a0e210b91a424cce38f3b85e09139a26d6df804848ef4981b442b228ea"
+    },
+    "ping.json": {
+      "bytes": 3,
+      "canonical": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "path": "baseline/catalog/gladius-928341d.ping.json",
+      "sha256": "sha256:ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    "tools.json": {
+      "bytes": 50952,
+      "canonical": "sha256:88334ed7ff2d6d873bdd8e9bf231ee3d6998e3c6a5aba37ba98537101a984476",
+      "path": "baseline/catalog/gladius-928341d.tools.json",
+      "sha256": "sha256:7faa344bd8aaebc28d099d380ce32b9ff078969314ee5bdaeadb078a3145f284"
+    },
+    "tools.modern.json": {
+      "bytes": 51021,
+      "canonical": "sha256:7d0024b4c92816e592030991685cf3f74481500ff12c1cba667465f80a1d0f0e",
+      "path": "baseline/catalog/gladius-928341d.tools.modern.json",
+      "sha256": "sha256:7dbd3b0f9bf201ebf1f8b9cd56e73a6ac88552092e13bb7771c8232dd0656a57"
+    },
+    "transcript.jsonl": {
+      "bytes": 73082,
+      "path": "baseline/catalog/gladius-928341d.transcript.jsonl",
+      "sha256": "sha256:6e4c76da6298f39ff1372e742184b14e6b6ceb207121d78d3178dd30e8ef2e59"
+    }
+  },
+  "label": "Gladius at 928341d (release build from git archive)",
+  "node": "v26.13.1",
+  "platform": "win32 x64",
+  "requests": {
+    "modernProtocol": "2026-07-28",
+    "protocol": "2025-11-25",
+    "timingsMs": {
+      "discoverMs": 0.247,
+      "initializeMs": 26.463,
+      "pingMs": 0.416,
+      "toolsListModernMs": 1.519,
+      "toolsListMs": 1.981
+    }
+  },
+  "server": {
+    "exit": {
+      "code": 0,
+      "signal": null
+    },
+    "initialize": {
+      "capabilities": {
+        "extensions": {
+          "io.modelcontextprotocol/skills": {}
+        },
+        "resources": {},
+        "tools": {
+          "listChanged": false
+        }
+      },
+      "protocolVersion": "2025-11-25",
+      "serverInfo": {
+        "backend": "chromium",
+        "caps": "render",
+        "count": 25,
+        "gated": {},
+        "name": "gladius",
+        "version": "0.8.2"
+      }
+    },
+    "stderr": "[gladius] engine gladius 0.8.2 (unknown)\n"
+  },
+  "unsolicitedFrames": [],
+  "version": {
+    "command": "C:\\Users\\nathan\\AppData\\Local\\Temp\\opencode\\hand-pin-capture-20261128\\gladius\\target\\release\\gladius.exe --version",
+    "status": 0,
+    "stderr": "[gladius] engine gladius 0.8.2 (unknown)",
+    "stdout": "gladius 0.8.2 (unknown)"
+  }
+}

@@ -4,36 +4,36 @@
   "sources": {
     "gladius": {
       "repo": "Q:\\PROJECTS\\PERSONAL\\gladius",
-      "pin": "59c6d77",
-      "pinSubject": "docs(gladius): link the enabled issue tracker",
-      "version": "0.8.0",
+      "pin": "928341d",
+      "pinSubject": "fix(mcp): conform stdio protocol to revision 2026-07-28",
+      "version": "0.8.2",
       "domain": "browser",
       "specPrefix": "browser_",
       "expectedToolCount": 25,
       "capture": {
-        "tools": "catalog/gladius-59c6d77.tools.json",
-        "meta": "catalog/gladius-59c6d77.meta.json",
-        "transcript": "catalog/gladius-59c6d77.transcript.jsonl",
-        "expectCatalogCanonicalHash": "sha256:bfbe2ee91fa50238c6d83b602cdb7d3e21654f273a6c5e6f37bd2adf21bee275",
-        "capturedExecutableSha256": "sha256:3dffc6f512c263b409baddd29481c4662a9f438f318ac189e8eee344d5c5dd7e",
-        "archiveSha256": "sha256:5b85600b36ccd5d99e7e675bc84e85b9a2ca2f1f84176b62e8c0eaac46846e31"
+        "tools": "catalog/gladius-928341d.tools.json",
+        "meta": "catalog/gladius-928341d.meta.json",
+        "transcript": "catalog/gladius-928341d.transcript.jsonl",
+        "expectCatalogCanonicalHash": "sha256:88334ed7ff2d6d873bdd8e9bf231ee3d6998e3c6a5aba37ba98537101a984476",
+        "capturedExecutableSha256": "sha256:768c06e2ed343f467226fba3a9527a9e98b6d417eca16dc74a8734bd673e40a0",
+        "archiveSha256": "sha256:f2628b57574d8a3b43464512bab98a1da3a37b28a40d71a40286109400fb2b2b"
       }
     },
     "puppet": {
       "repo": "Q:\\PROJECTS\\PERSONAL\\puppet",
-      "pin": "0f790be",
-      "pinSubject": "docs(puppet): align README and release guidance",
-      "version": "8.0.0",
+      "pin": "eb2c382",
+      "pinSubject": "fix(mcp): conform to protocol revision 2026-07-28",
+      "version": "8.0.4",
       "domain": "desktop",
       "specPrefix": "desktop_",
       "expectedToolCount": 7,
       "capture": {
-        "tools": "catalog/puppet-0f790be.tools.json",
-        "meta": "catalog/puppet-0f790be.meta.json",
-        "transcript": "catalog/puppet-0f790be.transcript.jsonl",
-        "expectCatalogCanonicalHash": "sha256:e417d1025863d2ccb799ecf324284dd62e94aedb8c1831c75aea29ff6f1217b2",
-        "capturedExecutableSha256": "sha256:ff935556b0f0d7175d514005b431fa4ce6db5aaf61d0866da103ec91ed61e212",
-        "archiveSha256": "sha256:e89446ee785174aab5af3306113b75e02cc57cec040cb8cd872de4c3ef3f2ff7"
+        "tools": "catalog/puppet-eb2c382.tools.json",
+        "meta": "catalog/puppet-eb2c382.meta.json",
+        "transcript": "catalog/puppet-eb2c382.transcript.jsonl",
+        "expectCatalogCanonicalHash": "sha256:13d51962bd2626cb92350ad014ad4a625ad906c411fffe07c4a7279234938f38",
+        "capturedExecutableSha256": "sha256:64ba69374f94f6bf2252071268f8894d356d6bf9ed6f3a6297c6d3fdcb7828c5",
+        "archiveSha256": "sha256:f287c207af28637c25d953007fabc86ee8aa5ca9a71dc7bef45e94616bcfa8b0"
       }
     }
   }

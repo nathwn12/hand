@@ -4,25 +4,28 @@
   "counts": {
     "browser": 25,
     "desktop": 7,
-    "live": 41,
+    "live": 44,
     "total": 32
   },
   "live": {
     "capture": {
-      "executable": "Q:\\PROJECTS\\PERSONAL\\hand\\target\\debug\\hand.exe",
-      "executableSha256": "sha256:ae83bd330dd4cb0d262fe6bba8a419ef9572608e3658f9cc2367e881ab1cd647",
-      "reportedVersion": "hand 0.3.0 (ce55d94b3dc3fd68cac5e341f50d43df1ff5e52f; debug)"
+      "executable": "Q:\\PROJECTS\\PERSONAL\\public\\hand\\target\\debug\\hand.exe",
+      "executableSha256": "sha256:6b61be7e128e102cd5cabbf204330c264c56b12b8df37c219681843c84be75c9",
+      "reportedVersion": "hand 0.5.0 (5155f5254844740ab99dc3ce7d759160ac176351-dirty; debug)"
     },
     "extra": [
       "browser_assert",
       "browser_audit",
+      "browser_clipboard",
       "browser_context",
       "browser_download",
       "browser_drag",
       "browser_form",
+      "browser_metrics",
       "browser_run",
       "browser_trace",
-      "browser_wheel"
+      "browser_wheel",
+      "desktop_record"
     ],
     "names": [
       "browser_assert",
@@ -30,6 +33,7 @@
       "browser_audit",
       "browser_cdp",
       "browser_click",
+      "browser_clipboard",
       "browser_close",
       "browser_console",
       "browser_context",
@@ -43,6 +47,7 @@
       "browser_hover",
       "browser_key",
       "browser_layout",
+      "browser_metrics",
       "browser_navigate",
       "browser_network",
       "browser_run",
@@ -64,34 +69,35 @@
       "desktop_do",
       "desktop_elements",
       "desktop_list_windows",
+      "desktop_record",
       "desktop_screenshot",
       "desktop_window"
     ],
     "protocolVersion": "2025-11-25",
-    "toolCount": 41
+    "toolCount": 44
   },
   "notes": [
-    "live: 41 tools published by Q:\\PROJECTS\\PERSONAL\\hand\\target\\debug\\hand.exe; the floor is 32",
-    "live: beyond the 32-tool floor: browser_assert, browser_audit, browser_context, browser_download, browser_drag, browser_form, browser_run, browser_trace, browser_wheel"
+    "live: 44 tools published by Q:\\PROJECTS\\PERSONAL\\public\\hand\\target\\debug\\hand.exe; the floor is 32",
+    "live: beyond the 32-tool floor: browser_assert, browser_audit, browser_clipboard, browser_context, browser_download, browser_drag, browser_form, browser_metrics, browser_run, browser_trace, browser_wheel, desktop_record"
   ],
   "provenance": {
     "generator": "baseline/scripts/build-hand-catalog.mjs",
     "migration": "one-to-one name mapping only: browser_<legacy> / desktop_<legacy>; inputSchema, outputSchema, annotations, title and description are carried over unchanged",
     "sources": {
       "gladius": {
-        "canonicalHash": "sha256:bfbe2ee91fa50238c6d83b602cdb7d3e21654f273a6c5e6f37bd2adf21bee275",
+        "canonicalHash": "sha256:88334ed7ff2d6d873bdd8e9bf231ee3d6998e3c6a5aba37ba98537101a984476",
         "capture": {
-          "archiveSha256": "sha256:5b85600b36ccd5d99e7e675bc84e85b9a2ca2f1f84176b62e8c0eaac46846e31",
-          "capturedExecutableSha256": "sha256:3dffc6f512c263b409baddd29481c4662a9f438f318ac189e8eee344d5c5dd7e",
-          "expectCatalogCanonicalHash": "sha256:bfbe2ee91fa50238c6d83b602cdb7d3e21654f273a6c5e6f37bd2adf21bee275",
-          "meta": "catalog/gladius-59c6d77.meta.json",
-          "tools": "catalog/gladius-59c6d77.tools.json",
-          "transcript": "catalog/gladius-59c6d77.transcript.jsonl"
+          "archiveSha256": "sha256:f2628b57574d8a3b43464512bab98a1da3a37b28a40d71a40286109400fb2b2b",
+          "capturedExecutableSha256": "sha256:768c06e2ed343f467226fba3a9527a9e98b6d417eca16dc74a8734bd673e40a0",
+          "expectCatalogCanonicalHash": "sha256:88334ed7ff2d6d873bdd8e9bf231ee3d6998e3c6a5aba37ba98537101a984476",
+          "meta": "catalog/gladius-928341d.meta.json",
+          "tools": "catalog/gladius-928341d.tools.json",
+          "transcript": "catalog/gladius-928341d.transcript.jsonl"
         },
-        "capturedFrom": "Q:\\PROJECTS\\PERSONAL\\gladius\\target\\release\\gladius.exe",
+        "capturedFrom": "C:\\Users\\nathan\\AppData\\Local\\Temp\\opencode\\hand-pin-capture-20261128\\gladius\\target\\release\\gladius.exe",
         "domain": "browser",
         "duplicates": [],
-        "executableSha256": "sha256:3dffc6f512c263b409baddd29481c4662a9f438f318ac189e8eee344d5c5dd7e",
+        "executableSha256": "sha256:768c06e2ed343f467226fba3a9527a9e98b6d417eca16dc74a8734bd673e40a0",
         "names": [
           "navigate",
           "snapshot",
@@ -119,37 +125,37 @@
           "visual",
           "close"
         ],
-        "pin": "59c6d77",
-        "pinSubject": "docs(gladius): link the enabled issue tracker",
+        "pin": "928341d",
+        "pinSubject": "fix(mcp): conform stdio protocol to revision 2026-07-28",
         "protocolVersion": "2025-11-25",
         "repo": "Q:\\PROJECTS\\PERSONAL\\gladius",
-        "reportedVersion": "gladius 0.8.0 (d801b173aca81532209e2aed27669606214a503d)",
+        "reportedVersion": "gladius 0.8.2 (unknown)",
         "server": {
           "backend": "chromium",
           "caps": "render",
           "count": 25,
           "gated": {},
           "name": "gladius",
-          "version": "0.8.0"
+          "version": "0.8.2"
         },
         "specPrefix": "browser_",
         "toolCount": 25,
-        "version": "0.8.0"
+        "version": "0.8.2"
       },
       "puppet": {
-        "canonicalHash": "sha256:e417d1025863d2ccb799ecf324284dd62e94aedb8c1831c75aea29ff6f1217b2",
+        "canonicalHash": "sha256:13d51962bd2626cb92350ad014ad4a625ad906c411fffe07c4a7279234938f38",
         "capture": {
-          "archiveSha256": "sha256:e89446ee785174aab5af3306113b75e02cc57cec040cb8cd872de4c3ef3f2ff7",
-          "capturedExecutableSha256": "sha256:ff935556b0f0d7175d514005b431fa4ce6db5aaf61d0866da103ec91ed61e212",
-          "expectCatalogCanonicalHash": "sha256:e417d1025863d2ccb799ecf324284dd62e94aedb8c1831c75aea29ff6f1217b2",
-          "meta": "catalog/puppet-0f790be.meta.json",
-          "tools": "catalog/puppet-0f790be.tools.json",
-          "transcript": "catalog/puppet-0f790be.transcript.jsonl"
+          "archiveSha256": "sha256:f287c207af28637c25d953007fabc86ee8aa5ca9a71dc7bef45e94616bcfa8b0",
+          "capturedExecutableSha256": "sha256:64ba69374f94f6bf2252071268f8894d356d6bf9ed6f3a6297c6d3fdcb7828c5",
+          "expectCatalogCanonicalHash": "sha256:13d51962bd2626cb92350ad014ad4a625ad906c411fffe07c4a7279234938f38",
+          "meta": "catalog/puppet-eb2c382.meta.json",
+          "tools": "catalog/puppet-eb2c382.tools.json",
+          "transcript": "catalog/puppet-eb2c382.transcript.jsonl"
         },
-        "capturedFrom": "Q:\\PROJECTS\\PERSONAL\\puppet\\target\\release\\puppet.exe",
+        "capturedFrom": "C:\\Users\\nathan\\AppData\\Local\\Temp\\opencode\\hand-pin-capture-20261128\\puppet\\target\\release\\puppet.exe",
         "domain": "desktop",
         "duplicates": [],
-        "executableSha256": "sha256:ff935556b0f0d7175d514005b431fa4ce6db5aaf61d0866da103ec91ed61e212",
+        "executableSha256": "sha256:64ba69374f94f6bf2252071268f8894d356d6bf9ed6f3a6297c6d3fdcb7828c5",
         "names": [
           "screenshot",
           "diff",
@@ -159,18 +165,18 @@
           "cursor",
           "elements"
         ],
-        "pin": "0f790be",
-        "pinSubject": "docs(puppet): align README and release guidance",
+        "pin": "eb2c382",
+        "pinSubject": "fix(mcp): conform to protocol revision 2026-07-28",
         "protocolVersion": "2025-11-25",
         "repo": "Q:\\PROJECTS\\PERSONAL\\puppet",
-        "reportedVersion": "puppet 8.0.0 (6334393c8e670be7f9c06678267a375f4c22b699)",
+        "reportedVersion": "puppet 8.0.4 (unknown)",
         "server": {
           "name": "puppet",
-          "version": "8.0.0"
+          "version": "8.0.4"
         },
         "specPrefix": "desktop_",
         "toolCount": 7,
-        "version": "8.0.0"
+        "version": "8.0.4"
       }
     }
   },
@@ -1297,41 +1303,6 @@
       "domain": "browser",
       "inputSchema": {
         "additionalProperties": false,
-        "oneOf": [
-          {
-            "properties": {
-              "reset": {
-                "const": true
-              }
-            },
-            "required": [
-              "reset"
-            ]
-          },
-          {
-            "properties": {
-              "reset": {
-                "const": false
-              }
-            },
-            "required": [
-              "reset",
-              "width",
-              "height"
-            ]
-          },
-          {
-            "not": {
-              "required": [
-                "reset"
-              ]
-            },
-            "required": [
-              "width",
-              "height"
-            ]
-          }
-        ],
         "properties": {
           "deviceScaleFactor": {
             "type": "number"
@@ -1376,7 +1347,7 @@
         "type": "object"
       },
       "schemaHash": {
-        "input": "sha256:2111239d3091ad7617adfbcd606c46f97a8231a8b95a377ecd1525f7076d6f56",
+        "input": "sha256:0a19728ee04529ae21172b87875e8cddd97dd345945300332ac84223c4e7e7c7",
         "output": "sha256:4ce0c943cf4e69fd83289292216c5cfb49fdcef0667cd6e958819d91ed8acc59"
       },
       "source": "gladius",
@@ -1572,18 +1543,6 @@
       "domain": "browser",
       "inputSchema": {
         "additionalProperties": false,
-        "anyOf": [
-          {
-            "required": [
-              "ref"
-            ]
-          },
-          {
-            "required": [
-              "selector"
-            ]
-          }
-        ],
         "properties": {
           "checks": {
             "additionalProperties": false,
@@ -1717,7 +1676,7 @@
         "type": "object"
       },
       "schemaHash": {
-        "input": "sha256:24b51f727270e1edd009144b6b37eb98be76ff4b3a53348008d08b57ea734a1c",
+        "input": "sha256:65768d8116f1e312d61f5778486f362690bc78f7dad86246032316f8e9df4179",
         "output": "sha256:e0c1220eb212e694cd1b75a5c5dc26ff71e70df986882861eb021cbdd5296df1"
       },
       "source": "gladius",
@@ -1734,18 +1693,6 @@
       "domain": "browser",
       "inputSchema": {
         "additionalProperties": false,
-        "anyOf": [
-          {
-            "required": [
-              "ref"
-            ]
-          },
-          {
-            "required": [
-              "selector"
-            ]
-          }
-        ],
         "properties": {
           "includeOverlaps": {
             "type": "boolean"
@@ -1808,7 +1755,7 @@
         "type": "object"
       },
       "schemaHash": {
-        "input": "sha256:f8ae086f0dceb3cfaec97047f2a302a103cfbe481cc3d7de9be0329863981d95",
+        "input": "sha256:d2ebc28181c4da4ca5cf5003b2305c0276367896b7190617343cfacf41e39214",
         "output": "sha256:030657b033a9e7cd08715aee5f5ee934f1d2616b7a1f574b51ffa00c2d76273c"
       },
       "source": "gladius",
@@ -2522,42 +2469,10 @@
         "readOnlyHint": false,
         "title": "Window"
       },
-      "description": "Move, resize, minimize, restore, close or raise a window by selector, hwnd or target; every verb is no-steal (SWP_NOACTIVATE / SW_SHOWMINNOACTIVE) and never touches the owner's cursor, keyboard or clipboard.\naction=focus and action=maximize are refused with no_foreground_policy: focusing IS taking the foreground and maximize covers a monitor. move needs x,y; resize needs width,height; close posts WM_CLOSE.\nReturns {ok, action, hwnd} plus the verb's fields. An ambiguous or vanished target is typed (ambiguous_target / target_gone) and never falls back to the foreground window. Read-only listing, capture and element walks are list_windows, screenshot and elements.",
+      "description": "Move, resize, minimize, restore, close or raise a window by selector, hwnd or target; every verb is no-steal (SWP_NOACTIVATE / SW_SHOWMINNOACTIVE) and never touches the owner's cursor, keyboard or clipboard.\naction=focus and action=maximize are refused with no_foreground_policy: focusing IS taking the foreground and maximize covers a monitor. move needs x,y; resize needs width,height; close posts WM_CLOSE.\nReturns {ok, action, hwnd} plus the verb's fields. An ambiguous or vanished target is typed (ambiguous_target / target_gone) and never falls back to the foreground window. Read-only listing, capture and element walks are list_windows, screenshot and elements.\nmove requires x and y; resize requires width and height (enforced by the handler).",
       "domain": "desktop",
       "inputSchema": {
         "additionalProperties": false,
-        "allOf": [
-          {
-            "if": {
-              "properties": {
-                "action": {
-                  "const": "move"
-                }
-              }
-            },
-            "then": {
-              "required": [
-                "x",
-                "y"
-              ]
-            }
-          },
-          {
-            "if": {
-              "properties": {
-                "action": {
-                  "const": "resize"
-                }
-              }
-            },
-            "then": {
-              "required": [
-                "width",
-                "height"
-              ]
-            }
-          }
-        ],
         "properties": {
           "action": {
             "enum": [
@@ -2734,7 +2649,7 @@
         "type": "object"
       },
       "schemaHash": {
-        "input": "sha256:452ef028fc85067625ed0c7691c293cb5041364da0ad7e95d54630327844231f",
+        "input": "sha256:f036e297e786fc780e02158ade4221cb4b872ced8e12e8392bf5123b489578af",
         "output": "sha256:24d01197c3c8ed560790288d7810d56cff5dc6ac13c7370abb38fe26e137de3f"
       },
       "source": "puppet",
@@ -2748,7 +2663,7 @@
         "readOnlyHint": false,
         "title": "Do"
       },
-      "description": "BURST tool: one call runs an ordered actions[] batch against one window.\ntarget={hwnd?,pid?,exe?,appId?,titleContains?,className?} (or a selector string) locks ONE top-level window for the whole call and is revalidated before every action; the legacy background selector is an alternative lock and target wins when both are given. Without a target every acting verb is refused before anything is sent (target_required for keys and patterns, no_cursor_policy for pointer acts), and nothing ever falls back to the foreground window.\nDelivery: click/down/up/drag/scroll/type/key/hotkey post window messages to the locked target; click, scroll and invoke with an element prefer the control UIA pattern (Invoke, SelectionItem, Toggle, ExpandCollapse, ScrollPattern), and click falls back to a posted button message at the element centre whose readable state is read before and after; wait, wait_for and clipboard_get deliver nothing. Refused under the policy, with no flag that unlocks them: move is refused with no_cursor_policy (a cursor move is not a window message); focus_window is refused with no_foreground_policy; set_value is refused with background_unavailable (UIA SetValue may focus the control); clipboard_set is refused with no_clipboard_policy (the clipboard is global); and type with an element is refused with background_unavailable.\nCoordinates: x/y under a target are CLIENT-area physical pixels; without a target they are virtual-desktop SCREEN pixels converted with ScreenToClient. Posted coordinates are signed 16-bit: anything outside -32768..32767 is refused with bad_coordinates before a message is posted. move takes x/y or dx/dy, never both.\nEffects: every result carries delivered (uia|posted|none), via and effect. ok is true when the action was delivered and not disproven; a posted click whose readable control state did not change reports ok:false with background_unavailable and effect unchanged; a raw x/y click reports effect unverified.\nStale refs: every element mutation (invoke, set_value, click and type with an element) requires expect_fp, the fp from an elements entry. Without it the call refuses expect_fp_required and the error carries the fresh fp; a mismatch refuses resolution:stale with a stale_ref error naming expected vs found fps. Retry with the returned fp. fp is identity, never state: rect, text and control state do not participate, so a matching fp means the same control, not the same condition; read effect for what the control then did. An ambiguous selector returns candidates {name,role,auto_id,rect,ref,fp} and acts on nothing; an explicit index picks the nth match.\nKeyboard: type posts WM_CHAR per unit; key and hotkey post WM_KEYDOWN/WM_SYSKEYDOWN and hold Shift when the layout requires it. chunk_chars/chunk_ms are accepted for compatibility and perform no pacing. scroll axis v|h selects the wheel; drag is down/move/up at exact points; hover:true is the only way to post a WM_MOUSEMOVE.\nBudget: at most 256 actions and 300 ms of total elapsed time per call; exceeding either is a typed burst_budget_exceeded result naming the limit and the actual value, and the remaining actions do not run. An element wait reports satisfied_by {selector, fp, path} naming the control that satisfied it (null when nothing did) and fp_matched when expect_fp was supplied; a mismatch is a report, never an error. Top-level ok is true only when EVERY action succeeded; a wait_for timeout is never an error. settle_ms is one trailing pause after the last action. focus_guard:true restores the entry foreground window when the call changed it, and focus_before/focus_after are always reported.\ndry_run=true validates exactly like the live call (every policy refusal included) but posts nothing, and invoke under dry_run still reports found|not-found|ambiguous. desktop:\"hidden\" launches the program named by background on a private desktop (background_args are its argv) and returns the burst JSON plus hidden_desktop{...}; the owner's cursor, foreground and focus are never touched.",
+      "description": "BURST tool: one call runs an ordered actions[] batch against one window.\ntarget={hwnd?,pid?,exe?,appId?,titleContains?,className?} (or a selector string) locks ONE top-level window for the whole call and is revalidated before every action; the legacy background selector is an alternative lock and target wins when both are given. Without a target every acting verb is refused before anything is sent (target_required for keys and patterns, no_cursor_policy for pointer acts), and nothing ever falls back to the foreground window.\nDelivery: click/down/up/drag/scroll/type/key/hotkey post window messages to the locked target; click, scroll and invoke with an element act through the control's own UIA pattern (Invoke, SelectionItem, Toggle, ExpandCollapse, ScrollPattern), and an element click never falls back to a posted point: a point is not the control the fingerprint vouched for, so a control with none of those patterns is refused typed instead of clicked at its last centre; wait, wait_for and clipboard_get deliver nothing. Refused under the policy, with no flag that unlocks them: move is refused with no_cursor_policy (a cursor move is not a window message); focus_window is refused with no_foreground_policy; set_value is refused with background_unavailable (UIA SetValue may focus the control); clipboard_set is refused with no_clipboard_policy (the clipboard is global); and type with an element is refused with background_unavailable.\nCoordinates: x/y under a target are CLIENT-area physical pixels; without a target they are virtual-desktop SCREEN pixels converted with ScreenToClient. Posted coordinates are signed 16-bit: anything outside -32768..32767 is refused with bad_coordinates before a message is posted. move takes x/y or dx/dy, never both.\nEffects: delivered (uia|posted|none), via and effect are the three readings. ok is true when the action was delivered and not disproven; a posted click whose readable control state did not change reports ok:false with background_unavailable and effect unchanged; a raw x/y click reports effect unverified. invoke reads the control's own state (expand, value, text) before and after the pattern call: effect changed when it moved, unchanged when it did not, unverified when the control exposes no state an activation can move (a plain push button does not) - ok still reports delivery only.\nStale refs: every element mutation (invoke, set_value, click and type with an element) requires expect_fp, the fp from an elements entry. Without it the call refuses expect_fp_required and the error carries the fresh fp; a mismatch refuses resolution:stale with a stale_ref error naming expected vs found fps. Retry with the returned fp. fp is identity, never state: rect, text and control state do not participate, so a matching fp means the same control properties (role, name, auto_id, invokable), not the same condition and not uniqueness - a replacement with those properties hashes the same; read effect for what the control then did. An ambiguous selector returns candidates {name,role,auto_id,rect,ref,fp} and acts on nothing; an explicit index picks the nth match.\nKeyboard: type posts WM_CHAR per unit; key and hotkey post WM_KEYDOWN/WM_SYSKEYDOWN and hold Shift when the layout requires it. chunk_chars/chunk_ms are accepted for compatibility and perform no pacing. scroll axis v|h selects the wheel; drag is down/move/up at exact points; hover:true is the only way to post a WM_MOUSEMOVE.\nBudget: at most 256 actions and 300 ms of total elapsed time per call; exceeding either is a typed burst_budget_exceeded result naming the limit and the actual value, and the remaining actions do not run. An element wait reports satisfied_by {selector, fp, path} naming the control that satisfied it (null when nothing did) and fp_matched when expect_fp was supplied; a mismatch is a report, never an error. Top-level ok is true only when EVERY action succeeded; a wait_for timeout is never an error. settle_ms is one trailing pause after the last action. focus_guard:true restores the entry foreground window when the call changed it, and focus_before/focus_after are always reported.\ndry_run=true validates exactly like the live call (every policy refusal included) but posts nothing, and invoke under dry_run still reports found|not-found|ambiguous. desktop:\"hidden\" launches the program named by background on a private desktop (background_args are its argv) and returns the burst JSON plus hidden_desktop{...}; the owner's cursor, foreground and focus are never touched.",
       "domain": "desktop",
       "inputSchema": {
         "additionalProperties": false,
@@ -3437,27 +3352,10 @@
         "readOnlyHint": true,
         "title": "Elements"
       },
-      "description": "List structured UI elements for a window as JSON, zero-pixel (no screenshot, no focus change, no input).\nTarget by selector (title text or hwnd; the same TargetLock as target:). detail=true keeps the raw win and hwnd fields on each entry and adds text (TextPattern document text, capped at 4000 chars) plus text_truncated; the default false returns the compact {ref,role,name,auto_id,rect,offscreen,invokable,path,fp}.\nEach entry carries fp, a stable identity fingerprint (FNV-1a over role/name/auto_id/invokable, 16 hex chars); pass it as expect_fp to invoke, set_value, click and type on an element: a call without one is refused with the fresh fp, and a mismatched one refuses stale_ref instead of acting on the wrong control. fp is identity, never state: rect, text and control state (checked, selected, expanded, range) do not participate, so an fp match means the same control, not the same condition; a state-sensitive action needs a readback (effect), never a fingerprint. offscreen:true marks a control with no area: the rect is kept for shape stability but click refuses it with offscreen_element.\nReturns {backend,truncated,rect_space,elements,uia_available,uia_error,fallback,empty[,empty_reason],depth_capped,depth_limit}; rect_space is screen. max_depth (1..32, default 8) bounds the UIA walk; offset pages past the 200-entry cap and next_offset carries the next page or null. When UIA is unavailable the Win32 child enumeration serves the entries.",
+      "description": "List structured UI elements for a window as JSON, zero-pixel (no screenshot, no focus change, no input).\nTarget by selector (title text or hwnd; the same TargetLock as target:). detail=true keeps the raw win and hwnd fields on each entry and adds text (TextPattern document text, capped at 4000 chars) plus text_truncated; the default false returns the compact {ref,role,name,auto_id,rect,offscreen,invokable,path,fp}.\nEach entry carries fp, a stable identity fingerprint (FNV-1a over role/name/auto_id/invokable, 16 hex chars); pass it as expect_fp to invoke, set_value, click and type on an element: a call without one is refused with the fresh fp, and a mismatched one refuses stale_ref instead of acting on the wrong control. fp is identity, never state: rect, text and control state (checked, selected, expanded, range) do not participate, so an fp match means the same control properties, not the same condition and not uniqueness: a replacement with those four hashes alike; a state-sensitive action needs a readback (effect), never a fingerprint. offscreen:true marks a control with no area: the rect is kept for shape stability but click refuses it with offscreen_element.\nReturns {backend,truncated,rect_space,elements,uia_available,uia_error,fallback,empty[,empty_reason],depth_capped,depth_limit}; rect_space is screen. max_depth (1..32, default 8) bounds the UIA walk; offset pages past the 200-entry cap and next_offset carries the next page or null. When UIA is unavailable the Win32 child enumeration serves the entries.\nOne of title, hwnd or target is required (enforced by the handler).",
       "domain": "desktop",
       "inputSchema": {
         "additionalProperties": false,
-        "anyOf": [
-          {
-            "required": [
-              "title"
-            ]
-          },
-          {
-            "required": [
-              "hwnd"
-            ]
-          },
-          {
-            "required": [
-              "target"
-            ]
-          }
-        ],
         "properties": {
           "detail": {
             "default": false,
@@ -3588,7 +3486,7 @@
         "type": "object"
       },
       "schemaHash": {
-        "input": "sha256:90a47850a03f2b35582bc32948ce8857356586af560d3f2e6edc1270cde4ec76",
+        "input": "sha256:6320f5ee527800080ade2febe373d7a2a5c6ce95c769128d427817cde671b155",
         "output": "sha256:84c4ae44eb67ce585facf319056de27e1403740dec2ce9926c22fbf7f1d5e8bd"
       },
       "source": "puppet",

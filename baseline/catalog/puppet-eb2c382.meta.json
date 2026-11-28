@@ -1,0 +1,142 @@
+{
+  "args": [],
+  "capturedAtLocal": "Sat Nov 28 2026 22:56:36 GMT+0800 (Philippine Standard Time)",
+  "capturedAtUtc": "2026-11-28T14:56:36.282Z",
+  "catalog": {
+    "canonicalHash": "sha256:13d51962bd2626cb92350ad014ad4a625ad906c411fffe07c4a7279234938f38",
+    "duplicateNames": [],
+    "legacyVsModernResultDiff": [
+      "cacheScope",
+      "resultType",
+      "ttlMs"
+    ],
+    "schemaHashes": {
+      "cursor": {
+        "input": "sha256:99334726611ccf58a148b0814696bfa6fe08c1b2d027e946beccf5a74331c9aa",
+        "output": "sha256:e37f34231321d44ae2a942dea3cbe7dcced0f97fe8fbe689cd1fd08cc7e48d85"
+      },
+      "diff": {
+        "input": "sha256:eb4c061971587064e8ddd13fdbf0294d535c80ef92041c0cca1a6f740b7700cf",
+        "output": "sha256:425d345154875706ae99080e4978abe2e23ee9b553fb2fe8b91249e542a2e069"
+      },
+      "do": {
+        "input": "sha256:3078e90863418025922de296560d7dd32f81a01f2b5a54a58bfbfe0bd69dfcb9",
+        "output": "sha256:02da92933a44a4aa2889527f768822b1e8593bdae9bc4d33494ca423cda798e1"
+      },
+      "elements": {
+        "input": "sha256:6320f5ee527800080ade2febe373d7a2a5c6ce95c769128d427817cde671b155",
+        "output": "sha256:84c4ae44eb67ce585facf319056de27e1403740dec2ce9926c22fbf7f1d5e8bd"
+      },
+      "list_windows": {
+        "input": "sha256:12d99fbba06d93ae69c9209afa46161789b6d8b722a47aa53e8dd791cd6d82ba",
+        "output": "sha256:4b50c43eee0b6030b3b28fb4ac2b0c2a998a1c192c0937dd3a7536ddbcb0f487"
+      },
+      "screenshot": {
+        "input": "sha256:b53d995e3a4b97949930677b4b6cf6cc66bfe23482d8f634888df634ee774f9e",
+        "output": "sha256:29a2533234c3c38ea1bea0d070038b398879e32b1afb4f4bf2ce3937ef4eb2cf"
+      },
+      "window": {
+        "input": "sha256:f036e297e786fc780e02158ade4221cb4b872ced8e12e8392bf5123b489578af",
+        "output": "sha256:24d01197c3c8ed560790288d7810d56cff5dc6ac13c7370abb38fe26e137de3f"
+      }
+    },
+    "toolCount": 7,
+    "toolNames": [
+      "screenshot",
+      "diff",
+      "list_windows",
+      "window",
+      "do",
+      "cursor",
+      "elements"
+    ]
+  },
+  "command": "C:\\Users\\nathan\\AppData\\Local\\Temp\\opencode\\hand-pin-capture-20261128\\puppet\\target\\release\\puppet.exe",
+  "cwd": "Q:\\PROJECTS\\PERSONAL\\public\\hand",
+  "executable": {
+    "bytes": 2591744,
+    "path": "C:\\Users\\nathan\\AppData\\Local\\Temp\\opencode\\hand-pin-capture-20261128\\puppet\\target\\release\\puppet.exe",
+    "sha256": "sha256:64ba69374f94f6bf2252071268f8894d356d6bf9ed6f3a6297c6d3fdcb7828c5"
+  },
+  "files": {
+    "discover.json": {
+      "bytes": 6279,
+      "canonical": "sha256:d5e00bb721c7ace2e051abc105af8fc0f91fb6df2bbc57dc679ac4eb938aba37",
+      "path": "baseline/catalog/puppet-eb2c382.discover.json",
+      "sha256": "sha256:301a888993928e2648791ff86387546cd18e980582fa941bdcf5825a33d26979"
+    },
+    "initialize.json": {
+      "bytes": 6162,
+      "canonical": "sha256:7506497f7635ce4239c2ee72fb2bb9fbb985289c852949ce3f35d19e669fdf9d",
+      "path": "baseline/catalog/puppet-eb2c382.initialize.json",
+      "sha256": "sha256:038f7f490954943c7df7c8d3a47705d1a66a829e763b4ee072e0051697a43d52"
+    },
+    "ping.json": {
+      "bytes": 3,
+      "canonical": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "path": "baseline/catalog/puppet-eb2c382.ping.json",
+      "sha256": "sha256:ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    },
+    "tools.json": {
+      "bytes": 46048,
+      "canonical": "sha256:13d51962bd2626cb92350ad014ad4a625ad906c411fffe07c4a7279234938f38",
+      "path": "baseline/catalog/puppet-eb2c382.tools.json",
+      "sha256": "sha256:f0b9626102a9c4bd2f8df0b47b6aeb31e4633102e344036fbf6fdacc5945448a"
+    },
+    "tools.modern.json": {
+      "bytes": 46117,
+      "canonical": "sha256:26fdde899a06fef9ef0a8580b1f46f77a039fb427725483f51aa0d21f54aa3ac",
+      "path": "baseline/catalog/puppet-eb2c382.tools.modern.json",
+      "sha256": "sha256:fe9a56431e100f3484d00b12d6ea1c455fa7238b1fc75a216711501291411a15"
+    },
+    "transcript.jsonl": {
+      "bytes": 69040,
+      "path": "baseline/catalog/puppet-eb2c382.transcript.jsonl",
+      "sha256": "sha256:8354f065f04665d5af596b6af1b10cf6c0abf984dbbf814a0574f660ed5a6e8a"
+    }
+  },
+  "label": "Puppet at eb2c382 (release build from git archive)",
+  "node": "v26.13.1",
+  "platform": "win32 x64",
+  "requests": {
+    "modernProtocol": "2026-07-28",
+    "protocol": "2025-11-25",
+    "timingsMs": {
+      "discoverMs": 0.362,
+      "initializeMs": 20.922,
+      "pingMs": 0.467,
+      "toolsListModernMs": 0.384,
+      "toolsListMs": 0.515
+    }
+  },
+  "server": {
+    "exit": {
+      "code": 0,
+      "signal": null
+    },
+    "initialize": {
+      "capabilities": {
+        "extensions": {
+          "io.modelcontextprotocol/skills": {}
+        },
+        "resources": {},
+        "tools": {
+          "listChanged": false
+        }
+      },
+      "protocolVersion": "2025-11-25",
+      "serverInfo": {
+        "name": "puppet",
+        "version": "8.0.4"
+      }
+    },
+    "stderr": ""
+  },
+  "unsolicitedFrames": [],
+  "version": {
+    "command": "C:\\Users\\nathan\\AppData\\Local\\Temp\\opencode\\hand-pin-capture-20261128\\puppet\\target\\release\\puppet.exe --version",
+    "status": 0,
+    "stderr": "",
+    "stdout": "puppet 8.0.4 (unknown)"
+  }
+}
