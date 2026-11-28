@@ -33,11 +33,92 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # The full release gate is expensive (~13 minutes on two cold images). When
+  # this version is already on the registry, both ci and publish are pure
+  # overhead. This cheap job lets release.mjs make the identity call; it never
+  # reimplements version or tag rules, and a lookup that cannot run fails the
+  # job rather than silently skipping or repeating a release.
+  decide:
+    runs-on: windows-2022
+    permissions:
+      contents: read
+    outputs:
+      should_publish: ${{ steps.decide.outputs.should_publish }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm install -g npm@11
+      - name: Decide from registry and tag identity
+        id: decide
+        shell: bash
+        run: |
+          node npm/release.mjs --status
+          node --input-type=module - <<'NODE'
+          import { execFileSync } from "node:child_process";
+          import { readFileSync, appendFileSync } from "node:fs";
+          const { releaseIdentityDecision } = await import("./npm/release.mjs");
+
+          function capture(cmd, args) {
+            try {
+              return { ok: true, out: execFileSync(cmd, args, { cwd: process.cwd(), encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }) };
+            } catch (error) {
+              return { ok: false, out: [(error.stdout || ""), (error.stderr || ""), (error.message || "")].join("\n") };
+            }
+          }
+
+          const version = process.env.DECIDE_VERSION || JSON.parse(readFileSync("npm/package.json", "utf8")).version;
+          const head = capture("git", ["rev-parse", "HEAD"]);
+          if (!head.ok) { console.error("FAIL decide: cannot read HEAD: " + head.out.trim()); process.exit(1); }
+          const headSha = head.out.trim().toLowerCase();
+
+          const view = capture(process.env.ComSpec || "cmd.exe", ["/d", "/c", "npm", "view", "hand-mcp@" + version, "gitHead", "--json"]);
+          let registry;
+          if (view.ok) {
+            let doc;
+            try { doc = JSON.parse(view.out); } catch { doc = null; }
+            const raw = Array.isArray(doc) ? doc[0] : doc;
+            const gitHead = typeof raw === "string" ? raw.toLowerCase() : null;
+            registry = gitHead && /^[0-9a-f]{7,40}$/.test(gitHead)
+              ? { status: "present", gitHead, version }
+              : { status: "unavailable", reason: "npm view returned no usable gitHead" };
+          } else {
+            registry = /E404|No match found for version|No matching version found|version not found/i.test(view.out)
+              ? { status: "absent", reason: "npm view: version not on registry" }
+              : { status: "unavailable", reason: view.out.trim() };
+          }
+
+          const ls = capture("git", ["ls-remote", "--tags", "origin", "refs/tags/v" + version + "*"]);
+          let tag;
+          if (!ls.ok) {
+            tag = { status: "unavailable", reason: ls.out.trim() };
+          } else {
+            const ref = "refs/tags/v" + version;
+            const cols = ls.out.split(/\r?\n/).filter(Boolean).map((line) => line.split(/\s+/));
+            const row = cols.find((c) => c[1] === ref + "^{}") || cols.find((c) => c[1] === ref);
+            tag = row && /^[0-9a-f]{40}$/i.test(row[0])
+              ? { status: "present", commit: row[0].toLowerCase() }
+              : { status: "absent", reason: "no remote tag v" + version };
+          }
+
+          const decision = releaseIdentityDecision({ version, head: headSha, registry, tag });
+          console.log("decide: version=" + version + " head=" + headSha.slice(0, 8) + " registry=" + registry.status + (registry.gitHead ? " gitHead=" + registry.gitHead.slice(0, 8) : "") + " tag=" + tag.status + (tag.commit ? " commit=" + tag.commit.slice(0, 8) : ""));
+          console.log("decide: action=" + decision.action + " reason=" + decision.reason);
+          if (decision.action === "fail") { console.error("FAIL decide: " + decision.reason); process.exit(1); }
+          const shouldPublish = decision.action === "publish" ? "true" : "false";
+          console.log("should_publish=" + shouldPublish);
+          const output = process.env.GITHUB_OUTPUT;
+          if (output) appendFileSync(output, "should_publish=" + shouldPublish + "\ndecision=" + decision.action + "\n");
+          NODE
+
   # Real-browser and desktop suites run advisory on pull requests in ci.yml,
   # never in a release. This gate verifies the artifact that ships: deterministic
   # tests, then the packed tarball itself, so a VM network policy never vetoes
   # a published package.
   ci:
+    needs: decide
+    if: needs.decide.outputs.should_publish == 'true'
     # Pinned image: a release gate must not change under the project.
     runs-on: windows-2022
     permissions:
