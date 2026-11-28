@@ -21,6 +21,12 @@ desktop-engine = { path = "crates/desktop-engine" }
 tokio = { version = "1", features = ["full"] }
 serde_json = "1"
 
+[build-dependencies]
+sha2 = "0.10"
+
+[dev-dependencies]
+sha2 = "0.10"
+
 [profile.dev]
 debug = "line-tables-only"
 incremental = true

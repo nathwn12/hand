@@ -40,6 +40,8 @@ use tokio::task::JoinHandle;
 
 use crate::catalog::{self, Domain};
 
+include!(concat!(env!("OUT_DIR"), "/skills.rs"));
+
 /// G1 version matrix, identical to both pinned engines.
 const LEGACY_1: &str = "2025-06-18";
 const LEGACY_2: &str = "2025-11-25";
@@ -191,7 +193,7 @@ fn handshake_result(params: &Value) -> Value {
         .unwrap_or(LATEST_LEGACY);
     json!({
         "protocolVersion": echo,
-        "capabilities": {"tools": {"listChanged": false}},
+        "capabilities": {"tools": {"listChanged": false}, "resources": {}, "extensions": {"io.modelcontextprotocol/skills": {}}},
         "serverInfo": server_info(),
         "instructions": instructions(),
     })
@@ -212,7 +214,7 @@ fn add_cache_hints(result: &mut Value) {
 fn discover_result(modern: bool) -> Value {
     let mut result = json!({
         "supportedVersions": SUPPORTED,
-        "capabilities": {"tools": {"listChanged": false}},
+        "capabilities": {"tools": {"listChanged": false}, "resources": {}, "extensions": {"io.modelcontextprotocol/skills": {}}},
         "serverInfo": server_info(),
         "instructions": instructions(),
         "resultType": "complete",
@@ -915,6 +917,34 @@ async fn handle_frame(value: Value, state: &Arc<State>, tx: &mpsc::UnboundedSend
             let args = params.get("arguments").cloned().unwrap_or(json!({}));
             dispatch_call(id, name, args, modern, state, tx).await;
         }
+        "skills/list" => {
+            let result = skills_list_result();
+            let _ = tx.send(result_frame(&id, result));
+        }
+        "skills/get" => {
+            let params = value.get("params").cloned().unwrap_or(Value::Null);
+            let uri = params.get("uri").and_then(|v| v.as_str()).unwrap_or("");
+            match skills_get_result(uri) {
+                Ok(result) => {
+                    let _ = tx.send(result_frame(&id, result));
+                }
+                Err(_) => {
+                    let _ = tx.send(error_frame(&id, -32602, "unknown skill uri"));
+                }
+            }
+        }
+        "resources/read" => {
+            let params = value.get("params").cloned().unwrap_or(Value::Null);
+            let uri = params.get("uri").and_then(|v| v.as_str()).unwrap_or("");
+            match resources_read_result(uri) {
+                Ok(result) => {
+                    let _ = tx.send(result_frame(&id, result));
+                }
+                Err(_) => {
+                    let _ = tx.send(error_frame(&id, -32602, "unknown resource uri"));
+                }
+            }
+        }
         _ => {
             let _ = tx.send(error_frame(&id, -32601, "Method not found"));
         }
@@ -1432,4 +1462,229 @@ mod tests {
             "the earlier call keeps its own answer"
         );
     }
+}
+
+fn skills_list_result() -> Value {
+    let mut skills: Vec<Value> = Vec::new();
+    for name in skill_names() {
+        if let Some(skill) = build_skill(&name) {
+            skills.push(skill);
+        }
+    }
+    skills.sort_by(|a, b| {
+        let ua = a.get("uri").and_then(|v| v.as_str()).unwrap_or("");
+        let ub = b.get("uri").and_then(|v| v.as_str()).unwrap_or("");
+        ua.cmp(ub)
+    });
+    json!({
+        "skills": skills,
+        "ttlMs": 0,
+        "cacheScope": "private"
+    })
+}
+
+fn skills_get_result(uri: &str) -> Result<Value, ()> {
+    if uri.contains('?') || uri.contains('#') {
+        return Err(());
+    }
+    let (skill, rel) = parse_skill_uri(uri).ok_or(())?;
+    if rel != "SKILL.md" {
+        return Err(());
+    }
+    let built = build_skill(&skill).ok_or(())?;
+    let built_uri = built.get("uri").and_then(|v| v.as_str()).unwrap_or("");
+    if built_uri != uri {
+        return Err(());
+    }
+    Ok(json!({
+        "skill": built,
+        "ttlMs": 0,
+        "cacheScope": "private"
+    }))
+}
+
+fn resources_read_result(uri: &str) -> Result<Value, ()> {
+    if uri.contains('?') || uri.contains('#') {
+        return Err(());
+    }
+    let (skill, rel) = parse_skill_uri(uri).ok_or(())?;
+    let file = SKILL_FILES
+        .iter()
+        .find(|f| f.skill == skill && f.rel == rel)
+        .ok_or(())?;
+    let _ = build_skill(&skill).ok_or(())?;
+    let contents = if let Ok(text) = std::str::from_utf8(file.bytes) {
+        json!([{
+            "uri": uri,
+            "mimeType": "text/markdown",
+            "text": text
+        }])
+    } else {
+        json!([{
+            "uri": uri,
+            "mimeType": "application/octet-stream",
+            "blob": base64_encode(file.bytes)
+        }])
+    };
+    Ok(json!({ "contents": contents }))
+}
+
+fn parse_skill_uri(uri: &str) -> Option<(String, String)> {
+    let rest = uri.strip_prefix("skill://")?;
+    let slash = rest.find('/')?;
+    let skill = &rest[..slash];
+    let rel = &rest[slash + 1..];
+    if skill.is_empty() || rel.is_empty() {
+        return None;
+    }
+    if skill.contains("..") || rel.contains("..") {
+        return None;
+    }
+    Some((skill.to_string(), rel.to_string()))
+}
+
+fn skill_names() -> Vec<String> {
+    let mut names: Vec<String> = SKILL_FILES.iter().map(|f| f.skill.to_string()).collect();
+    names.sort();
+    names.dedup();
+    names
+}
+
+fn files_for_skill(skill: &str) -> Vec<&'static SkillFile> {
+    SKILL_FILES.iter().filter(|f| f.skill == skill).collect()
+}
+
+fn build_skill(skill_name: &str) -> Option<Value> {
+    let files = files_for_skill(skill_name);
+    if files.is_empty() {
+        return None;
+    }
+    let skill_md = files.iter().find(|f| f.rel == "SKILL.md")?;
+    let (name, description) = parse_frontmatter(skill_md.bytes)?;
+    if name != skill_name {
+        return None;
+    }
+    if !valid_skill_name(&name) {
+        return None;
+    }
+    if description.is_empty() || description.len() > 1024 {
+        return None;
+    }
+    if files.len() > 512 {
+        return None;
+    }
+    let total: usize = files.iter().map(|f| f.size).sum();
+    if total > 16 * 1024 * 1024 {
+        return None;
+    }
+    let mut resources: Vec<Value> = files
+        .iter()
+        .map(|f| {
+            json!({
+                "uri": format!("skill://{}/{}", f.skill, f.rel),
+                "digest": f.digest,
+                "size": f.size
+            })
+        })
+        .collect();
+    resources.sort_by(|a, b| {
+        let ua = a.get("uri").and_then(|v| v.as_str()).unwrap_or("");
+        let ub = b.get("uri").and_then(|v| v.as_str()).unwrap_or("");
+        ua.cmp(ub)
+    });
+    Some(json!({
+        "uri": format!("skill://{}/SKILL.md", skill_name),
+        "frontmatter": {
+            "name": name,
+            "description": description
+        },
+        "resources": resources
+    }))
+}
+
+fn parse_frontmatter(bytes: &[u8]) -> Option<(String, String)> {
+    let text = std::str::from_utf8(bytes).ok()?;
+    let text = text.strip_prefix("---\n")?;
+    let close = text.find("\n---")?;
+    let yaml = &text[..close];
+    let mut name = None;
+    let mut description = None;
+    for line in yaml.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let (k, v) = line.split_once(':')?;
+        let key = k.trim();
+        let val = unquote(v.trim());
+        match key {
+            "name" => name = Some(val),
+            "description" => description = Some(val),
+            _ => {}
+        }
+    }
+    Some((name?, description?))
+}
+
+fn unquote(s: &str) -> String {
+    if s.len() >= 2
+        && ((s.starts_with('"') && s.ends_with('"')) || (s.starts_with('\'') && s.ends_with('\'')))
+    {
+        s[1..s.len() - 1].to_string()
+    } else {
+        s.to_string()
+    }
+}
+
+fn valid_skill_name(name: &str) -> bool {
+    if name.is_empty() || name.len() > 64 {
+        return false;
+    }
+    let bytes = name.as_bytes();
+    if bytes[0] == b'-' || bytes[name.len() - 1] == b'-' {
+        return false;
+    }
+    let mut prev_hyphen = false;
+    for &c in bytes {
+        if c == b'-' {
+            if prev_hyphen {
+                return false;
+            }
+            prev_hyphen = true;
+        } else if c.is_ascii_lowercase() || c.is_ascii_digit() {
+            prev_hyphen = false;
+        } else {
+            return false;
+        }
+    }
+    true
+}
+
+fn base64_encode(input: &[u8]) -> String {
+    const TABLE: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::new();
+    let mut i = 0;
+    while i + 3 <= input.len() {
+        let n = ((input[i] as u32) << 16) | ((input[i + 1] as u32) << 8) | (input[i + 2] as u32);
+        out.push(TABLE[(n >> 18) as usize] as char);
+        out.push(TABLE[((n >> 12) & 63) as usize] as char);
+        out.push(TABLE[((n >> 6) & 63) as usize] as char);
+        out.push(TABLE[(n & 63) as usize] as char);
+        i += 3;
+    }
+    let rem = input.len() - i;
+    if rem == 1 {
+        let n = (input[i] as u32) << 16;
+        out.push(TABLE[(n >> 18) as usize] as char);
+        out.push(TABLE[((n >> 12) & 63) as usize] as char);
+        out.push('=');
+        out.push('=');
+    } else if rem == 2 {
+        let n = ((input[i] as u32) << 16) | ((input[i + 1] as u32) << 8);
+        out.push(TABLE[(n >> 18) as usize] as char);
+        out.push(TABLE[((n >> 12) & 63) as usize] as char);
+        out.push(TABLE[((n >> 6) & 63) as usize] as char);
+        out.push('=');
+    }
+    out
 }
