@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] - 2026-11-28
+
+### Fixed
+
+- Ten tools published a root `oneOf`/`anyOf`/`allOf` in their `inputSchema` (`browser_click`, `browser_type`, `browser_upload`, `browser_hover`, `browser_select`, `browser_viewport`, `browser_assert_layout`, `browser_layout`, `desktop_window`, `desktop_elements`). Model providers reject a function whose parameters schema has a combinator at the root, so a request containing one of those tools failed entirely and the session died before the tool ran. The keywords are gone from the published schemas; the conditions they described remain enforced in the handlers, and a call with neither `ref` nor `selector` still returns a typed `invalid_args`/`missing_arg`.
+- `skills/list` and `skills/get` results now carry `resultType: "complete"`, `ttlMs` and `cacheScope`, and each skill entry carries a top-level `name`; a client implementing protocol revision 2026-07-28 rejected the old results as invalid, so skills had never listed on a compliant client.
+- `resources/list` is implemented and answers with the skill resources. The server advertised the `resources` capability without that method, so every client that read the handshake received `-32601 Method not found`.
+- The compatibility baseline is recaptured from gladius `928341d` and puppet `eb2c382`, so the published floor no longer carries the removed keywords.
+
 ## [0.5.0] - 2026-11-28
 
 ### Added
