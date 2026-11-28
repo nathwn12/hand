@@ -394,20 +394,48 @@ async function packAndVerify(head, noBuild = false) {
     const child = spawn(process.execPath, [launcher], { cwd: work, stdio: ['pipe', 'pipe', 'pipe'] });
     let buf = '';
     const seen = [];
+    // One request in flight at a time: every step after initialize is sent
+    // only when the previous reply arrives. A navigate issued while an
+    // earlier one is still in flight makes Chromium cancel it (ERR_ABORTED),
+    // which run 46146051272 misreported as a data: URL failure.
+    const steps = [
+      { id: 1, label: 'initialize' },
+      { id: 2, label: 'tools/list' },
+      { id: 3, label: 'browser_navigate (loopback fixture)' },
+      { id: 4, label: 'browser_navigate (data URL)' },
+    ];
+    const request = (id) => {
+      if (id === 1) return { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'release-check', version: '0.0.1' } } };
+      if (id === 2) return { jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} };
+      if (id === 3) return { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'browser_navigate', arguments: { url: fixtureUrl } } };
+      return { jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'browser_navigate', arguments: { url: dataUrl } } };
+    };
+    let outstanding = steps[0];
+    const send = (step) => {
+      outstanding = step;
+      child.stdin.write(JSON.stringify(request(step.id)) + '\n');
+    };
     // Chrome's first launch on a fresh runner takes longer than the old 15s
     // MCP-only bound; the timer covers a real navigation, not just a reply.
-    const timer = setTimeout(() => { child.kill(); rejectPromise(new Error('handshake timed out')); }, 120000);
+    const timer = setTimeout(() => { child.kill(); rejectPromise(new Error('handshake timed out waiting for reply to ' + outstanding.label)); }, 120000);
     child.stdout.on('data', (d) => {
       buf += d.toString('utf8');
       let i;
       while ((i = buf.indexOf('\n')) >= 0) {
         const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
-        if (line) {
-          try {
-            const msg = JSON.parse(line);
-            seen.push(msg);
-            if (msg.id === 4) child.stdin.end();
-          } catch { /* non-JSON banner */ }
+        if (!line) continue;
+        let msg;
+        try { msg = JSON.parse(line); } catch { continue; /* non-JSON banner */ }
+        seen.push(msg);
+        if (msg.id !== outstanding?.id) continue;
+        const index = steps.findIndex((s) => s.id === msg.id);
+        if (index === steps.length - 1) {
+          child.stdin.end();
+        } else {
+          const next = steps[index + 1];
+          // notifications/initialized is a JSON-RPC notification: no reply.
+          if (next.id === 2) child.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
+          send(next);
         }
       }
     });
@@ -430,11 +458,7 @@ async function packAndVerify(head, noBuild = false) {
         dataText: navText(data?.result),
       });
     });
-    child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'release-check', version: '0.0.1' } } }) + '\n');
-    setTimeout(() => child.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n'), 200);
-    setTimeout(() => child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }) + '\n'), 400);
-    setTimeout(() => child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'browser_navigate', arguments: { url: fixtureUrl } } }) + '\n'), 800);
-    setTimeout(() => child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'browser_navigate', arguments: { url: dataUrl } } }) + '\n'), 1600);
+    send(steps[0]);
   });
   await new Promise((ok) => fixture.close(ok));
   // The 35-name compatibility floor, in catalog order. Additions raise the
