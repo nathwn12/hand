@@ -1907,23 +1907,71 @@ fn blank_load_err(url: &str, detail: &str) -> ToolErr {
     )
 }
 
+/// Pre-navigation commit barrier. Mirrors karatelabs/karate f38e9c4 ("barrier
+/// on local navigation commit so the pooled reset stops racing"): issuing the
+/// first real navigation while a reset's about:blank document is still in
+/// flight is what produces net::ERR_ABORTED in CI. The main frame's loaderId
+/// names its current document loader, so a non-empty loader proves a commit;
+/// when an initial empty document has no loader, Page.lifecycleEvent("init")
+/// for that frame proves a document was opened. The 2s cap gives up that proof
+/// on a peer that reports neither: navigation proceeds exactly as before
+/// rather than hanging the call.
+async fn await_nav_commit(browser: &Browser) {
+    let cap = std::time::Duration::from_secs(2);
+    let poll = std::time::Duration::from_millis(25);
+    let deadline = std::time::Instant::now() + cap;
+    let mut armed_frame: Option<String> = None;
+    loop {
+        let tree = browser.command("Page.getFrameTree", json!({}), true).await;
+        let (frame_id, loader_id) = match tree {
+            Ok(v) => {
+                let frame = v.get("frameTree").and_then(|t| t.get("frame"));
+                (
+                    frame
+                        .and_then(|f| f.get("id"))
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .to_string(),
+                    frame
+                        .and_then(|f| f.get("loaderId"))
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .to_string(),
+                )
+            }
+            Err(_) => (String::new(), String::new()),
+        };
+        if !loader_id.is_empty() {
+            return;
+        }
+        if armed_frame.is_none() && !frame_id.is_empty() {
+            if browser.arm_commit_events().await.is_ok() {
+                armed_frame = Some(frame_id);
+            }
+        }
+        let remain = deadline.saturating_duration_since(std::time::Instant::now());
+        if remain.is_zero() {
+            return;
+        }
+        if let Some(frame_id) = &armed_frame {
+            if browser
+                .wait_for_commit_event(frame_id, remain.min(poll))
+                .await
+            {
+                return;
+            }
+        } else {
+            tokio::time::sleep(remain.min(poll)).await;
+        }
+    }
+}
+
 async fn tool_navigate(browser: &Browser, url: &str) -> Result<Value, ToolErr> {
     let lower = url.trim().to_ascii_lowercase();
     let requested_page = lower.starts_with("http://") || lower.starts_with("https://");
     browser.command("Page.enable", json!({}), true).await?;
     let _ = browser.ensure_network().await;
-    // A fresh target starts on about:blank. Navigating before that initial
-    // document has committed crosses a renderer-process boundary; Chrome
-    // cancels the swap and Page.navigate answers net::ERR_ABORTED even though
-    // the destination is up. Settle the current document first: a successful
-    // readyState=="complete" eval proves a committed document, which is the
-    // swap precondition, and an already-complete page returns at once. The
-    // 2s cap is the trade - a peer that never answers inside it navigates
-    // WITHOUT that proof rather than hanging the call. Do not raise it to
-    // chase a green run.
-    browser
-        .wait_for_load(std::time::Duration::from_secs(2))
-        .await;
+    await_nav_commit(browser).await;
     browser.begin_nav_observe().await;
     let nav = browser
         .command("Page.navigate", json!({"url": url}), true)

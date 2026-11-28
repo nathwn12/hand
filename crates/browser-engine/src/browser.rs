@@ -213,6 +213,12 @@ struct Shared {
     /// use it as the wake signal with a fine-cadence `readyState` poll as
     /// fallback, so a wait never depends on event delivery alone.
     load_notify: tokio::sync::Notify,
+    /// Main-frame `Page.lifecycleEvent("init")` frame ids seen since the
+    /// navigate barrier armed them. `init` is emitted when a document is
+    /// opened, so it proves a commit even for an initial empty document whose
+    /// frame tree carries no loaderId. Used only by the navigate barrier.
+    commit_frames: AsyncMutex<HashSet<String>>,
+    commit_notify: tokio::sync::Notify,
     /// Stable tab index space: targetIds in first-seen (creation) order.
     /// CDP's getTargets order flaps under load (measured: a fresh tab sorted
     /// first on one call, second on the next), so indices must NOT follow
@@ -452,6 +458,8 @@ fn new_shared(sink: WsSink, excluded_contexts: Arc<Mutex<HashMap<String, String>
         owned: AtomicBool::new(false),
         dialog: AsyncMutex::new(None),
         load_notify: tokio::sync::Notify::new(),
+        commit_frames: AsyncMutex::new(HashSet::new()),
+        commit_notify: tokio::sync::Notify::new(),
         tab_order: AsyncMutex::new(Vec::new()),
         console: AsyncMutex::new(VecDeque::new()),
         net_inflight: AsyncMutex::new(HashSet::new()),
@@ -2413,6 +2421,50 @@ impl Browser {
         }
     }
 
+    /// Arm the navigate barrier's lifecycle fallback: forget `init` events
+    /// from earlier documents and enable `Page` lifecycle events on the
+    /// current session. Called only when the main frame has no loaderId.
+    pub(crate) async fn arm_commit_events(&self) -> Result<(), String> {
+        let shared = self.shared().await?;
+        shared.commit_frames.lock().await.clear();
+        self.command(
+            "Page.setLifecycleEventsEnabled",
+            json!({"enabled": true}),
+            true,
+        )
+        .await?;
+        Ok(())
+    }
+
+    /// Best-effort wait for a main-frame `init` lifecycle event. Never fails:
+    /// a timeout only says the barrier cannot prove a commit this time.
+    pub(crate) async fn wait_for_commit_event(&self, frame_id: &str, cap: Duration) -> bool {
+        let shared = {
+            let guard = self.state.lock().await;
+            match guard.as_ref() {
+                Some(inner) => inner.shared.clone(),
+                None => return false,
+            }
+        };
+        let deadline = Instant::now() + cap;
+        tokio::pin!(let notified = shared.commit_notify.notified(););
+        loop {
+            if shared.commit_frames.lock().await.contains(frame_id) {
+                return true;
+            }
+            let remain = deadline.saturating_duration_since(Instant::now());
+            if remain.is_zero() {
+                return false;
+            }
+            tokio::select! {
+                _ = &mut notified => {
+                    notified.set(shared.commit_notify.notified());
+                }
+                _ = tokio::time::sleep(remain.min(Duration::from_millis(25))) => {}
+            }
+        }
+    }
+
     /// Newest-first? No - oldest-first slice of the console ring: the last
     /// `limit` messages in arrival order, plus `count`/`total`/`cap` so an
     /// agent can tell a quiet page (`total: 0`) from a truncated one.
@@ -4291,6 +4343,20 @@ async fn reader_loop(mut stream: WsReader, shared: Arc<Shared>) {
         }
         if v.get("method").and_then(|m| m.as_str()) == Some("Page.loadEventFired") {
             shared.load_notify.notify_waiters();
+            continue;
+        }
+        if v.get("method").and_then(|m| m.as_str()) == Some("Page.lifecycleEvent") {
+            let params = v.get("params");
+            let init = params.and_then(|p| p.get("name")).and_then(|n| n.as_str()) == Some("init");
+            if init {
+                if let Some(fid) = params
+                    .and_then(|p| p.get("frameId"))
+                    .and_then(|f| f.as_str())
+                {
+                    shared.commit_frames.lock().await.insert(fid.to_string());
+                    shared.commit_notify.notify_waiters();
+                }
+            }
             continue;
         }
         if v.get("method").and_then(|m| m.as_str()) == Some("Runtime.consoleAPICalled") {
