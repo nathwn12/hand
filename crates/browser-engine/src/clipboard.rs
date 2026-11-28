@@ -385,6 +385,7 @@ mod tests {
                     body.len(), body
                 );
                     let _ = s.write_all(resp.as_bytes()).await;
+                    let _ = s.shutdown().await;
                 });
             }
         });

@@ -352,6 +352,7 @@ mod tests {
                         Err(_) => break, // client went away: budget proved
                     }
                 }
+                let _ = s.shutdown().await;
                 sent
             });
             worker.await.unwrap_or(0)

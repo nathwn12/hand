@@ -210,7 +210,54 @@ pub(crate) async fn launch_and_navigate(url: &str) -> Browser {
             .unwrap_or(0);
         tokio::time::sleep(std::time::Duration::from_millis(backoff + jitter)).await;
     }
-    panic!("navigate failed after retries: {last}");
+    let probe = probe_fixture(url).await;
+    panic!("navigate failed after retries: {last}; fixture probe: {probe}");
+}
+
+/// Direct-from-the-test-process probe of the same fixture URL, used only to
+/// explain a navigate failure: does loopback answer at all? Short string,
+/// because it lands in a panic message.
+#[cfg(test)]
+async fn probe_fixture(url: &str) -> String {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let rest = match url.split_once("://").map(|(_, r)| r) {
+        Some(r) => r,
+        None => return format!("no answer: bad url {url}"),
+    };
+    let slash = rest.find('/').unwrap_or(rest.len());
+    let authority = &rest[..slash];
+    let path = if slash < rest.len() {
+        &rest[slash..]
+    } else {
+        "/"
+    };
+    let port: u16 = match authority.rsplit(':').next().and_then(|p| p.parse().ok()) {
+        Some(p) => p,
+        None => return format!("no answer: bad port in {url}"),
+    };
+    let mut stream = match tokio::net::TcpStream::connect(("127.0.0.1", port)).await {
+        Ok(s) => s,
+        Err(e) => return format!("no answer: connect: {e}"),
+    };
+    let req = format!("GET {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n");
+    if let Err(e) = stream.write_all(req.as_bytes()).await {
+        return format!("no answer: write: {e}");
+    }
+    let mut buf = [0u8; 64];
+    match tokio::time::timeout(std::time::Duration::from_secs(3), stream.read(&mut buf)).await {
+        Ok(Ok(n)) => {
+            let head = String::from_utf8_lossy(&buf[..n]);
+            let line = head.lines().next().unwrap_or("").trim();
+            if line.is_empty() {
+                "answered: empty response".to_string()
+            } else {
+                format!("answered: {line}")
+            }
+        }
+        Ok(Err(e)) => format!("no answer: read: {e}"),
+        Err(_) => "no answer: Elapsed".to_string(),
+    }
 }
 
 #[cfg(test)]
@@ -221,6 +268,26 @@ mod tests {
     use serde_json::{json, Value};
     use std::time::Duration;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    const METRICS_PAGE: &str = "<!doctype html><html><body><div id='anchor'>metrics fixture</div><script>requestAnimationFrame(function(){ setTimeout(function(){ var d = document.createElement('div'); d.style.height = '120px'; d.style.background = '#ccc'; document.body.insertBefore(d, document.getElementById('anchor')); }, 30); });</script></body></html>";
+
+    /// The same fixture HTML supplied straight to Chrome for tests that read
+    /// metric mechanics rather than a network response. Every non-unreserved
+    /// byte is percent-encoded so '#' in a colour can never truncate the URL.
+    fn page_url(html: &str) -> String {
+        const HEX: &[u8; 16] = b"0123456789ABCDEF";
+        let mut url = String::from("data:text/html;charset=utf-8,");
+        for byte in html.bytes() {
+            if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~') {
+                url.push(byte as char);
+            } else {
+                url.push('%');
+                url.push(HEX[(byte >> 4) as usize] as char);
+                url.push(HEX[(byte & 0x0f) as usize] as char);
+            }
+        }
+        url
+    }
 
     /// Reuse the crate's local-server pattern (tokio::TcpListener::bind
     /// loopback + tokio::spawn) to serve a real fixture page over HTTP.
@@ -255,12 +322,13 @@ mod tests {
                             _ => break,
                         }
                     }
-                    let body = "<!doctype html><html><body><div id='anchor'>metrics fixture</div><script>requestAnimationFrame(function(){ setTimeout(function(){ var d = document.createElement('div'); d.style.height = '120px'; d.style.background = '#ccc'; document.body.insertBefore(d, document.getElementById('anchor')); }, 30); });</script></body></html>";
+                    let body = METRICS_PAGE;
                     let resp = format!(
                     "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\nContent-Type: text/html\r\n\r\n{}",
                     body.len(), body
                 );
                     let _ = s.write_all(resp.as_bytes()).await;
+                    let _ = s.shutdown().await;
                 });
             }
         });
@@ -327,7 +395,7 @@ mod tests {
     #[tokio::test]
     async fn metrics_reports_measured_values_and_reasons_for_nulls() {
         let _guard = crate::metrics::BROWSER_FIXTURE_LOCK.lock().await;
-        let (url, srv) = serve_fixture().await;
+        let url = page_url(METRICS_PAGE);
         let browser = crate::metrics::launch_and_navigate(&url).await;
         let bad = call("metrics", &json!({"bogus": 1}), &browser).await;
         assert_eq!(
@@ -336,7 +404,6 @@ mod tests {
         );
         tokio::time::sleep(Duration::from_millis(150)).await;
         let env = call("metrics", &json!({}), &browser).await;
-        srv.abort();
         let _ = browser.close().await;
         assert!(env.get("isError").is_none(), "metrics errored: {env}");
         let sc = env.get("structuredContent").expect("structuredContent");
