@@ -107,8 +107,7 @@ fn skills_get_unknown_returns_error() {
 
 /// The provider rejects a function whose *root* parameters schema is not a
 /// plain object. Enumerate the live catalog rather than a hard-coded list so a
-/// new tool cannot reintroduce the defect. Root combinators were lifted into a
-/// reserved property; their content must survive for the tools that had them.
+/// new tool cannot reintroduce the defect.
 #[test]
 fn every_advertised_tool_schema_has_a_valid_root() {
     let mut s = Session::spawn();
@@ -134,23 +133,6 @@ fn every_advertised_tool_schema_has_a_valid_root() {
             );
         }
     }
-    let find = |name: &str| {
-        tools
-            .iter()
-            .find(|t| t["name"].as_str() == Some(name))
-            .unwrap_or_else(|| panic!("tools/list omitted {name}"))
-    };
-    assert!(
-        find("browser_assert_layout")["inputSchema"]["properties"]["__argumentConstraints"]
-            ["anyOf"]
-            .is_array(),
-        "assert_layout's ref/selector rule must survive the relocation"
-    );
-    assert!(
-        find("desktop_window")["inputSchema"]["properties"]["__argumentConstraints"]["allOf"]
-            .is_array(),
-        "window's move/resize rule must survive the relocation"
-    );
 }
 
 #[test]
@@ -239,4 +221,20 @@ fn negotiated_modern_revision_marks_every_result() {
     }
     let read = s.request("resources/read", json!({"uri": "skill://routing/SKILL.md"}));
     assert_eq!(read["result"]["resultType"], "complete");
+}
+
+/// The deleted root `anyOf` never rejected anything: the provider refused the
+/// whole tool list before validation ran. The handler still rejects a targetless
+/// call, which is what actually enforces the rule.
+#[test]
+fn assert_layout_without_ref_or_selector_is_rejected_by_the_handler() {
+    let mut s = Session::spawn();
+    let resp = s.call("browser_assert_layout", json!({"checks": {"exists": true}}));
+    assert!(
+        common::is_error(&resp),
+        "a targetless assert_layout must be a typed tool error: {resp}"
+    );
+    let structured = &resp["result"]["structuredContent"];
+    assert_eq!(structured["code"], "invalid_args");
+    assert_eq!(structured["reason"], "missing_arg");
 }

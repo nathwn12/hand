@@ -270,10 +270,6 @@ pub fn list() -> Value {
              "width": {"type": "integer"}, "height": {"type": "integer"},
              "deviceScaleFactor": {"type": "number"}, "mobile": {"type": "boolean"},
              "reset": {"type": "boolean"}},
-             "oneOf": [
-                 {"properties": {"reset": {"const": true}}, "required": ["reset"]},
-                 {"properties": {"reset": {"const": false}}, "required": ["reset", "width", "height"]},
-                 {"required": ["width", "height"], "not": {"required": ["reset"]}}],
              "additionalProperties": false},
          "outputSchema": {"type": "object",
             "properties": {"applied": {}, "readback": {"type": "object"},
@@ -347,7 +343,6 @@ pub fn list() -> Value {
               "screenshotOnFail": {"type": "boolean"},
               "screenshotPath": {"type": "string"},
               "deterministic": {"type": "boolean"}, "frame": {"type": "string"}},
-              "anyOf": [{"required": ["ref"]}, {"required": ["selector"]}],
               "additionalProperties": false},
           "outputSchema": {"type": "object",
              "properties": {"pass": {"type": "boolean"}, "checks": {"type": "array"},
@@ -361,7 +356,6 @@ pub fn list() -> Value {
               "ref": {"oneOf": [{"type": "string"}, {"type": "array", "items": {"type": "string"}}]},
               "selector": {"oneOf": [{"type": "string"}, {"type": "array", "items": {"type": "string"}}]},
               "includeOverlaps": {"type": "boolean"}, "frame": {"type": "string"}},
-              "anyOf": [{"required": ["ref"]}, {"required": ["selector"]}],
               "additionalProperties": false},
           "outputSchema": {"type": "object",
              "properties": {"elements": {"type": "array"}, "overlaps": {"type": "array"},
@@ -523,14 +517,9 @@ pub fn list() -> Value {
             props.insert("selector".to_string(), json!({"type": "string"}));
         }
         // Screenshot's element target is optional (no element/clip captures the
-        // whole page), so it must stay free of both required and anyOf. The
-        // five action tools require one of the two target forms.
-        if name != "screenshot" {
-            schema.insert(
-                "anyOf".to_string(),
-                json!([{"required": ["element"]}, {"required": ["selector"]}]),
-            );
-        }
+        // whole page). The five action tools keep both target properties
+        // optional: the provider rejects a root combinator, and the handler
+        // enforces one target at call time.
     }
     listed["tools"].as_array_mut().expect("tools").push(json!({
         "name": "form", "title": "Form",
@@ -3789,11 +3778,10 @@ mod tests {
         );
     }
 
-    /// The `selector` alias makes element one of two alternatives. JSON Schema
-    /// ANDs `required` with `anyOf`, so leaving `element` in `required` makes a
-    /// selector-only call invalid for a validating client even though the
-    /// server itself never validates inputSchema. Screenshot's element target
-    /// was always optional, so it must stay free of both `required` and `anyOf`.
+    /// The `selector` alias makes element one of two alternatives, so neither
+    /// target may sit in `required`: the provider rejects a root combinator and
+    /// the handler enforces one target at call time. Screenshot's element target
+    /// was always optional.
     #[test]
     fn selector_alias_tools_do_not_require_element() {
         let tools = list();
@@ -3828,10 +3816,9 @@ mod tests {
                     "{name} must still require {key}: {schema}"
                 );
             }
-            assert_eq!(
-                schema["anyOf"],
-                json!([{"required": ["element"]}, {"required": ["selector"]}]),
-                "{name} anyOf must name both target forms: {schema}"
+            assert!(
+                schema.get("anyOf").is_none(),
+                "{name} must not publish a root combinator: {schema}"
             );
         }
         let shot = by_name("screenshot");

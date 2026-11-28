@@ -146,7 +146,7 @@ fn instructions() -> String {
                 props
                     .keys()
                     .map(String::as_str)
-                    .filter(|key| *key != catalog::CONSTRAINT_PROPERTY && !required.contains(key))
+                    .filter(|key| !required.contains(key))
                     .collect()
             })
             .unwrap_or_default();

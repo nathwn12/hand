@@ -607,13 +607,9 @@ fn element_tools_publish_selector_alias_in_their_schema() {
             !required.iter().any(|k| k == "element"),
             "{name} must not require element (anyAnd with anyOf would reject selector-only): {schema}"
         );
-        let any = schema["anyOf"]
-            .as_array()
-            .unwrap_or_else(|| panic!("{name} must require one target via anyOf: {schema}"));
-        let rendered = serde_json::to_string(any).expect("anyOf serializes");
         assert!(
-            rendered.contains("element") && rendered.contains("selector"),
-            "{name} anyOf must name element and selector: {rendered}"
+            schema.get("anyOf").is_none(),
+            "{name} must not publish a root combinator: {schema}"
         );
     }
     // Screenshot's element target was always optional; it keeps both property
