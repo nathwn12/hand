@@ -1,0 +1,100 @@
+# Why this workflow exists: turn "it passed once" into a number.
+# A fix is judged against this base rate, not against one green run: the same
+# suite failed 4, 3, 5, 2 then 1 test across five CI runs, so any single pass
+# was a coin flip. No test or assertion is changed, and no failure is retried
+# away. Dispatch-only (plus an optional nightly refresh): never push or PR.
+name: flake-rate
+
+on:
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: Number of sequential browser-engine suite runs
+        required: false
+        default: '5'
+        type: string
+  schedule:
+    - cron: '17 5 * * *'
+
+permissions:
+  contents: read
+
+env:
+  CARGO_INCREMENTAL: '0'
+  CARGO_TERM_COLOR: never
+
+jobs:
+  measure:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ci-test-stable
+          shared-key: hand-test
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      # hand pins FULL Chrome (chrome-win64/chrome.exe launched with
+      # --headless), not chrome-headless-shell. Same cache key and provision
+      # command as ci.yml: the manifest hash pins the integrity root, and the
+      # provisioner re-verifies every file hash on cache reuse.
+      - name: Restore pinned browser cache
+        uses: actions/cache@v6
+        with:
+          path: ~\AppData\Local\gladius\chromium
+          key: chromium-win64-158.0.8127.36-${{ hashFiles('crates/browser-engine/scripts/chromium-manifest.json') }}
+      - name: Provision pinned browser
+        shell: pwsh
+        run: powershell -ExecutionPolicy Bypass -File crates\browser-engine\scripts\fetch-chromium.ps1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # continue-on-error lives only here: every run executes even when an
+      # earlier one fails, and later analysis/upload steps always run.
+      - name: Run browser-engine suite N times
+        id: suite
+        shell: bash
+        continue-on-error: true
+        env:
+          RUNS: ${{ inputs.runs }}
+        run: |
+          set -uo pipefail
+          # schedule events have no dispatch input; use the default there.
+          runs="${RUNS:-5}"
+          case "$runs" in
+            ''|*[!0-9]*) echo "::error::runs must be a positive integer, got '$runs'"; exit 2 ;;
+          esac
+          if [ "$runs" -lt 1 ]; then echo "::error::runs must be at least 1"; exit 2; fi
+          failed=0
+          for ((i = 1; i <= runs; i++)); do
+            echo "::group::flake run $i/$runs"
+            # No set -e: a failing run must not skip the remaining runs.
+            cargo test --locked -p browser-engine -- --test-threads=1 2>&1 | tee "flake-run-$i.log"
+            status=${PIPESTATUS[0]}
+            echo "flake run $i/$runs exit=$status"
+            echo "::endgroup::"
+            if [ "$status" -ne 0 ]; then failed=1; fi
+          done
+          echo "runs=$runs" >> "$GITHUB_OUTPUT"
+          echo "failed=$failed" >> "$GITHUB_OUTPUT"
+          if [ "$failed" -ne 0 ]; then
+            echo "::warning::some runs failed; this is data, not a gate"
+            exit 1
+          fi
+      - name: Summarize flake rate
+        shell: bash
+        run: node scripts/flake-rate.mjs --dir . --out flake-rate.json
+      - name: Upload measurements
+        uses: actions/upload-artifact@v4
+        with:
+          name: flake-rate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            flake-rate.json
+            flake-run-*.log
+          if-no-files-found: warn
+          retention-days: 30

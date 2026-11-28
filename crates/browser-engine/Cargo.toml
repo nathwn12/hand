@@ -4,7 +4,7 @@ version = "0.3.0"
 edition = "2021"
 license = "MIT"
 description = "Gladius browser engine (pinned 59c6d77, Gladius 0.8.0) as a library: headless Chrome over CDP"
-rust-version = "1.88"
+rust-version = "1.95"
 
 [lib]
 name = "browser_engine"

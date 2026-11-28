@@ -29,6 +29,7 @@
   "files": [
     "bin/",
     "hand.exe",
+    "chromium-manifest.json",
     "LICENSE",
     "README.md"
   ]
