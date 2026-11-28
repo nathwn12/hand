@@ -118,7 +118,7 @@ Engine versions and source pins live under `sources` in `baseline/pins.json` and
 No flag serves MCP: `hand` with no argument is `hand mcp`. The other subcommands are `doctor`, `--version` and `--help`.
 
 | Variable | Default | Effect |
-|---|---|---|
+| --- | --- | --- |
 | `GLADIUS_CDP_URL` | unset | Attach to an engine you already run instead of launching one. hand does not launch, kill or sweep it, and closes only pages it created. |
 | `HAND_DEBUG` | unset | Print engine diagnostics to stderr. Off by default: a healthy run is silent. |
 

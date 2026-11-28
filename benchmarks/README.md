@@ -37,7 +37,7 @@ and is intended for the driver's own tests. Exit codes: `0` pass, `1` fail/block
 ## Scenarios
 
 | Scenario | Spec p95 | hand tool | Gladius | Puppet |
-|---|---:|---|---|---|
+| --- | ---: | --- | --- | --- |
 | `warm-ping` | 50 ms | `ping` method | `ping` method | `ping` method |
 | `browser-snapshot` | 250 ms | `browser_snapshot` | `snapshot` | — |
 | `desktop-enumerate` | 250 ms | `desktop_list_windows` | — | `list_windows` |

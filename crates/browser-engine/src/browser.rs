@@ -675,7 +675,7 @@ pub struct Browser {
     generation: AtomicU64,
 }
 
-/// A clonable, live-only CDP sender for row B3's background consumer.
+/// A cloneable, live-only CDP sender for row B3's background consumer.
 #[derive(Clone)]
 pub(crate) struct CdpSender {
     shared: Arc<Shared>,
@@ -825,7 +825,7 @@ impl Browser {
         Some(send_raw(&shared, method, params, session).await)
     }
 
-    /// A clonable, live-only CDP sender for row B3's background consumer. It
+    /// A cloneable, live-only CDP sender for row B3's background consumer. It
     /// holds the connection's `Shared` half, not the `Browser`, so the task can
     /// outlive the call that armed interception without keeping the whole
     /// engine handle alive.

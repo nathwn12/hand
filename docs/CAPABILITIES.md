@@ -7,7 +7,7 @@ not to be claimed.
 ## Environment used
 
 | | |
-|---|---|
+| --- | --- |
 | Host | `NECESSE`, Windows 11 Pro, x64, Ryzen 7 5800X, 31.9 GB |
 | Build | `cargo` 1.100.0, dev and release profiles, `hand 0.4.0` |
 | Browser | full `chrome` 158.0.8127.36 (`Google Chrome for Testing`) |
@@ -19,7 +19,7 @@ The smaller `chrome-headless-shell` is an opt-in fallback selected with `GLADIUS
 ## Verified
 
 | Capability | Evidence |
-|---|---|
+| --- | --- |
 | One executable, one stdio MCP connection | `tests/discovery.rs` (7 tests): initialize, ping, tools/list, tools/call, server/discover, version gate |
 | Both catalogs plus hand's own tools, legacy bodies byte-identical except the declared additions in `baseline/declared-additions.json` | `catalog_is_the_floor_plus_hand_additions`, `tool_bodies_are_engine_bodies_under_the_prefix` (compares each published body with `baseline/hand-catalog.json` after the declared paths are checked present and stripped; `baseline/test/declared-additions.test.mjs` proves it red on an undeclared addition and on a deleted one); independent `baseline/scripts/compare-catalog.mjs --serve target/release/hand.exe` PASS: 32/32 legacy tools compared, 12 hand tools reported as extras, 42 declared addition groups, 1 property-description rewrite and 0 undeclared title/description differences. The live catalog is **44** tools: 36 `browser_*` (the floor's 25 Gladius browser bodies plus 11 hand additions — `browser_context`, `browser_wheel`, `browser_drag`, `browser_form`, `browser_download`, `browser_assert`, `browser_audit`, `browser_trace`, `browser_metrics`, `browser_run`, `browser_clipboard`) and 8 `desktop_*` (the floor's 7 Puppet bodies plus `desktop_record`). Additions are reported as extras by the independent comparison and are never entered in `baseline/declared-additions.json` |
 | Isolated, named browser contexts over the real MCP route | `tests/context_wire.rs`: published schema; two contexts with separate cookie jars; legacy page and legacy tab space untouched; `targets select` refuses a context page; typed errors; H12: `browser_snapshot` and `browser_assert` read a named context page only when the call says `context:` (with `page:` when the context holds several pages), name the context and page target in the reply, and refuse an unknown context/page as a typed `invalid_target`/`not_found` instead of falling back to the legacy page, while a call without `context:` still reads the legacy page; shutdown disposes only hand's contexts (two clients attached to one external engine, the other's context, page and cookie survive) |
@@ -179,7 +179,7 @@ existing target takes precedence over the hidden-launch request.
   Measured on this machine (release binaries, 10 warmups + 100 attempts):
 
   | Scenario | hand p95 | baseline p95 |
-  |---|---:|---:|
+  | --- | ---: | ---: |
   | warm-ping | 0.071 ms | Gladius 0.115 ms, Puppet 0.093 ms |
   | browser-snapshot | 18.6 ms | Gladius 29.1 ms |
   | desktop-enumerate | 1.854 ms | Puppet 1.683 ms |

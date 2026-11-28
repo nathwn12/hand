@@ -7,7 +7,7 @@ source and does not change the baseline.
 ## Files
 
 | File | Purpose |
-|---|---|
+| --- | --- |
 | `index.html` | Benchmark page: exactly 100 visible labelled controls at 1280x720. |
 | `actions.html` | Inspect, act, verify, reset and deliberately false assertions. |
 | `manifest.json` | Machine-readable fixture contract and expected states. |
@@ -50,7 +50,7 @@ pinned browser digest belong in the benchmark receipt, not here.
 returns to it through the `Reset fixture` control.
 
 | Control | Observable effect |
-|---|---|
+| --- | --- |
 | `Apply change` | `#result` and `body[data-state]` become `applied`. |
 | `No-op control` | Only `#noop-count` increments; `#result` stays `idle`. |
 | `Increment counter` | `#counter-value` increments by one per click. |
@@ -130,7 +130,7 @@ browser, the browse bridge, or any visible window.
 These hashes cover the served payload only. They do not cover `README.md`,
 `serve.mjs` or `validate.mjs`.
 
-```
+```text
 2cdb034a3dab47018cf7915246fcf388d25d3b117402531c3573171dd3492d14  index.html
 a907df9e7d6d77269f3c74c66ade1b02843aaeb3934b406e4696be3faf90808f  actions.html
 6c7f9db917043d235a798d9604d5a633db9274d56e1ddfae13dc2b8cb861a189  manifest.json

@@ -4,6 +4,7 @@ name: dependabot-auto-merge
 # every required check and review. No PR code is checked out or executed here;
 # only the API and Dependabot's signed metadata are read.
 on:
+  # zizmor: ignore[dangerous-triggers] -- Dependabot PRs need a write token to arm merge; no PR code runs
   pull_request_target:
     types: [opened, synchronize, reopened, ready_for_review]
 
@@ -18,8 +19,9 @@ concurrency:
 
 jobs:
   auto-merge:
-    # Dependabot only. A fork or a human never gets a write token from this job.
-    if: github.actor == 'dependabot[bot]'
+    # Dependabot only, from this repository: the PR author in GitHub's event
+    # payload is the account that opened it, unlike the spoofable actor context.
+    if: github.event.pull_request.user.login == 'dependabot[bot]' && github.repository == github.event.pull_request.head.repo.full_name
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
@@ -28,7 +30,7 @@ jobs:
     steps:
       - name: Classify the Dependabot bump
         id: meta
-        uses: dependabot/fetch-metadata@v2
+        uses: dependabot/fetch-metadata@21025c705c08248db411dc16f3619e6b5f9ea21a # v2
         with:
           github-token: "${{ secrets.GITHUB_TOKEN }}"
 

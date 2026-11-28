@@ -4,7 +4,7 @@ Machine-readable capture of the two tool catalogues that `hand` must
 reproduce, taken from the revisions the specification pins:
 
 | Suite | Revision | Version | Tools | Spec prefix |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | Gladius | `59c6d77` | 0.8.0 | 25 | `browser_` |
 | Puppet | `0f790be` | 8.0.0 | 7 | `desktop_` |
 
@@ -27,7 +27,7 @@ does not by itself prove the implementation's behavior or the complete suite.
 `catalog/<suite>-<pin>.*` holds exactly what the server answered over stdio:
 
 | File | Content |
-|---|---|
+| --- | --- |
 | `*.tools.json` | the `tools/list` result: name, title, description, `inputSchema`, `outputSchema`, annotations |
 | `*.tools.modern.json` | the same request with `_meta["io.modelcontextprotocol/protocolVersion"]="2026-07-28"`; differs from the legacy result only by `resultType` |
 | `*.initialize.json` | protocol version, `serverInfo`, capabilities, `instructions` |
@@ -55,7 +55,7 @@ tools captured beyond the required floor.
 implying that 32 is everything:
 
 | Field | Content |
-|---|---|
+| --- | --- |
 | `counts.total` / `browser` / `desktop` | the derived floor, 32 = 25 + 7 pinned legacy tools |
 | `counts.live` | how many tools the served binary published (38 today) |
 | `live.names` | every name the server answered with, sorted |
@@ -144,7 +144,7 @@ The live tests skip rather than pass when a binary is absent; set
 ## What the comparison treats as contract
 
 | Field | `hand` profile (default) | `legacy` profile |
-|---|---|---|
+| --- | --- | --- |
 | name | must be `browser_<legacy>` / `desktop_<legacy>` | exact legacy name |
 | `inputSchema`, `outputSchema`, `annotations` | structural equality, deep and key-order independent | structural equality |
 | `title`, `description` | pinned; a `description` difference fails unless the tool is listed under `metadata.description` in `declared-additions.json`, and a listed description that still matches the pin fails as stale | failure |

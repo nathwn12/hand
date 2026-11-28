@@ -7,7 +7,7 @@ claim that every specification capability exists.
 ## Baseline
 
 | Engine | Product version | Pinned source | License |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | Browser | Gladius 0.8.0 | `59c6d77` | MIT |
 | Desktop | Puppet 8.0.0 | `0f790be` | MIT |
 
@@ -486,7 +486,7 @@ Measured 2026-11-18 against Obscura v0.2.7 (`obscura-x86_64-windows.zip`,
 72,427,564 B), attach over loopback, `data:` URL fixture, no credentials:
 
 | Call | Result |
-|---|---|
+| --- | --- |
 | `browser_navigate` | ok, `{"url":"data:…","title":"probe"}` |
 | `browser_cdp Accessibility.getFullAXTree` | ok, 8 nodes; `button "Press"`, `textbox "Field"`, `StaticText "body text"` |
 | `browser_snapshot` | 6 nodes `@e1..@e6`, page text `Press body text` |

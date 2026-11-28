@@ -11,7 +11,7 @@ node fixtures/run-tasks.mjs
 Flags:
 
 | Flag | Effect |
-|---|---|
+| --- | --- |
 | `--only <id>` | run one task by id |
 | `--repeat <n>` | run the whole sequence `n` times, sequentially |
 | `--json` | emit one JSON result object instead of task lines |
@@ -25,7 +25,7 @@ running executable. The copy and its temp tree are removed when the run ends.
 
 One line per task, then a run summary and an overall summary:
 
-```
+```text
 run 1/1  binary hand.exe sha256:515197715b2b
 [ 1/30] PASS  t01-navigate-title
 ...
@@ -48,7 +48,7 @@ binary (sha256:515197715b2b).
 ## Status contract
 
 | Status | Meaning |
-|---|---|
+| --- | --- |
 | `pass` | all tools exist and every predicate in `expect` held against live results |
 | `pending` | a tool or tool capability in `requires` is absent from this build; the line names it |
 | `fail` | the tools exist and at least one predicate did not hold |
@@ -79,7 +79,7 @@ The original benchmark and action pages are untouched. The task sequence uses
 these additional loopback pages:
 
 | Path | Purpose |
-|---|---|
+| --- | --- |
 | `/tasks/main.html` | controls, same-process frame, cross-site OOPIF, shadow root, form, upload, download, drag ledgers, network button, clock |
 | `/tasks/frame.html` | same-process iframe child |
 | `/tasks/next.html` | second page for the stale-ref refusal |
@@ -97,7 +97,7 @@ into `main.html` at request time, so the OOPIF child is genuinely cross-site.
 Measured on branch `feat/0.2.0` with three consecutive invocations:
 
 | Run | pass | pending | fail | exit |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | 1 | 21 | 9 | 0 | 0 |
 | 2 | 21 | 9 | 0 | 0 |
 | 3 | 21 | 9 | 0 | 0 |

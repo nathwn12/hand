@@ -5,7 +5,7 @@ description: Route work between hand's browser and desktop domains and avoid dam
 
 # routing
 
-hand exposes two domains over one stdio MCP connection: browser_* (headless Chrome over CDP) and desktop_* (Windows apps through UI Automation). Pick by where the target lives, not by convenience.
+hand exposes two domains over one stdio MCP connection: browser_*(headless Chrome over CDP) and desktop_* (Windows apps through UI Automation). Pick by where the target lives, not by convenience.
 
 ## Choose the domain
 

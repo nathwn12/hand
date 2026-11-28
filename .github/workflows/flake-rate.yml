@@ -28,13 +28,14 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 1
+          persist-credentials: false
       - name: Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
         with:
           key: ci-test-stable
           shared-key: hand-test
@@ -44,14 +45,14 @@ jobs:
       # command as ci.yml: the manifest hash pins the integrity root, and the
       # provisioner re-verifies every file hash on cache reuse.
       - name: Restore pinned browser cache
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~\AppData\Local\gladius\chromium
           key: chromium-win64-158.0.8127.36-${{ hashFiles('crates/browser-engine/scripts/chromium-manifest.json') }}
       - name: Provision pinned browser
         shell: pwsh
         run: powershell -ExecutionPolicy Bypass -File crates\browser-engine\scripts\fetch-chromium.ps1
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 22
       # continue-on-error lives only here: every run executes even when an
@@ -90,7 +91,7 @@ jobs:
         shell: bash
         run: node scripts/flake-rate.mjs --dir . --out flake-rate.json
       - name: Upload measurements
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: flake-rate-${{ github.run_id }}-${{ github.run_attempt }}
           path: |

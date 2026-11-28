@@ -8,7 +8,7 @@ dependency on either installed product is required.
 
 - Version: 0.8.0
 - Pinned commit: `59c6d77`
-- Repository: https://github.com/nathwn12/gladius
+- Repository: <https://github.com/nathwn12/gladius>
 - License: MIT
 - Vendored into: `crates/browser-engine/src`, plus the pin manifest and
   provisioning script under `crates/browser-engine/scripts`
@@ -24,7 +24,7 @@ in `docs/COMPATIBILITY.md`.
 
 - Version: 8.0.0
 - Pinned commit: `0f790be`
-- Repository: https://github.com/nathwn12/puppet
+- Repository: <https://github.com/nathwn12/puppet>
 - License: MIT
 - Vendored into: `crates/desktop-engine/src`
 - Copyright: Copyright (c) 2026 nathan

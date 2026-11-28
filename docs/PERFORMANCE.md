@@ -36,7 +36,7 @@ Reproduce with "node benchmarks/perf/run.mjs" (optionally --exe <path> --reps N 
 ## Machine
 
 | | |
-|---|---|
+| --- | --- |
 | CPU | AMD Ryzen 7 5800X, 8 physical / 16 logical cores |
 | RAM | 31.9 GiB (34,276,126,720 bytes reported) |
 | OS | Windows 11 Pro, build 26300, x64 |
@@ -50,7 +50,7 @@ Timings are ms; units for the other rows are in the Metric column. Reps is 10 fo
 measurement rows and 1 for the three size rows.
 
 | Metric | Unit | Median | Min | Max | Reps | Detail |
-|---|---|---:|---:|---:|---:|---|
+| --- | --- | ---: | ---: | ---: | ---: | --- |
 | startup --version | ms | 13.73 | 12.88 | 17.70 | 10 | hand 0.4.0 |
 | handshake to tools/list | ms | 24.46 | 22.35 | 30.32 | 10 | 44 tools |
 | tools/list response frame | bytes | 90,943 | 90,943 | 90,943 | 10 | newline-delimited JSON |
@@ -95,7 +95,7 @@ C:/Users/nathan/.local/share/hand-mcp-0.3.3/node_modules/hand-mcp/hand.exe
 (hand 0.3.3 (2e8b48b5b42d0d5958fab6871d4f9e5369718292; release)).
 
 | Metric | 0.3.3 median | 0.3.3 min-max | 0.4.0 median | Change |
-|---|---:|---:|---:|---|
+| --- | ---: | ---: | ---: | --- |
 | startup --version | 12.92 ms | 11.98-15.06 ms | 13.73 ms | +0.81 ms, within run-to-run noise |
 | handshake to tools/list | 24.87 ms | 21.88-27.27 ms | 24.46 ms | -0.41 ms, within run-to-run noise |
 | tools/list response frame | 77,550 bytes | 77,550-77,550 | 90,943 bytes | +13,393 bytes (41 to 44 tools) |

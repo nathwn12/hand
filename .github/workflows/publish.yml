@@ -25,8 +25,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
-  id-token: write
+  contents: read
 
 concurrency:
   group: publish-${{ github.ref }}
@@ -45,11 +44,13 @@ jobs:
     outputs:
       should_publish: ${{ steps.decide.outputs.should_publish }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 22
-      - run: npm install -g npm@11
+      - run: npm install -g npm@11.21.3 # zizmor: ignore[adhoc-packages] -- pinned release toolchain, not a project dependency
       - name: Decide from registry and tag identity
         id: decide
         shell: bash
@@ -124,13 +125,15 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 22
-      - run: npm install -g npm@11
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - run: npm install -g npm@11.21.3 # zizmor: ignore[adhoc-packages] -- pinned release toolchain, not a project dependency
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+      - uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
       - run: cargo test --locked -p mjpeg-avi
       - run: cargo test --locked -p desktop-engine -- --skip live_
       - run: cargo test -p hand --test discovery
@@ -142,7 +145,7 @@ jobs:
       # requests and locally.
       - run: cargo build --locked --release
       - name: Restore pinned browser cache
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~\AppData\Local\gladius\chromium
           key: chromium-win64-158.0.8127.36-${{ hashFiles('crates/browser-engine/scripts/chromium-manifest.json') }}
@@ -157,14 +160,17 @@ jobs:
   publish:
     needs: [ci]
     runs-on: windows-2022
+    permissions:
+      contents: write
+      id-token: write
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7 # zizmor: ignore[artipacked] -- the tag step pushes with this token
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 22
-      - run: npm install -g npm@11
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - run: npm install -g npm@11.21.3 # zizmor: ignore[adhoc-packages] -- pinned release toolchain, not a project dependency
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+      - uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
       - id: publish
         run: node npm/release.mjs --publish --ci
       - name: Tag the published source commit

@@ -35,9 +35,10 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 1
+          persist-credentials: false
       - name: Scope from the API
         id: scope
         shell: bash
@@ -62,17 +63,17 @@ jobs:
             code=false
           fi
           echo "code=$code" >> "$GITHUB_OUTPUT"
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         if: steps.scope.outputs.code == 'true'
         with:
           components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
         if: steps.scope.outputs.code == 'true'
         with:
           key: ci-static-stable
           shared-key: hand-static
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         if: steps.scope.outputs.code == 'true'
         with:
           node-version: 22
@@ -97,9 +98,10 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 1
+          persist-credentials: false
       - name: Scope from the API
         id: scope
         shell: bash
@@ -144,11 +146,11 @@ jobs:
           echo "browser=$browser" >> "$GITHUB_OUTPUT"
           echo "desktop=$desktop" >> "$GITHUB_OUTPUT"
           echo "full=$full" >> "$GITHUB_OUTPUT"
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         if: steps.scope.outputs.code == 'true'
         with:
           components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
         if: steps.scope.outputs.code == 'true'
         with:
           key: ci-test-stable
@@ -191,9 +193,10 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 1
+          persist-credentials: false
       - name: Scope from the API
         id: scope
         shell: bash
@@ -238,11 +241,11 @@ jobs:
           echo "browser=$browser" >> "$GITHUB_OUTPUT"
           echo "desktop=$desktop" >> "$GITHUB_OUTPUT"
           echo "full=$full" >> "$GITHUB_OUTPUT"
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         if: steps.scope.outputs.code == 'true'
         with:
           components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@e9d7b9f1e587218970671bac74e5511ed9506e6a # v2
         if: steps.scope.outputs.code == 'true'
         with:
           key: ci-test-stable
@@ -256,7 +259,7 @@ jobs:
       # in a wrong browser.
       - name: Restore pinned browser cache
         if: steps.scope.outputs.browser == 'true' || steps.scope.outputs.full == 'true'
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~\AppData\Local\gladius\chromium
           key: chromium-win64-158.0.8127.36-${{ hashFiles('crates/browser-engine/scripts/chromium-manifest.json') }}
