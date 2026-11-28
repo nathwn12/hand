@@ -9,3 +9,5 @@
 - Report the command and its exit beside every result.
 - Phase 1 is report-only; strict mode is earned by a clean report, per repository.
 - Archives are frozen and are not migration targets.
+- Commit subjects are Conventional Commits with an imperative subject: no first-person narration in the subject; first person belongs in the body when explaining a decision.
+- Enforcement: `.githooks/commit-msg`; one-time setup per clone: `git config core.hooksPath .githooks`.

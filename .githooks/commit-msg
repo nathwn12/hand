@@ -1,0 +1,23 @@
+#!/usr/bin/env sh
+# Commit subjects follow Conventional Commits: type(scope)!: imperative subject.
+# Example: fix(release): cache the release lane
+# A subject states the change, not a diary entry.
+
+msg_file=$1
+subject=$(awk 'NF && $0 !~ /^#/ { print; exit }' "$msg_file")
+
+case "$subject" in
+  "Merge "*|"fixup! "*|"squash! "*|"revert! "*) exit 0 ;;
+esac
+
+pattern='^(feat|fix|chore|docs|refactor|test|perf|ci|build|style|revert)(\([a-z0-9._-]+\))?!?: .{1,72}$'
+
+if printf '%s\n' "$subject" | grep -Eq "$pattern"; then
+  exit 0
+fi
+
+printf 'Conventional Commits subject required: %s\n' "$pattern"
+printf 'Good example: fix(release): cache the release lane\n'
+printf 'A subject states the change, not a diary entry.\n'
+printf 'Offending subject: %s\n' "$subject"
+exit 1
