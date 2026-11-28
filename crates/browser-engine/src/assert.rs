@@ -1298,26 +1298,33 @@ mod tests {
                     Ok(v) => v,
                     Err(_) => break,
                 };
-                let mut buf = vec![0u8; 4096];
-                let mut req = Vec::new();
-                loop {
-                    match s.read(&mut buf).await {
-                        Ok(0) => break,
-                        Ok(n) => {
-                            req.extend_from_slice(&buf[..n]);
-                            if req.windows(4).any(|w| w == b"\r\n\r\n") || req.len() > 8192 {
-                                break;
+                tokio::spawn(async move {
+                    let mut buf = vec![0u8; 4096];
+                    let mut req = Vec::new();
+                    loop {
+                        match tokio::time::timeout(
+                            std::time::Duration::from_secs(5),
+                            s.read(&mut buf),
+                        )
+                        .await
+                        {
+                            Ok(Ok(0)) => break,
+                            Ok(Ok(n)) => {
+                                req.extend_from_slice(&buf[..n]);
+                                if req.windows(4).any(|w| w == b"\r\n\r\n") || req.len() > 8192 {
+                                    break;
+                                }
                             }
+                            _ => break,
                         }
-                        Err(_) => break,
                     }
-                }
-                let body = "<!doctype html><html><body><h1>network fixture</h1></body></html>";
-                let resp = format!(
+                    let body = "<!doctype html><html><body><h1>network fixture</h1></body></html>";
+                    let resp = format!(
                     "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\nContent-Type: text/html\r\n\r\n{}",
                     body.len(), body
                 );
-                let _ = s.write_all(resp.as_bytes()).await;
+                    let _ = s.write_all(resp.as_bytes()).await;
+                });
             }
         });
         (format!("http://127.0.0.1:{port}/page"), srv)

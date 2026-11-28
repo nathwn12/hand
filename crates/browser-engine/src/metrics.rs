@@ -195,7 +195,7 @@ pub(crate) static BROWSER_FIXTURE_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mu
 #[cfg(test)]
 pub(crate) async fn launch_and_navigate(url: &str) -> Browser {
     let mut last = Value::Null;
-    for attempt in 0..3 {
+    for attempt in 0..4 {
         let browser = Browser::new();
         let resp = crate::tools::call("navigate", &json!({"url": url}), &browser).await;
         if resp.get("isError").is_none() {
@@ -203,7 +203,12 @@ pub(crate) async fn launch_and_navigate(url: &str) -> Browser {
         }
         last = resp;
         let _ = browser.close().await;
-        tokio::time::sleep(std::time::Duration::from_millis(200 * (attempt + 1))).await;
+        let backoff = 250u64 << attempt;
+        let jitter = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| (d.subsec_nanos() % 50) as u64)
+            .unwrap_or(0);
+        tokio::time::sleep(std::time::Duration::from_millis(backoff + jitter)).await;
     }
     panic!("navigate failed after retries: {last}");
 }
@@ -228,31 +233,71 @@ mod tests {
             loop {
                 let (mut s, _) = match ln.accept().await {
                     Ok(v) => v,
-                    Err(_) => break,
+                    _ => break,
                 };
-                let mut buf = vec![0u8; 4096];
-                let mut req = Vec::new();
-                loop {
-                    match s.read(&mut buf).await {
-                        Ok(0) => break,
-                        Ok(n) => {
-                            req.extend_from_slice(&buf[..n]);
-                            if req.windows(4).any(|w| w == b"\r\n\r\n") || req.len() > 8192 {
-                                break;
+                tokio::spawn(async move {
+                    let mut buf = vec![0u8; 4096];
+                    let mut req = Vec::new();
+                    loop {
+                        match tokio::time::timeout(
+                            std::time::Duration::from_secs(5),
+                            s.read(&mut buf),
+                        )
+                        .await
+                        {
+                            Ok(Ok(0)) => break,
+                            Ok(Ok(n)) => {
+                                req.extend_from_slice(&buf[..n]);
+                                if req.windows(4).any(|w| w == b"\r\n\r\n") || req.len() > 8192 {
+                                    break;
+                                }
                             }
+                            _ => break,
                         }
-                        Err(_) => break,
                     }
-                }
-                let body = "<!doctype html><html><body><div id='anchor'>metrics fixture</div><script>requestAnimationFrame(function(){ setTimeout(function(){ var d = document.createElement('div'); d.style.height = '120px'; d.style.background = '#ccc'; document.body.insertBefore(d, document.getElementById('anchor')); }, 30); });</script></body></html>";
-                let resp = format!(
+                    let body = "<!doctype html><html><body><div id='anchor'>metrics fixture</div><script>requestAnimationFrame(function(){ setTimeout(function(){ var d = document.createElement('div'); d.style.height = '120px'; d.style.background = '#ccc'; document.body.insertBefore(d, document.getElementById('anchor')); }, 30); });</script></body></html>";
+                    let resp = format!(
                     "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\nContent-Type: text/html\r\n\r\n{}",
                     body.len(), body
                 );
-                let _ = s.write_all(resp.as_bytes()).await;
+                    let _ = s.write_all(resp.as_bytes()).await;
+                });
             }
         });
         (format!("http://127.0.0.1:{port}/fixture"), srv)
+    }
+
+    /// A speculative/preconnect socket that sends no headers must not stall
+    /// the next navigation. Chrome opens such sockets; a serial accept loop
+    /// that reads until `\r\n\r\n` would block forever behind one, and the
+    /// real request surfaces as net::ERR_ABORTED.
+    #[tokio::test]
+    async fn fixture_server_survives_a_silent_preconnect() {
+        let (url, srv) = serve_fixture().await;
+        let port = url
+            .split(':')
+            .last()
+            .and_then(|s| s.split('/').next())
+            .and_then(|s| s.parse::<u16>().ok())
+            .expect("fixture port");
+        let silent = tokio::net::TcpStream::connect(("127.0.0.1", port))
+            .await
+            .expect("silent preconnect");
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        let mut real = tokio::net::TcpStream::connect(("127.0.0.1", port))
+            .await
+            .expect("real connection");
+        real.write_all(b"GET /fixture HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n")
+            .await
+            .expect("request");
+        let mut buf = [0u8; 64];
+        let n = tokio::time::timeout(Duration::from_secs(2), real.read(&mut buf))
+            .await
+            .expect("fixture blocked behind a silent preconnect")
+            .expect("read");
+        assert!(n > 0, "fixture sent an empty response");
+        drop(silent);
+        srv.abort();
     }
 
     fn metric_num(v: &Value, key: &str) -> f64 {

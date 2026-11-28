@@ -320,36 +320,41 @@ mod tests {
         let port = ln.local_addr().expect("loopback addr").port();
         let srv = tokio::spawn(async move {
             let (mut s, _) = ln.accept().await.expect("loopback accept");
-            let mut buf = vec![0u8; 4096];
-            let mut req = Vec::new();
-            loop {
-                match s.read(&mut buf).await {
-                    Ok(0) => return 0usize,
-                    Ok(n) => {
-                        req.extend_from_slice(&buf[..n]);
-                        if req.windows(4).any(|w| w == b"\r\n\r\n") || req.len() > 8192 {
-                            break;
+            let worker = tokio::spawn(async move {
+                let mut buf = vec![0u8; 4096];
+                let mut req = Vec::new();
+                loop {
+                    match tokio::time::timeout(std::time::Duration::from_secs(5), s.read(&mut buf))
+                        .await
+                    {
+                        Ok(Ok(0)) => return 0usize,
+                        Ok(Ok(n)) => {
+                            req.extend_from_slice(&buf[..n]);
+                            if req.windows(4).any(|w| w == b"\r\n\r\n") || req.len() > 8192 {
+                                break;
+                            }
                         }
+                        _ => return 0usize,
                     }
-                    Err(_) => return 0usize,
                 }
-            }
-            let head = format!(
+                let head = format!(
                 "HTTP/1.1 200 OK\r\nContent-Length: {body_len}\r\nConnection: close\r\nContent-Type: text/html\r\n\r\n{prefix}"
             );
-            if s.write_all(head.as_bytes()).await.is_err() {
-                return 0usize;
-            }
-            let mut sent = prefix.len(); // body bytes on the wire so far
-            let chunk = vec![b'x'; 65536];
-            while sent < body_len {
-                let want = (body_len - sent).min(chunk.len());
-                match s.write_all(&chunk[..want]).await {
-                    Ok(()) => sent += want,
-                    Err(_) => break, // client went away: budget proved
+                if s.write_all(head.as_bytes()).await.is_err() {
+                    return 0usize;
                 }
-            }
-            sent
+                let mut sent = prefix.len(); // body bytes on the wire so far
+                let chunk = vec![b'x'; 65536];
+                while sent < body_len {
+                    let want = (body_len - sent).min(chunk.len());
+                    match s.write_all(&chunk[..want]).await {
+                        Ok(()) => sent += want,
+                        Err(_) => break, // client went away: budget proved
+                    }
+                }
+                sent
+            });
+            worker.await.unwrap_or(0)
         });
         let url = format!("http://127.0.0.1:{port}/big");
         let t0 = std::time::Instant::now();
