@@ -164,6 +164,9 @@ jobs:
       - name: no_steal
         if: steps.scope.outputs.full == 'true'
         run: cargo test --locked -p hand --test no_steal
+      - name: skills
+        if: steps.scope.outputs.full == 'true'
+        run: cargo test --locked -p hand --test skills
       - name: baseline catalog
         if: steps.scope.outputs.full == 'true'
         shell: pwsh
