@@ -2684,6 +2684,50 @@ impl Browser {
         Ok(())
     }
 
+    /// Bounded readiness proof for the Network service: a cookie read is
+    /// served by that service, so a successful reply proves the crashed
+    /// network process is answering again. Best-effort and bounded; a failure
+    /// never retries or rewrites the caller's navigation.
+    pub(crate) async fn wait_for_network_service(&self, cap: Duration) -> bool {
+        let shared = {
+            let guard = self.state.lock().await;
+            match guard.as_ref() {
+                Some(inner) => inner.shared.clone(),
+                None => return false,
+            }
+        };
+        if self.ensure_network().await.is_err() {
+            return false;
+        }
+        let deadline = Instant::now() + cap;
+        loop {
+            let session = match shared.session.lock().await.clone() {
+                Some(s) => s,
+                None => return false,
+            };
+            let remain = deadline.saturating_duration_since(Instant::now());
+            if remain.is_zero() {
+                return false;
+            }
+            let probe = send_raw_with_timeout(
+                &shared,
+                "Network.getCookies",
+                json!({"urls": ["http://127.0.0.1/"]}),
+                Some(session),
+                remain.min(Duration::from_millis(250)),
+            )
+            .await;
+            if probe.is_ok() {
+                return true;
+            }
+            let remain = deadline.saturating_duration_since(Instant::now());
+            if remain.is_zero() {
+                return false;
+            }
+            tokio::time::sleep(remain.min(Duration::from_millis(25))).await;
+        }
+    }
+
     /// Bounded wait for a quiet-network window: returns true once the
     /// in-flight request set stays empty for `idle`, false on `budget`
     /// expiry (the caller reports its typed timeout - this never hangs,
