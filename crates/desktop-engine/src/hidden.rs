@@ -96,7 +96,6 @@ fn wide(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(std::iter::once(0)).collect()
 }
 
-
 /// Kernel job-object cover for one hidden launch.
 ///
 /// `KILL_ON_JOB_CLOSE` means the OS terminates every process in the job when
@@ -257,7 +256,6 @@ mod job {
         Ok(in_job != 0)
     }
 }
-
 
 /// Setup result, delivered once the desktop is up and the target window is
 /// resolved (or the setup failed).
@@ -532,7 +530,6 @@ pub fn spawn(program: &str, args: &[String]) -> Hidden {
         join: Some(join),
     }
 }
-
 
 /// One setup failure, in the shape every caller-facing error uses: the reason is
 /// prose (no unregistered error code), and this request owns nothing that keeps
@@ -1086,7 +1083,6 @@ fn wait_for_window(hdesk: HDESK, pid: u32) -> Option<i64> {
         std::thread::sleep(Duration::from_millis(50));
     }
 }
-
 
 fn sm_get_text(hwnd: HWND) -> Option<String> {
     let mut buf = vec![0u16; 4096];

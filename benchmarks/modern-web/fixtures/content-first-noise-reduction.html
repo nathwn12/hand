@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>content-first-noise-reduction</title>
+<style>body{font:16px/1.4 system-ui,sans-serif;margin:16px}button{margin:4px}output{display:block;margin-top:12px}
+</style>
+</head><body>
+<div id="banner" role="banner">Promotional banner</div><button id="d">Dismiss banner</button><output id="out">idle</output>
+<script>
+document.getElementById('d').onclick=()=>{document.getElementById('banner').remove();document.getElementById('out').textContent='dismissed';};
+</script>
+</body></html>

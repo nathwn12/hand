@@ -56,7 +56,21 @@ function prefixed() {
     const tool = candidate.tools.find((entry) => entry.name === name);
     tool.description = `${tool.description} Declared rewrite: names the parameters this tree added.`;
   }
+  for (const rewrite of DECLARED_ADDITIONS.metadata.rewrites ?? []) {
+    const tool = candidate.tools.find((entry) => entry.name === rewrite.tool);
+    const original = getPath(tool[rewrite.schema], rewrite.path);
+    setPath(tool[rewrite.schema], rewrite.path, `${original ?? ""} Declared rewrite: names the real opt-in.`);
+  }
   return applyHand030SelectorAlias(applyHand020Extensions(candidate));
+}
+
+function getPath(root, dotted) {
+  let node = root;
+  for (const segment of dotted.split(".")) {
+    if (!node || typeof node !== "object") return undefined;
+    node = node[segment];
+  }
+  return node;
 }
 
 test("committed catalogues match the pinned canonical hashes", () => {

@@ -1,0 +1,374 @@
+[
+  {
+    "id": "css-layout",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Check layout"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "3"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/css-layout.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Check layout"
+      }
+    ]
+  },
+  {
+    "id": "size-aware-styling",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Widen container"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "wide"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/size-aware-styling.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Widen container"
+      }
+    ]
+  },
+  {
+    "id": "style-parent-with-has",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Enable"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "solid"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/style-parent-with-has.html",
+    "expectSnapshot": [
+      {
+        "role": "checkbox",
+        "name": "Enable"
+      }
+    ]
+  },
+  {
+    "id": "child-state-based-styling",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Check state"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "active"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/child-state-based-styling.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Check state"
+      }
+    ]
+  },
+  {
+    "id": "content-based-styling",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Add image"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "two"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/content-based-styling.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Add image"
+      }
+    ]
+  },
+  {
+    "id": "design-token-reactivity",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Change token"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "rgb(4, 5, 6)"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/design-token-reactivity.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Change token"
+      }
+    ]
+  },
+  {
+    "id": "fluid-scaling",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Zoom text"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "24px"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/fluid-scaling.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Zoom text"
+      }
+    ]
+  },
+  {
+    "id": "individual-transform-properties",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Rotate box"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "45deg"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/individual-transform-properties.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Rotate box"
+      }
+    ]
+  },
+  {
+    "id": "responsive-design",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Toggle compact"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "compact"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/responsive-design.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Toggle compact"
+      }
+    ]
+  },
+  {
+    "id": "calculate-with-intrinsic-sizes",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Measure"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "measured"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/calculate-with-intrinsic-sizes.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Measure"
+      }
+    ]
+  },
+  {
+    "id": "animate-to-intrinsic-sizes",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Expand"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "expanded"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/animate-to-intrinsic-sizes.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Expand"
+      }
+    ]
+  },
+  {
+    "id": "atrule-support-conditionals",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Check support"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "yes"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/atrule-support-conditionals.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Check support"
+      }
+    ]
+  }
+]

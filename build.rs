@@ -28,7 +28,8 @@ fn main() {
     println!("cargo:rerun-if-changed=crates");
 
     let sha = git(&["rev-parse", "HEAD"]).unwrap_or_else(|| "unknown".to_string());
-    let dirty = git(&["status", "--porcelain", "--untracked-files=no"]).is_some_and(|s| !s.is_empty());
+    let dirty =
+        git(&["status", "--porcelain", "--untracked-files=no"]).is_some_and(|s| !s.is_empty());
     let profile = std::env::var("PROFILE").unwrap_or_else(|_| "unknown".to_string());
 
     println!("cargo:rustc-env=HAND_GIT_SHA={sha}");

@@ -13,6 +13,11 @@
 //!   public dispatch hook for the `browser_context` tool;
 //! - `trace`: the opt-in B6 artifact bundle (HAR over the existing CDP
 //!   Network ring, deterministic screenshots, counted literal redaction);
+//! - `metrics`: read-only page performance from Runtime.evaluate and the
+//!   page's own Performance APIs (null-with-reason when unmeasured);
+//! - `clipboard`: page-clipboard read/write through `navigator.clipboard`
+//!   (CDP permission grants scoped to the page's real origin, once per origin);
+//!   it never touches the Windows/OS clipboard or synthesises desktop input;
 //! - the context-exclusion seam in `browser`: pages of a registered context
 //!   are filtered out of the legacy tab/selection space (`page_targets`,
 //!   `select_target`), the exclusion map is threaded through every launch and
@@ -59,10 +64,12 @@ mod assert;
 mod audit;
 mod browser;
 mod capture;
+mod clipboard;
 pub mod contexts;
 mod download;
 mod fetch;
 mod layout;
+mod metrics;
 mod net;
 mod tools;
 mod trace;
@@ -112,11 +119,17 @@ pub fn engine_info() -> serde_json::Value {
     if let Some(obj) = info.as_object_mut() {
         obj.insert(
             "caps".to_string(),
-            backend.get("caps").cloned().unwrap_or(serde_json::Value::Null),
+            backend
+                .get("caps")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null),
         );
         obj.insert(
             "cdpUrl".to_string(),
-            backend.get("cdpUrl").cloned().unwrap_or(serde_json::Value::Null),
+            backend
+                .get("cdpUrl")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null),
         );
     }
     info

@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>context-menu</title>
+<style>body{font:16px/1.4 system-ui,sans-serif;margin:16px}button{margin:4px}output{display:block;margin-top:12px}</style>
+</head><body>
+<div id="area" role="button" aria-label="Right click area" style="padding:24px;border:1px solid #ccc">Right click area</div><output id="out">idle</output><button id="r">Reset</button>
+<script>
+document.getElementById('area').addEventListener('contextmenu',e=>{e.preventDefault();document.getElementById('out').textContent='context menu';});
+</script>
+</body></html>

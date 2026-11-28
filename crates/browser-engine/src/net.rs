@@ -123,7 +123,8 @@ struct NetState {
     seq: u64,
 }
 
-static NET_STATES: OnceLock<Mutex<HashMap<u64, std::sync::Arc<AsyncMutex<NetState>>>>> = OnceLock::new();
+static NET_STATES: OnceLock<Mutex<HashMap<u64, std::sync::Arc<AsyncMutex<NetState>>>>> =
+    OnceLock::new();
 
 fn net_state(browser: &Browser) -> std::sync::Arc<AsyncMutex<NetState>> {
     let all = NET_STATES.get_or_init(|| Mutex::new(HashMap::new()));
@@ -181,7 +182,10 @@ async fn target_session(
     params: Value,
 ) -> Result<String, ToolErr> {
     if key.is_empty() {
-        let (session, _) = browser.cdp_session(method, params).await.map_err(engine_err)?;
+        let (session, _) = browser
+            .cdp_session(method, params)
+            .await
+            .map_err(engine_err)?;
         return Ok(session);
     }
     let session = browser.session_for_context(key).await.map_err(engine_err)?;
@@ -255,10 +259,15 @@ fn body_text(body: Option<&Value>) -> String {
     }
 }
 
-fn header_pairs(headers: Option<&Value>, json_body: bool) -> Result<Vec<(String, String)>, ToolErr> {
+fn header_pairs(
+    headers: Option<&Value>,
+    json_body: bool,
+) -> Result<Vec<(String, String)>, ToolErr> {
     let mut out = Vec::new();
     if let Some(v) = headers {
-        let obj = v.as_object().ok_or_else(|| invalid("network: 'headers' must be an object"))?;
+        let obj = v
+            .as_object()
+            .ok_or_else(|| invalid("network: 'headers' must be an object"))?;
         for (k, val) in obj {
             let s = val
                 .as_str()
@@ -266,7 +275,11 @@ fn header_pairs(headers: Option<&Value>, json_body: bool) -> Result<Vec<(String,
             out.push((k.clone(), s.to_string()));
         }
     }
-    if json_body && !out.iter().any(|(k, _)| k.eq_ignore_ascii_case("content-type")) {
+    if json_body
+        && !out
+            .iter()
+            .any(|(k, _)| k.eq_ignore_ascii_case("content-type"))
+    {
         out.push(("Content-Type".to_string(), "application/json".to_string()));
     }
     Ok(out)
@@ -285,14 +298,13 @@ pub async fn handle(browser: &Browser, args: &Value) -> Result<Value, ToolErr> {
         "route" => arm(browser, args, &action, RuleKind::Continue, true).await,
         "mock" => {
             let body = body_text(args.get("body"));
-            let status = args
-                .get("status")
-                .and_then(|v| v.as_i64())
-                .unwrap_or(200);
+            let status = args.get("status").and_then(|v| v.as_i64()).unwrap_or(200);
             if status < 100 {
                 return Err(invalid("network: 'status' must be at least 100"));
             }
-            let is_json = args.get("body").is_some_and(|v| v.is_object() || v.is_array());
+            let is_json = args
+                .get("body")
+                .is_some_and(|v| v.is_object() || v.is_array());
             let headers = header_pairs(args.get("headers"), is_json)?;
             arm(
                 browser,
@@ -340,7 +352,9 @@ async fn arm(
     }
     .ok_or_else(|| missing(if allow_pattern { "pattern" } else { "url" }, action))?;
     if raw_pattern.is_empty() {
-        return Err(invalid(format!("network: {action} needs a non-empty URL pattern")));
+        return Err(invalid(format!(
+            "network: {action} needs a non-empty URL pattern"
+        )));
     }
     let pattern = raw_pattern.to_string();
 
@@ -432,7 +446,10 @@ async fn apply_blocked_urls(browser: &Browser, args: &Value, key: &str) -> Resul
 /// Offline mode is a CDP emulation on the target page session, not a JS shim.
 /// `offline:false` is the same command turned off: no separate verb.
 async fn offline(browser: &Browser, args: &Value) -> Result<Value, ToolErr> {
-    let offline = args.get("offline").and_then(|v| v.as_bool()).unwrap_or(true);
+    let offline = args
+        .get("offline")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
     let context = args.get("context").and_then(|v| v.as_str()).unwrap_or("");
     let key = context_key(&*net_state(browser).lock().await, context);
     let session = target_session(
@@ -489,7 +506,13 @@ async fn restore(browser: &Browser, args: &Value) -> Result<Value, ToolErr> {
             .map(|(_, s)| s.clone())
             .collect::<Vec<_>>();
         let removed = st.rules.iter().filter(|r| want(&r.context)).count();
-        (key, fetch_sessions, offline_sessions, blocked_sessions, removed)
+        (
+            key,
+            fetch_sessions,
+            offline_sessions,
+            blocked_sessions,
+            removed,
+        )
     };
 
     for session in fetch_sessions {
@@ -509,7 +532,11 @@ async fn restore(browser: &Browser, args: &Value) -> Result<Value, ToolErr> {
     }
     for session in blocked_sessions {
         let _ = browser
-            .cdp_if_live("Network.setBlockedURLs", json!({"urlPatterns": []}), Some(session))
+            .cdp_if_live(
+                "Network.setBlockedURLs",
+                json!({"urlPatterns": []}),
+                Some(session),
+            )
             .await;
     }
 
@@ -595,7 +622,11 @@ pub(crate) async fn on_context_gone(browser: &Browser, context_id: &str) -> usiz
     }
     for session in blocked {
         let _ = browser
-            .cdp_if_live("Network.setBlockedURLs", json!({"urlPatterns": []}), Some(session))
+            .cdp_if_live(
+                "Network.setBlockedURLs",
+                json!({"urlPatterns": []}),
+                Some(session),
+            )
             .await;
     }
     removed
@@ -622,7 +653,11 @@ async fn consume_paused(sender: CdpSender, state: std::sync::Arc<AsyncMutex<NetS
     }
 }
 
-async fn respond_paused(sender: &CdpSender, state: &std::sync::Arc<AsyncMutex<NetState>>, event: &Value) {
+async fn respond_paused(
+    sender: &CdpSender,
+    state: &std::sync::Arc<AsyncMutex<NetState>>,
+    event: &Value,
+) {
     let session = event
         .get("sessionId")
         .and_then(|v| v.as_str())
@@ -683,11 +718,17 @@ mod tests {
 
     #[test]
     fn glob_matches_cdp_style_wildcards() {
-        assert!(glob_match("*/tasks/network.json", "http://x/tasks/network.json"));
+        assert!(glob_match(
+            "*/tasks/network.json",
+            "http://x/tasks/network.json"
+        ));
         assert!(glob_match("*network.json", "network.json"));
         assert!(glob_match("http://x/?", "http://x/1"));
         assert!(!glob_match("http://x/?", "http://x/12"));
-        assert!(!glob_match("*/tasks/network.json", "http://x/tasks/other.json"));
+        assert!(!glob_match(
+            "*/tasks/network.json",
+            "http://x/tasks/other.json"
+        ));
     }
 
     #[test]
@@ -728,14 +769,23 @@ mod tests {
         let removed = futures_lite_block(on_context_gone(&browser, "id-a"));
         assert_eq!(removed, 1, "only jar-a's route is removed");
         let st = state.try_lock().expect("uncontended in test");
-        assert!(st.armed.get("id-b").is_some(), "another context stays armed");
-        assert!(st.offline.get("id-a").is_none(), "jar-a's offline is lifted");
+        assert!(
+            st.armed.get("id-b").is_some(),
+            "another context stays armed"
+        );
+        assert!(
+            st.offline.get("id-a").is_none(),
+            "jar-a's offline is lifted"
+        );
         assert_eq!(
             st.rules.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
             vec!["route-2"],
             "jar-b's route survives jar-a's teardown"
         );
-        assert!(!st.names.contains_key("jar-a"), "the name binding is released");
+        assert!(
+            !st.names.contains_key("jar-a"),
+            "the name binding is released"
+        );
     }
 
     fn futures_lite_block<F: std::future::Future<Output = T>, T>(f: F) -> T {

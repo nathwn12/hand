@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>carousel</title>
+<style>body{font:16px/1.4 system-ui,sans-serif;margin:16px}button{margin:4px}output{display:block;margin-top:12px}</style>
+</head><body>
+<div id="slide">Slide one</div><button id="n">Next slide</button><output id="out">idle</output>
+<script>
+document.getElementById('n').onclick=()=>{document.getElementById('slide').textContent='Slide two';document.getElementById('out').textContent='2';};
+</script>
+</body></html>

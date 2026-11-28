@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>size-aware-styling</title>
+<style>body{font:16px/1.4 system-ui,sans-serif;margin:16px}button{margin:4px}output{display:block;margin-top:12px}
+#cq{container-type:inline-size;width:200px}#box{color:rgb(1,1,1)}@container (min-width:250px){#box{color:rgb(0,128,0)}}</style>
+</head><body>
+<div id="cq"><div id="box">Box</div></div><button id="w">Widen container</button><output id="out">idle</output>
+<script>
+document.getElementById('w').onclick=()=>{document.getElementById('cq').style.width='300px';document.getElementById('out').textContent=getComputedStyle(document.getElementById('box')).color==='rgb(0, 128, 0)'?'wide':'narrow';};
+</script>
+</body></html>

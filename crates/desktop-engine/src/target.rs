@@ -127,12 +127,10 @@ impl TargetSpec {
             "exe" => spec.exe = Some(val),
             "title" => spec.title_contains = Some(val),
             "class" => spec.class_name = Some(val),
-            _ => {
-                match crate::parse_int_loose(t) {
-                    Some(h) => spec.hwnd = Some(h),
-                    None => spec.title_contains = Some(t.to_string()),
-                }
-            }
+            _ => match crate::parse_int_loose(t) {
+                Some(h) => spec.hwnd = Some(h),
+                None => spec.title_contains = Some(t.to_string()),
+            },
         }
         if spec.is_empty() {
             return Err(TargetError::new(BAD, "target selects nothing"));
@@ -256,7 +254,9 @@ impl TargetSpec {
         }
         if let Some(e) = &self.exe {
             let want = crate::exe_stem(e);
-            if crate::exe_stem(&r.exe) != want && host.is_none_or(|x| crate::exe_stem(&x.exe) != want) {
+            if crate::exe_stem(&r.exe) != want
+                && host.is_none_or(|x| crate::exe_stem(&x.exe) != want)
+            {
                 return false;
             }
         }
@@ -556,7 +556,10 @@ impl TargetLock {
             if host.created != 0 && crate::process_created(hpid).unwrap_or(0) != host.created {
                 return Err(TargetError::new(
                     GONE,
-                    format!("hosted frame hwnd {} is a different process (pid recycled)", host.hwnd),
+                    format!(
+                        "hosted frame hwnd {} is a different process (pid recycled)",
+                        host.hwnd
+                    ),
                 ));
             }
             let hexe = crate::exe_of_pid(hpid);
@@ -716,7 +719,6 @@ pub fn app_id_of(hwnd: i64) -> Option<String> {
         out
     }
 }
-
 
 /// Client rect in SCREEN coordinates, physical pixels:
 /// `[left, top, right, bottom]` from `GetClientRect` + `ClientToScreen`.
@@ -974,7 +976,9 @@ mod tests {
             title: unsafe { crate::win_text(host_hwnd as HWND) },
             class: base.class.clone(),
         });
-        let e = paired.revalidate().expect_err("forged host must be refused");
+        let e = paired
+            .revalidate()
+            .expect_err("forged host must be refused");
         assert_eq!(e.code, GONE, "{}", e.text());
         assert!(e.text().contains("hosted frame"), "{}", e.text());
     }

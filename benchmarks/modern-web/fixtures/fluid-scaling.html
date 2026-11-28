@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>fluid-scaling</title>
+<style>body{font:16px/1.4 system-ui,sans-serif;margin:16px}button{margin:4px}output{display:block;margin-top:12px}
+#p{font-size:16px}</style>
+</head><body>
+<button id="z">Zoom text</button><p id="p">Fluid text</p><output id="out">idle</output>
+<script>
+document.getElementById('z').onclick=()=>{document.getElementById('p').style.fontSize='clamp(16px,24px,32px)';document.getElementById('out').textContent=getComputedStyle(document.getElementById('p')).fontSize;};
+</script>
+</body></html>

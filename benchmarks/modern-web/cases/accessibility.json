@@ -1,0 +1,114 @@
+[
+  {
+    "id": "accessibility",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Start now"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "started"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/accessibility.html",
+    "expectSnapshot": [
+      {
+        "role": "heading",
+        "name": "Page title"
+      },
+      {
+        "role": "button",
+        "name": "Start now"
+      }
+    ]
+  },
+  {
+    "id": "accessible-error-announcement",
+    "act": [
+      {
+        "tool": "browser_type",
+        "args": {
+          "element": "@ref:Email",
+          "text": "bad"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#mail",
+          "expected": {
+            "attribute": {
+              "name": "aria-invalid",
+              "value": "true"
+            }
+          },
+          "timeoutMs": 1500
+        }
+      },
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#err",
+          "expected": {
+            "text": "Enter a valid email"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/accessible-error-announcement.html",
+    "expectSnapshot": [
+      {
+        "role": "textbox",
+        "name": "Email"
+      }
+    ]
+  },
+  {
+    "id": "accessible-generated-content",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Add favourite"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "added"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/accessible-generated-content.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Add favourite"
+      }
+    ]
+  }
+]

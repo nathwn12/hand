@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>position-aware-tooltips</title>
+<style>body{font:16px/1.4 system-ui,sans-serif;margin:16px}button{margin:4px}output{display:block;margin-top:12px}
+</style>
+</head><body>
+<button id="h">Hover tip</button><div id="tip" role="tooltip" hidden>Helpful tip</div><output id="out">idle</output>
+<script>
+document.getElementById('h').addEventListener('mouseenter',()=>{document.getElementById('tip').hidden=false;document.getElementById('out').textContent='tip shown';});
+</script>
+</body></html>

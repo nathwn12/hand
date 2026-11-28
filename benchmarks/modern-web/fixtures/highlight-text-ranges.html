@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>highlight-text-ranges</title>
+<style>body{font:16px/1.4 system-ui,sans-serif;margin:16px}button{margin:4px}output{display:block;margin-top:12px}</style>
+</head><body>
+<p id="p">The quick brown fox</p><button id="hl">Highlight</button><output id="out">idle</output>
+<script>
+document.getElementById('hl').onclick=()=>{const p=document.getElementById('p');p.innerHTML=p.textContent.replace('quick','<mark>quick</mark>');document.getElementById('out').textContent='quick';};
+</script>
+</body></html>

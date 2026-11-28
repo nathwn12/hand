@@ -62,7 +62,6 @@ use serde_json::{json, Value};
 
 const CONTEXT_TOOL: &str = "browser_context";
 
-
 /// Every fixture page has its own title, so "which page answered?" is never
 /// inferred from a shared value.
 fn page(title: &str, marker: &str) -> String {
@@ -150,7 +149,6 @@ fn serve(mut stream: TcpStream) -> std::io::Result<()> {
 
 const HTML: &str = "text/html; charset=utf-8";
 
-
 /// The pinned browser must be provisioned; the engine's own message otherwise.
 fn require_pinned_chromium() -> std::path::PathBuf {
     let chromium = browser_engine::chromium_path()
@@ -235,7 +233,6 @@ fn jar_pairs(sc: &Value) -> Vec<(String, String)> {
 fn jar_has(sc: &Value, name: &str, value: &str) -> bool {
     jar_pairs(sc).iter().any(|(n, v)| n == name && v == value)
 }
-
 
 #[test]
 fn catalog_publishes_browser_context_with_its_closed_action_set() {
@@ -333,7 +330,6 @@ fn catalog_publishes_browser_context_with_its_closed_action_set() {
         "create/destroy are destructive; the annotation must not hide it"
     );
 }
-
 
 #[test]
 fn two_contexts_isolate_cookies_and_the_legacy_page_stays_separate() {
@@ -720,7 +716,6 @@ fn two_contexts_isolate_cookies_and_the_legacy_page_stays_separate() {
     );
 }
 
-
 /// H12: a page in a named context is reachable by `browser_snapshot` and
 /// `browser_assert` through an EXPLICIT `context` argument, and only that way.
 ///
@@ -1066,10 +1061,7 @@ fn context_target_refuses_wrong_typed_values_and_cross_scope_paging() {
     );
 
     // 3. A wrong-typed page must not fall through to the context's only page.
-    let bad_page = s.call(
-        "browser_snapshot",
-        json!({"context": "alpha", "page": 5}),
-    );
+    let bad_page = s.call("browser_snapshot", json!({"context": "alpha", "page": 5}));
     assert!(
         is_error(&bad_page),
         "a wrong-typed 'page' must be refused, not answered from the only page: {}",
@@ -1107,10 +1099,7 @@ fn context_target_refuses_wrong_typed_values_and_cross_scope_paging() {
         "an empty context is a typed argument error: {}",
         text_of(&empty_ctx)
     );
-    let empty_page = s.call(
-        "browser_snapshot",
-        json!({"context": "alpha", "page": ""}),
-    );
+    let empty_page = s.call("browser_snapshot", json!({"context": "alpha", "page": ""}));
     assert!(
         is_error(&empty_page),
         "an empty 'page' must be refused, not answered from the only page: {}",
@@ -1271,11 +1260,7 @@ fn context_target_refuses_wrong_typed_values_and_cross_scope_paging() {
     );
     // The window is real content, not just metadata: offset 1 starts where
     // line 1 of that render started (the header line 0 is gone).
-    let ctx_first_line = text_of(&ctx_next)
-        .lines()
-        .next()
-        .unwrap_or("")
-        .to_string();
+    let ctx_first_line = text_of(&ctx_next).lines().next().unwrap_or("").to_string();
     let ctx_render_line1 = text_of(&ctx_render)
         .lines()
         .nth(1)
@@ -1283,7 +1268,8 @@ fn context_target_refuses_wrong_typed_values_and_cross_scope_paging() {
         .to_string();
     assert!(!ctx_render_line1.is_empty(), "the render has a second line");
     assert_eq!(
-        ctx_first_line, ctx_render_line1,
+        ctx_first_line,
+        ctx_render_line1,
         "offset 1 returns the shifted window, not the whole render again: {}",
         text_of(&ctx_next)
     );
@@ -1361,7 +1347,8 @@ fn context_target_refuses_wrong_typed_values_and_cross_scope_paging() {
         "the render has a second line"
     );
     assert_eq!(
-        legacy_first_line, legacy_render_line1,
+        legacy_first_line,
+        legacy_render_line1,
         "offset 1 returns the shifted window, not the whole render again: {}",
         text_of(&legacy_next)
     );

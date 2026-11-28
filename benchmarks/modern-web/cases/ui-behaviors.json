@@ -1,0 +1,547 @@
+[
+  {
+    "id": "declarative-dialog-popover-control",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Toggle popover"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "open"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/declarative-dialog-popover-control.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Toggle popover"
+      }
+    ]
+  },
+  {
+    "id": "light-dismiss-a-dialog",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Open dialog"
+        }
+      },
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Dismiss"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "dismissed"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/light-dismiss-a-dialog.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Open dialog"
+      }
+    ]
+  },
+  {
+    "id": "animate-to-from-top-layer",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Show layer"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "shown"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/animate-to-from-top-layer.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Show layer"
+      }
+    ]
+  },
+  {
+    "id": "prevent-page-scroll-under-modal-dialog",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Open modal"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "locked"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/prevent-page-scroll-under-modal-dialog.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Open modal"
+      }
+    ]
+  },
+  {
+    "id": "sortable-table",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Sort by name"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "Adam"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/sortable-table.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Sort by name"
+      }
+    ]
+  },
+  {
+    "id": "dynamic-sort",
+    "act": [
+      {
+        "tool": "browser_select",
+        "args": {
+          "element": "@ref:Order",
+          "value": "desc"
+        }
+      },
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Apply sort"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "desc"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/dynamic-sort.html",
+    "expectSnapshot": [
+      {
+        "role": "combobox",
+        "name": "Order"
+      }
+    ]
+  },
+  {
+    "id": "search-hidden-content",
+    "act": [
+      {
+        "tool": "browser_type",
+        "args": {
+          "element": "@ref:Search",
+          "text": "Apple"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "1"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/search-hidden-content.html",
+    "expectSnapshot": [
+      {
+        "role": "searchbox",
+        "name": "Search"
+      }
+    ]
+  },
+  {
+    "id": "drag-and-drop",
+    "act": [
+      {
+        "tool": "browser_evaluate",
+        "args": {
+          "expression": "(() => { const dt=new DataTransfer(); document.getElementById('item').dispatchEvent(new DragEvent('dragstart',{dataTransfer:dt,bubbles:true})); document.getElementById('target').dispatchEvent(new DragEvent('dragover',{dataTransfer:dt,bubbles:true,cancelable:true})); document.getElementById('target').dispatchEvent(new DragEvent('drop',{dataTransfer:dt,bubbles:true,cancelable:true})); })()"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "dropped"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/drag-and-drop.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Reset drag"
+      }
+    ]
+  },
+  {
+    "id": "swipe-to-remove",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Remove item"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "0"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/swipe-to-remove.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Remove item"
+      }
+    ]
+  },
+  {
+    "id": "swipe-to-reveal",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Reveal action"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "visible"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/swipe-to-reveal.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Reveal action"
+      }
+    ]
+  },
+  {
+    "id": "highlight-text-ranges",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Highlight"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "quick"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/highlight-text-ranges.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Highlight"
+      }
+    ]
+  },
+  {
+    "id": "move-dom-element-without-losing-state",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Move field"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "keep"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/move-dom-element-without-losing-state.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Move field"
+      }
+    ]
+  },
+  {
+    "id": "scroll-snap-state-sync",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Next section"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "2"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/scroll-snap-state-sync.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Next section"
+      }
+    ]
+  },
+  {
+    "id": "anchor-positioning-tab-underline",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Two"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "two"
+          },
+          "timeoutMs": 1500
+        }
+      },
+      {
+        "tool": "browser_screenshot",
+        "args": {}
+      }
+    ],
+    "url": "/fixtures/anchor-positioning-tab-underline.html",
+    "expectSnapshot": [
+      {
+        "role": "tab",
+        "name": "Two"
+      }
+    ]
+  },
+  {
+    "id": "custom-button-actions",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Run action"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "save"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/custom-button-actions.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Run action"
+      }
+    ]
+  },
+  {
+    "id": "interactive-content-reveal",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Reveal content"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "revealed"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/interactive-content-reveal.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Reveal content"
+      }
+    ]
+  },
+  {
+    "id": "same-document-transitions",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Start transition"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "transitioned"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/same-document-transitions.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Start transition"
+      }
+    ]
+  }
+]

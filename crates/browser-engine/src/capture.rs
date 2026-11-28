@@ -305,7 +305,9 @@ pub(crate) async fn apply_shot_freeze(browser: &Browser) -> Vec<String> {
 
 pub(crate) async fn restore_shot_freeze(browser: &Browser) {
     if let Err(e) = browser.eval(SHOT_FREEZE_RESTORE_JS).await {
-        warn(&format!("screenshot: could not undo the motion freeze: {e}"));
+        warn(&format!(
+            "screenshot: could not undo the motion freeze: {e}"
+        ));
     }
 }
 

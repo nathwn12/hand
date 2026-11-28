@@ -44,7 +44,10 @@ fn main() {
         }
         Some("doctor") => doctor(),
         Some(other) => {
-            err_eprintln!("EUSAGE", "Unknown subcommand '{other}'; use hand with mcp, doctor or --version.");
+            err_eprintln!(
+                "EUSAGE",
+                "Unknown subcommand '{other}'; use hand with mcp, doctor or --version."
+            );
             2
         }
     };
@@ -81,7 +84,11 @@ fn run_server() -> i32 {
         .name("hand".to_string())
         .stack_size(8 * 1024 * 1024)
         .spawn(|| {
+            // Nested tool dispatch (form -> per-step call + evidence capture)
+            // needs more than tokio's 2 MB worker default at opt-level=0; debug
+            // overflows where release fits. Match the main thread's 8 MB bound.
             let rt = match tokio::runtime::Builder::new_multi_thread()
+                .thread_stack_size(8 * 1024 * 1024)
                 .enable_all()
                 .build()
             {
@@ -101,7 +108,8 @@ fn run_server() -> i32 {
                     1
                 }
                 Err(_) => {
-                    err_eprintln!("EPANIC", 
+                    err_eprintln!(
+                        "EPANIC",
                         "[hand] server loop panicked; its normal shutdown did not run, so an \
                          attached browser was NOT detached and any page state it changed is \
                          UNVERIFIED; in-flight desktop actions' outcomes are UNKNOWN"
@@ -115,7 +123,8 @@ fn run_server() -> i32 {
                 let outstanding =
                     server::ACTIVE_DESKTOP_JOBS.load(std::sync::atomic::Ordering::SeqCst);
                 if outstanding > 0 {
-                    err_eprintln!("ESHUTDOWN", 
+                    err_eprintln!(
+                        "ESHUTDOWN",
                         "[hand] shutdown: runtime teardown reached its {RUNTIME_EXIT_BOUND:?} \
                          bound; {outstanding} blocking desktop job(s) were still running and were \
                          NOT stopped, so their outcome is UNKNOWN (the process exits now)"
@@ -226,7 +235,10 @@ mod tests {
     #[test]
     fn version_line_carries_the_embedded_build_identity() {
         let line = version_line();
-        assert!(line.starts_with(&format!("hand {}", env!("CARGO_PKG_VERSION"))), "{line}");
+        assert!(
+            line.starts_with(&format!("hand {}", env!("CARGO_PKG_VERSION"))),
+            "{line}"
+        );
         assert!(line.contains(env!("HAND_GIT_SHA")), "{line}");
         assert!(line.contains(env!("HAND_BUILD_PROFILE")), "{line}");
         if env!("HAND_GIT_SHA") != "unknown" {

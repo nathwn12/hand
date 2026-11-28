@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>autofill-highlight-inputs</title>
+<style>body{font:16px/1.4 system-ui,sans-serif;margin:16px}button{margin:4px}output{display:block;margin-top:12px}</style>
+</head><body>
+<label for="a">Autofilled</label><input id="a" autocomplete="email" value="saved@example.com"><output id="out">idle</output>
+<script>
+document.getElementById('a').addEventListener('focus',e=>{e.target.classList.add('autofill-highlight');document.getElementById('out').textContent='highlighted';});
+</script>
+</body></html>

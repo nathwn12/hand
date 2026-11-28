@@ -36,6 +36,7 @@ const DECLARED_DESCRIPTIONS = [
   "desktop_do",
   "desktop_elements",
   "desktop_screenshot",
+  "desktop_window",
 ];
 
 function setPath(root, dotted, value) {
@@ -46,6 +47,15 @@ function setPath(root, dotted, value) {
     return node[segment];
   }, root);
   parent[last] = value;
+}
+
+function getPath(root, dotted) {
+  let node = root;
+  for (const segment of dotted.split(".")) {
+    if (!node || typeof node !== "object") return undefined;
+    node = node[segment];
+  }
+  return node;
 }
 
 function deletePath(root, dotted) {
@@ -68,6 +78,12 @@ function additiveCandidate() {
     const tool = candidate.tools.find((entry) => entry.name === name);
     assert.ok(tool, `metadata.description declares ${name}, which is not in the floor`);
     tool.description = `${tool.description} Declared rewrite: names the parameters this tree added.`;
+  }
+  for (const rewrite of DECLARED_ADDITIONS.metadata.rewrites ?? []) {
+    const tool = candidate.tools.find((entry) => entry.name === rewrite.tool);
+    assert.ok(tool, `metadata.rewrites declares ${rewrite.tool}, which is not in the floor`);
+    const original = getPath(tool[rewrite.schema], rewrite.path);
+    setPath(tool[rewrite.schema], rewrite.path, `${original ?? ""} Declared rewrite: names the real opt-in.`);
   }
   return candidate;
 }
@@ -117,14 +133,27 @@ test("the allowance file is versioned, dotted and read by the comparator itself"
     }
   }
 
-  assert.deepEqual(Object.keys(rawFile.metadata), ["description"], "only description may be declared");
+  assert.deepEqual(Object.keys(rawFile.metadata), ["description", "rewrites"], "description and rewrites may be declared");
   assert.deepEqual(
     [...rawFile.metadata.description].sort(),
     DECLARED_DESCRIPTIONS,
-    "exactly the fourteen rewritten descriptions are declared, nothing more and nothing less",
+    "exactly the fifteen rewritten descriptions are declared, nothing more and nothing less",
   );
   for (const name of rawFile.metadata.description) {
     assert.ok(floorNames.has(name), `metadata.description.${name} is not a floor tool`);
+  }
+  for (const rewrite of rawFile.metadata.rewrites ?? []) {
+    assert.ok(floorNames.has(rewrite.tool), `metadata.rewrites.${rewrite.tool} is not a floor tool`);
+    assert.ok([
+      "inputSchema",
+      "outputSchema",
+    ].includes(rewrite.schema), `${rewrite.tool} has an unknown schema: ${rewrite.schema}`);
+    const floorTool = handCatalog.tools.find((entry) => entry.name === rewrite.tool);
+    assert.equal(
+      hasDeclaredPath(floorTool[rewrite.schema], rewrite.path),
+      true,
+      `${rewrite.tool} ${rewrite.schema}.${rewrite.path} is absent from the floor and cannot be a rewrite`,
+    );
   }
 });
 
@@ -153,7 +182,7 @@ test("a candidate that is the floor plus the declared allowances passes, and the
   assert.deepEqual(
     descriptions.map((entry) => entry.tool).sort(),
     DECLARED_DESCRIPTIONS,
-    "one place lists every allowance, so all fourteen rewritten descriptions are named here",
+    "one place lists every allowance, so all fifteen rewritten descriptions are named here",
   );
 });
 
@@ -283,6 +312,52 @@ test("the green candidate is green through the real CLI, exit 0", () => {
     Object.keys(DECLARED_ADDITIONS.outputSchema).length +
     DECLARED_ADDITIONS.metadata.description.length;
   assert.match(cli.stdout, new RegExp(`declared {3}${declaredGroups} addition group\\(s\\)`));
+});
+
+test("a declared rewrite left at the pin fails as a stale declaration through the real CLI", () => {
+  const candidate = additiveCandidate();
+  const rewrite = DECLARED_ADDITIONS.metadata.rewrites[0];
+  assert.ok(rewrite, "there is a declared property rewrite");
+  const tool = candidate.tools.find((entry) => entry.name === rewrite.tool);
+  const pin = handCatalog.tools.find((entry) => entry.name === rewrite.tool);
+  setPath(tool[rewrite.schema], rewrite.path, getPath(pin[rewrite.schema], rewrite.path));
+
+  const report = compareCatalogs({ baseline: handCatalog, candidate, profile: "hand" });
+  assert.equal(report.ok, false, "a stale rewrite must fail the comparator");
+  assert.ok(
+    report.rewriteIssues.some((issue) => issue.includes("identical to the pin: a stale declaration")),
+    JSON.stringify(report.rewriteIssues),
+  );
+  const cli = runCli(candidate);
+  assert.equal(cli.status, 1, cli.stdout + cli.stderr);
+  assert.ok(
+    cli.stdout.includes(
+      `REWRITE-ISSUE rewrite ${rewrite.tool} ${rewrite.schema}.${rewrite.path}: identical to the pin: a stale declaration`,
+    ),
+    cli.stdout,
+  );
+});
+
+test("a declared rewrite whose path vanished from the published body fails", () => {
+  const candidate = additiveCandidate();
+  const rewrite = DECLARED_ADDITIONS.metadata.rewrites[0];
+  const tool = candidate.tools.find((entry) => entry.name === rewrite.tool);
+  deletePath(tool[rewrite.schema], rewrite.path);
+
+  const report = compareCatalogs({ baseline: handCatalog, candidate, profile: "hand" });
+  assert.equal(report.ok, false, "a rewrite path missing from the published body must fail");
+  assert.ok(
+    report.rewriteIssues.some((issue) => issue.includes("path is absent from the published body")),
+    JSON.stringify(report.rewriteIssues),
+  );
+  const cli = runCli(candidate);
+  assert.equal(cli.status, 1, cli.stdout + cli.stderr);
+  assert.ok(
+    cli.stdout.includes(
+      `REWRITE-ISSUE rewrite ${rewrite.tool} ${rewrite.schema}.${rewrite.path}: path is absent from the published body`,
+    ),
+    cli.stdout,
+  );
 });
 
 test("the legacy profile is never allowed to grow: a declared path does not soften a recapture", () => {

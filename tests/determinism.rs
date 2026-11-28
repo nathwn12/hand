@@ -57,7 +57,11 @@ impl Fixture {
                 }
             }
         })];
-        Fixture { base, stop, handles }
+        Fixture {
+            base,
+            stop,
+            handles,
+        }
     }
 }
 
@@ -177,7 +181,11 @@ fn permission_grant_and_reset_are_read_back_from_the_context_page() {
         "browser_context",
         json!({"action": "permissions", "name": "perm-a", "grant": ["geolocation"]}),
     );
-    assert!(!is_error(&granted), "permissions failed: {}", text_of(&granted));
+    assert!(
+        !is_error(&granted),
+        "permissions failed: {}",
+        text_of(&granted)
+    );
     let read = s.call(
         "browser_context",
         json!({"action": "eval", "name": "perm-a",
@@ -191,7 +199,10 @@ fn permission_grant_and_reset_are_read_back_from_the_context_page() {
                "expression": "localStorage.setItem('k','v'); sessionStorage.setItem('s','v'); 'seeded'"}),
     );
     assert_eq!(value(&seeded, "seed storage"), json!("seeded"));
-    let reset = s.call("browser_context", json!({"action": "reset", "name": "perm-a"}));
+    let reset = s.call(
+        "browser_context",
+        json!({"action": "reset", "name": "perm-a"}),
+    );
     assert!(!is_error(&reset), "reset failed: {}", text_of(&reset));
     let after = s.call(
         "browser_context",
@@ -205,7 +216,11 @@ fn permission_grant_and_reset_are_read_back_from_the_context_page() {
     );
 
     let destroyed = s.call("browser_context", json!({"action": "destroy_all"}));
-    assert!(!is_error(&destroyed), "destroy_all failed: {}", text_of(&destroyed));
+    assert!(
+        !is_error(&destroyed),
+        "destroy_all failed: {}",
+        text_of(&destroyed)
+    );
 }
 
 #[test]
@@ -219,13 +234,21 @@ fn state_exports_and_imports_across_two_contexts() {
         "browser_context",
         json!({"action": "create", "name": "src", "url": url}),
     );
-    assert!(!is_error(&source), "create source failed: {}", text_of(&source));
+    assert!(
+        !is_error(&source),
+        "create source failed: {}",
+        text_of(&source)
+    );
     let cookie = s.call(
         "browser_context",
         json!({"action": "cookies", "name": "src",
                "cookies": [{"name": "sid", "value": "abc123", "url": url}]}),
     );
-    assert!(!is_error(&cookie), "set cookie failed: {}", text_of(&cookie));
+    assert!(
+        !is_error(&cookie),
+        "set cookie failed: {}",
+        text_of(&cookie)
+    );
     let seeded = s.call(
         "browser_context",
         json!({"action": "eval", "name": "src",
@@ -237,17 +260,18 @@ fn state_exports_and_imports_across_two_contexts() {
         .duration_since(std::time::UNIX_EPOCH)
         .expect("clock")
         .as_nanos();
-    let file = std::env::temp_dir().join(format!(
-        "hand-state-{}-{nanos}.json",
-        std::process::id()
-    ));
+    let file = std::env::temp_dir().join(format!("hand-state-{}-{nanos}.json", std::process::id()));
     let path = file.to_string_lossy().to_string();
 
     let exported = s.call(
         "browser_context",
         json!({"action": "export_state", "name": "src", "path": path}),
     );
-    assert!(!is_error(&exported), "export failed: {}", text_of(&exported));
+    assert!(
+        !is_error(&exported),
+        "export failed: {}",
+        text_of(&exported)
+    );
     assert_eq!(structured(&exported)["cookies"], json!(1));
     assert_eq!(structured(&exported)["localStorage"], json!(2));
     assert!(file.is_file(), "the caller-supplied artifact must exist");
@@ -256,12 +280,20 @@ fn state_exports_and_imports_across_two_contexts() {
         "browser_context",
         json!({"action": "create", "name": "dst", "url": url}),
     );
-    assert!(!is_error(&fresh), "create target failed: {}", text_of(&fresh));
+    assert!(
+        !is_error(&fresh),
+        "create target failed: {}",
+        text_of(&fresh)
+    );
     let imported = s.call(
         "browser_context",
         json!({"action": "import_state", "name": "dst", "path": path}),
     );
-    assert!(!is_error(&imported), "import failed: {}", text_of(&imported));
+    assert!(
+        !is_error(&imported),
+        "import failed: {}",
+        text_of(&imported)
+    );
     assert_eq!(structured(&imported)["verifiedCookies"], json!(1));
     assert_eq!(structured(&imported)["verifiedLocalStorage"], json!(2));
 
@@ -281,15 +313,25 @@ fn state_exports_and_imports_across_two_contexts() {
         json!({"action": "eval", "name": "dst",
                "expression": "JSON.stringify(Object.entries(localStorage))"}),
     );
-    let text = value(&storage_read, "storage read-back").as_str().unwrap_or("").to_string();
+    let text = value(&storage_read, "storage read-back")
+        .as_str()
+        .unwrap_or("")
+        .to_string();
     assert!(text.contains("theme") && text.contains("dark") && text.contains("n"));
-    assert!(text.contains("'7'") || text.contains("\"7\""), "the second item must round-trip: {text}");
+    assert!(
+        text.contains("'7'") || text.contains("\"7\""),
+        "the second item must round-trip: {text}"
+    );
 
     let other = s.call(
         "browser_context",
         json!({"action": "create", "name": "other", "url": url}),
     );
-    assert!(!is_error(&other), "create third context failed: {}", text_of(&other));
+    assert!(
+        !is_error(&other),
+        "create third context failed: {}",
+        text_of(&other)
+    );
     let untouched = s.call(
         "browser_context",
         json!({"action": "eval", "name": "other",
@@ -302,7 +344,11 @@ fn state_exports_and_imports_across_two_contexts() {
     );
 
     let destroyed = s.call("browser_context", json!({"action": "destroy_all"}));
-    assert!(!is_error(&destroyed), "destroy_all failed: {}", text_of(&destroyed));
+    assert!(
+        !is_error(&destroyed),
+        "destroy_all failed: {}",
+        text_of(&destroyed)
+    );
     let _ = std::fs::remove_file(&file);
 }
 
@@ -321,14 +367,25 @@ fn clock_is_scoped_to_the_named_context() {
         json!({"action": "clock", "name": "clka", "iso": "2026-01-02T03:04:05.000Z"}),
     );
     assert!(!is_error(&set), "clock failed: {}", text_of(&set));
-    assert_eq!(structured(&set)["observed"], json!(frozen), "receipt: {set}");
+    assert_eq!(
+        structured(&set)["observed"],
+        json!(frozen),
+        "receipt: {set}"
+    );
 
-    assert_eq!(ctx_eval(&mut s, "clka", "Date.now()"), json!(frozen), "named context must read the frozen instant");
+    assert_eq!(
+        ctx_eval(&mut s, "clka", "Date.now()"),
+        json!(frozen),
+        "named context must read the frozen instant"
+    );
     let real = ctx_eval(&mut s, "clkb", "Date.now()")
         .as_i64()
         .expect("real clock value");
     assert_ne!(real, frozen, "the other context must keep its own clock");
-    assert!(real > frozen, "the untouched context reads wall time: {real}");
+    assert!(
+        real > frozen,
+        "the untouched context reads wall time: {real}"
+    );
 
     let destroyed = s.call("browser_context", json!({"action": "destroy_all"}));
     assert!(!is_error(&destroyed), "{}", text_of(&destroyed));
@@ -369,7 +426,11 @@ fn reset_clears_only_the_named_context() {
 
     for name in ["rsa", "rsb"] {
         assert_eq!(
-            ctx_eval(&mut s, name, "localStorage.setItem('seed','1'); localStorage.length"),
+            ctx_eval(
+                &mut s,
+                name,
+                "localStorage.setItem('seed','1'); localStorage.length"
+            ),
             json!(1),
             "seed {name}"
         );
@@ -377,8 +438,16 @@ fn reset_clears_only_the_named_context() {
     let reset = s.call("browser_context", json!({"action": "reset", "name": "rsa"}));
     assert!(!is_error(&reset), "reset failed: {}", text_of(&reset));
 
-    assert_eq!(ctx_eval(&mut s, "rsa", "localStorage.length"), json!(0), "reset context is empty");
-    assert_eq!(ctx_eval(&mut s, "rsb", "localStorage.length"), json!(1), "other context is untouched");
+    assert_eq!(
+        ctx_eval(&mut s, "rsa", "localStorage.length"),
+        json!(0),
+        "reset context is empty"
+    );
+    assert_eq!(
+        ctx_eval(&mut s, "rsb", "localStorage.length"),
+        json!(1),
+        "other context is untouched"
+    );
 
     let destroyed = s.call("browser_context", json!({"action": "destroy_all"}));
     assert!(!is_error(&destroyed), "{}", text_of(&destroyed));
@@ -388,11 +457,19 @@ fn reset_clears_only_the_named_context() {
 fn clock_override_refuses_a_non_rfc3339_instant() {
     let _serial = serial();
     let mut s = Session::spawn();
-    let resp = s.call("browser_context", json!({"action": "clock", "iso": "yesterday"}));
+    let resp = s.call(
+        "browser_context",
+        json!({"action": "clock", "iso": "yesterday"}),
+    );
     assert!(is_error(&resp), "a non-instant must refuse typed");
     // `new Date('yesterday').getTime()` is NaN, so the engine refuses the
     // non-value as a typed js_error before it can install a broken clock.
-    assert_eq!(structured(&resp)["code"], "js_error", "typed code: {}", text_of(&resp));
+    assert_eq!(
+        structured(&resp)["code"],
+        "js_error",
+        "typed code: {}",
+        text_of(&resp)
+    );
 }
 
 #[test]
@@ -429,7 +506,10 @@ fn import_state_missing_file_is_a_typed_refusal() {
     let missing = std::env::temp_dir().join(format!(
         "hand-missing-state-{}-{}.json",
         std::process::id(),
-        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos()
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
     ));
     let resp = s.call(
         "browser_context",

@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>required-field-feedback</title>
+<style>body{font:16px/1.4 system-ui,sans-serif;margin:16px}button{margin:4px}output{display:block;margin-top:12px}</style>
+</head><body>
+<form id="f" novalidate><label for="e">Email</label><input id="e" required type="email"><button type="submit">Submit form</button></form><output id="out">idle</output>
+<script>
+document.getElementById('f').addEventListener('submit',e=>{e.preventDefault();document.getElementById('out').textContent=document.getElementById('e').checkValidity()?'ok':'Email is required';});
+</script>
+</body></html>

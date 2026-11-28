@@ -415,13 +415,15 @@ async fn open_legacy_page(rig: &Rig, url: &str, want: &str) {
                 last = format!("Page.navigate failed: {e}");
                 eprintln!("LEGACY_RETRY attempt={attempt} url={url} {last}");
             }
-            Ok(_) => match wait_legacy_page(rig, want, Duration::from_secs(30)).await {
-                Ok(()) => return,
-                Err(e) => {
-                    last = e;
-                    eprintln!("LEGACY_RETRY attempt={attempt} url={url} title never committed: {last}");
+            Ok(_) => {
+                match wait_legacy_page(rig, want, Duration::from_secs(30)).await {
+                    Ok(()) => return,
+                    Err(e) => {
+                        last = e;
+                        eprintln!("LEGACY_RETRY attempt={attempt} url={url} title never committed: {last}");
+                    }
                 }
-            },
+            }
         }
     }
     panic!("the legacy fixture page never committed across 3 navigations: {last}");
@@ -887,7 +889,9 @@ fn context_eval_keeps_valueless_result_strict_and_visible() {
     require_owned_browser();
     block_on(async {
         let rig = Rig::start();
-        let created = rig.call(json!({"action": "create", "name": "strict"})).await;
+        let created = rig
+            .call(json!({"action": "create", "name": "strict"}))
+            .await;
         assert!(!is_error(&created), "create failed: {}", text_of(&created));
 
         let void = rig
@@ -1653,7 +1657,6 @@ fn selection_is_registry_scoped_and_teardown_leaves_the_other_context_alone() {
         rig.close().await;
     });
 }
-
 
 /// A stale acquisition must never write into, or roll back, a later entry that
 /// reused the same name. Reproduced with a slowed first acquisition, a destroy

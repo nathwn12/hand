@@ -427,7 +427,11 @@ fn assert_no_steal(before: Globals, after: Globals, server_pid: u32) {
 }
 
 fn assert_restore_proof(sc: &Value, scope: &str) {
-    for key in ["foregroundUnchanged", "cursorUnchanged", "clipboardUnchanged"] {
+    for key in [
+        "foregroundUnchanged",
+        "cursorUnchanged",
+        "clipboardUnchanged",
+    ] {
         assert_eq!(
             sc[key],
             json!(true),
@@ -459,7 +463,10 @@ fn desktop_capture_timeout_keeps_globals_and_reports_restore() {
         "desktop_screenshot",
         json!({"window": format!("hwnd:{hwnd}"), "max_px": 64}),
     );
-    assert!(is_error(&out), "a timed-out capture is a typed error: {out}");
+    assert!(
+        is_error(&out),
+        "a timed-out capture is a typed error: {out}"
+    );
     let text = text_of(&out);
     assert!(
         text.contains("capture_timeout"),
@@ -482,7 +489,10 @@ fn desktop_capture_error_carries_restore_proof_for_every_scope() {
             "display=-1",
             json!({"display": -1, "privacyMasks": [{"rect": [50000, 50000, 50010, 50010]}], "max_px": 64}),
         ),
-        ("region", json!({"display": -1, "region": [0, 0, 0, 0], "max_px": 64})),
+        (
+            "region",
+            json!({"display": -1, "region": [0, 0, 0, 0], "max_px": 64}),
+        ),
         (
             "mask",
             json!({"display": -1, "privacyMasks": [{"window": "hwnd:99999999"}], "max_px": 64}),
@@ -507,11 +517,9 @@ fn desktop_capture_cancel_leaves_globals_unchanged() {
     ]);
     s.initialize();
     let before = globals_now();
-    s.send(
-        &json!({"jsonrpc": "2.0", "id": 77, "method": "tools/call",
+    s.send(&json!({"jsonrpc": "2.0", "id": 77, "method": "tools/call",
                 "params": {"name": "desktop_screenshot",
-                           "arguments": {"display": -1, "max_px": 64}}}),
-    );
+                           "arguments": {"display": -1, "max_px": 64}}}));
     s.send(
         &json!({"jsonrpc": "2.0", "method": "notifications/cancelled",
                 "params": {"requestId": 77}}),
@@ -973,7 +981,6 @@ fn a_cancelled_desktop_call_stays_silent_over_the_wire() {
     assert!(fresh.get("result").is_some(), "new id answers: {fresh}");
 }
 
-
 /// A CDP reply larger than one WebSocket frame is a big page, not a dead
 /// engine.
 ///
@@ -1025,7 +1032,11 @@ fn a_snapshot_reply_larger_than_one_transport_frame_keeps_the_engine() {
         text_of(&count)
     );
     let tabs = s.call("browser_tabs", json!({"action": "list"}));
-    assert!(!is_error(&tabs), "tabs after the refusal: {}", text_of(&tabs));
+    assert!(
+        !is_error(&tabs),
+        "tabs after the refusal: {}",
+        text_of(&tabs)
+    );
     assert_eq!(
         structured(&tabs)["tabs"].as_array().map(Vec::len),
         Some(1),
@@ -1053,7 +1064,10 @@ fn an_out_of_range_tab_select_is_refused_without_waiting_on_the_deadline() {
     let started = Instant::now();
     let one_past = s.call("browser_tabs", json!({"action": "select", "index": 1}));
     let elapsed = started.elapsed();
-    assert!(is_error(&one_past), "an absent index is refused: {one_past}");
+    assert!(
+        is_error(&one_past),
+        "an absent index is refused: {one_past}"
+    );
     assert_eq!(structured(&one_past)["code"], json!("invalid_target"));
     assert_eq!(structured(&one_past)["reason"], json!("not_found"));
     assert!(
@@ -1081,5 +1095,9 @@ fn an_out_of_range_tab_select_is_refused_without_waiting_on_the_deadline() {
     );
 
     let tabs = s.call("browser_tabs", json!({"action": "list"}));
-    assert!(!is_error(&tabs), "tabs after the refusals: {}", text_of(&tabs));
+    assert!(
+        !is_error(&tabs),
+        "tabs after the refusals: {}",
+        text_of(&tabs)
+    );
 }

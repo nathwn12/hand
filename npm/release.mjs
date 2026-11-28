@@ -5,10 +5,14 @@
 //   node npm/release.mjs --publish    # gate, build, pack, handshake, publish, registry read-back
 //                                     # --publish runs npm login itself when the session is absent
 //   node npm/release.mjs --trust      # bind GitHub Actions as npm trusted publisher
+//   node npm/release.mjs --check      # read-only artifact proof (preflight, build, pack, version, handshake)
+//   node npm/release.mjs --status     # read-only npm user, registry, tag and trust state
+//   node npm/release.mjs <mode> --visible  # visible passkey window; parent waits for its exit marker
 // publish is idempotent: a version already on the registry is a skip only when
 // its gitHead names this source commit, never a second publish.
 import { execFileSync, spawn } from 'node:child_process';
-import { appendFileSync, existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,7 +21,13 @@ const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, '..');
 const pkg = JSON.parse(readFileSync(join(here, 'package.json'), 'utf8'));
 const WORKFLOW = 'publish.yml';
-const GITHUB_REPO = 'nathwn12/hand';
+// Today's value is the fallback; a copied lane reads owner/repo from its own
+// package.json.repository, so porting this script needs no edit here.
+const GITHUB_REPO = (() => {
+  const url = typeof pkg.repository === 'string' ? pkg.repository : pkg.repository?.url;
+  const match = /(?:github\.com\/|github:)([^/]+)\/([^/#]+)/i.exec(url ?? '');
+  return match ? `${match[1]}/${match[2].replace(/\.git$/i, '')}` : 'nathwn12/hand';
+})();
 
 // npm's own registry client uses `?write=true` for read-after-write: the public
 // registry revalidates its cache before replying. `npm view --prefer-online`
@@ -42,19 +52,25 @@ export const HISTORICAL_RELEASE_IDENTITY = Object.freeze({
 });
 
 const argv = process.argv.slice(2);
-const KNOWN = new Set(['--initial', '--publish', '--trust', '--ci', '--skip-build']);
+const KNOWN = new Set(['--initial', '--publish', '--trust', '--check', '--status', '--visible', '--ci', '--skip-build']);
 const unknown = argv.filter((a) => !KNOWN.has(a));
 if (unknown.length) usage(`unknown flag: ${unknown.join(' ')}`);
 const ci = argv.includes('--ci');
 const skipBuild = argv.includes('--skip-build');
+const visible = argv.includes('--visible');
+const check = argv.includes('--check');
+const status = argv.includes('--status');
 const chosen = ['--initial', '--publish', '--trust'].filter((f) => argv.includes(f));
+if ((check || status) && (chosen.length || ci)) usage('choose one mode: --check and --status are read-only');
 if (ci && !(chosen.length === 1 && chosen[0] === '--publish')) usage('--ci belongs to --publish only');
-const modes = ['--initial', '--publish', '--trust'].filter((f) => !chosen.length || chosen.includes(f));
+if (visible && (check || status || ci)) usage('--visible belongs to --initial, --publish or --trust only');
+const modes = check || status ? [] : ['--initial', '--publish', '--trust'].filter((f) => !chosen.length || chosen.includes(f));
 
 function usage(line) {
   console.error(`FAIL usage: ${line}`);
-  console.error('  node npm/release.mjs [--initial] [--publish] [--trust] [--skip-build]');
+  console.error('  node npm/release.mjs [--initial | --publish | --trust | --check | --status] [--skip-build] [--visible]');
   console.error('  no flags = initial, publish, trust in that order');
+  console.error('  --visible opens a passkey window for initial, publish or trust');
   process.exit(64);
 }
 function run(cmd, args, opts = {}) {
@@ -236,17 +252,59 @@ function emitReleaseIdentity({ version, sourceCommit, tagCommit, tagMode }) {
     else console.log(`${key}=${value}`);
   }
 }
-function visibleWindow(mode) {
-  return `Start-Process powershell.exe -NoExit -Command "cd Q:\\PROJECTS\\PERSONAL\\hand; node npm/release.mjs ${mode}"`;
+// The old helper hard-coded a directory that does not exist and hid the
+// child's output. --visible runs this file in a real window, tees every stream
+// to a log so the npm URL stays on screen, and waits for an exit marker.
+function psQuote(value) {
+  return `'${String(value).replace(/'/g, "''")}'`;
+}
+const sleep = (ms) => new Promise((resolveSleep) => setTimeout(resolveSleep, ms));
+
+function printLogTail(logPath, count = 20) {
+  if (!existsSync(logPath)) return console.log(`visible: no log yet at ${logPath}`);
+  const lines = readFileSync(logPath, 'utf8').split(/\r?\n/).filter(Boolean);
+  console.log(`visible: log tail (${lines.length} line${lines.length === 1 ? '' : 's'}) from ${logPath}:`);
+  for (const line of lines.slice(-count)) console.log(`  ${line}`);
 }
 
+async function visibleRun() {
+  const label = chosen.length === 1 ? chosen[0].slice(2) : 'all';
+  const dir = join(tmpdir(), `hand-release-${label}-${process.pid}`);
+  mkdirSync(dir, { recursive: true });
+  const log = join(dir, 'child.log');
+  const done = join(dir, 'done.txt');
+  const child = join(dir, 'child.ps1');
+  const childFlags = argv.filter((a) => a !== '--visible').join(' ');
+  const script = [
+    `Set-Location -LiteralPath ${psQuote(repo)}`,
+    `& node ${psQuote(join(here, 'release.mjs'))} ${childFlags} *>&1 | Tee-Object -FilePath ${psQuote(log)}`,
+    '$code = if ($null -eq $LASTEXITCODE) { 1 } else { $LASTEXITCODE }',
+    `$code | Set-Content -LiteralPath ${psQuote(done)}`,
+    '',
+  ].join('\r\n');
+  writeFileSync(child, script, 'utf8');
+  console.log(`visible: window log ${log}`);
+  console.log(`visible: exit marker ${done}`);
+  console.log('visible: in that window the npm URL appears — click it, or press Enter if it asks to open the browser; approve with your passkey in 1Password. Nothing needs typing.');
+  const launch = `Start-Process -FilePath powershell.exe -ArgumentList @('-NoExit','-NoProfile','-File',${psQuote(child)}) -WindowStyle Normal`;
+  step('visible', () => execFileSync('powershell.exe', ['-NoProfile', '-Command', launch], { cwd: repo, stdio: 'inherit' }));
+  const deadline = Date.now() + 20 * 60 * 1000;
+  while (!existsSync(done) && Date.now() < deadline) await sleep(2000);
+  printLogTail(log);
+  if (!existsSync(done)) {
+    console.error(`visible: 20-minute deadline passed; ${done} is still absent. The window is still open at ${log} and was NOT killed. Finish the passkey step there, then read the log or rerun.`);
+    return 1;
+  }
+  const code = Number.parseInt(readFileSync(done, 'utf8').trim(), 10);
+  return Number.isFinite(code) ? code : 1;
+}
 async function initial() {
   const user = npmUser();
   if (user) {
     console.log(`initial: already logged in as ${user} (skip)`);
     return;
   }
-  if (!process.stdin.isTTY) fail('initial', `npm login needs a visible terminal for the passkey. Run: ${visibleWindow('--initial')}`);
+  if (!process.stdin.isTTY) fail('initial', 'npm login needs a visible terminal for the passkey: run this mode with --visible');
   console.log('initial: npm login (complete the browser passkey)');
   step('initial', () => npmExec(['login', '--auth-type=web'], { cwd: here, stdio: ['inherit', 'inherit', 'inherit'] }));
   const after = npmUser();
@@ -254,13 +312,16 @@ async function initial() {
   console.log(`initial: logged in as ${after}`);
 }
 
-async function publishMode() {
+function preflight({ allowDirty = false } = {}) {
   const head = step('preflight', () => run('git', ['rev-parse', 'HEAD'])).toLowerCase();
   if (!ci) {
     const branch = step('preflight', () => run('git', ['rev-parse', '--abbrev-ref', 'HEAD']));
     if (branch !== 'main') fail('preflight', `branch is ${branch}, not main. Check out main first: git checkout main`);
     const dirty = step('preflight', () => run('git', ['status', '--porcelain']));
-    if (dirty) fail('preflight', `working tree is dirty. Commit it first, generated receipts included:\n${dirty}\n  git add -A; git commit -m "chore: record release receipts" -m "[skip ci]"`);
+    if (dirty) {
+      if (!allowDirty) fail('preflight', `working tree is dirty. Commit it first, generated receipts included:\n${dirty}\n  git add -A; git commit -m "chore: record release receipts" -m "[skip ci]"`);
+      console.log(`preflight: ${dirty.split(/\r?\n/).length} local changes; read-only check builds from the current files`);
+    }
     const origin = step('preflight', () => run('git', ['rev-parse', 'origin/main']));
     if (head !== origin) fail('preflight', `HEAD ${head.slice(0, 8)} is not origin/main ${origin.slice(0, 8)}. Push or pull main first`);
   }
@@ -268,36 +329,16 @@ async function publishMode() {
   const cargo = readFileSync(join(repo, 'Cargo.toml'), 'utf8');
   const cargoVersion = (cargo.match(/^version\s*=\s*"([^"]+)"/m) || [])[1];
   if (cargoVersion !== pkg.version) fail('preflight', `package ${pkg.version} and Cargo ${cargoVersion} disagree`);
+  return head;
+}
 
-  const registry = await authoritativeVersion(fetch, pkg.name, pkg.version);
-  const tag = step('identity', () => remoteTagCommit((args) => run('git', args), `v${pkg.version}`));
-  const decision = releaseIdentityDecision({ version: pkg.version, head, registry, tag });
-  if (decision.action === 'fail') fail('identity', decision.reason);
-  if (decision.action === 'skip') {
-    emitReleaseIdentity({ version: pkg.version, ...decision });
-    console.log(`publish: ${decision.reason}; nothing to publish, tag mode ${decision.tagMode}`);
-    return;
-  }
-
-  if (ci) {
-    console.log('publish: OIDC trusted publishing (no user token)');
-  } else {
-    let user = npmUser();
-    if (!user) {
-      if (!process.stdin.isTTY) fail('publish', `not logged in. Run: ${visibleWindow('--publish')}`);
-      console.log('publish: npm login first (complete the browser passkey)');
-      step('publish', () => npmExec(['login', '--auth-type=web'], { cwd: here, stdio: ['inherit', 'inherit', 'inherit'] }));
-      user = npmUser();
-      if (!user) fail('publish', 'npm login finished but npm whoami still fails');
-    }
-    console.log(`publish: authenticated as ${user}`);
-  }
-
-  if (!skipBuild) {
+// One pack-and-prove path shared by --publish and --check. Nothing here
+// logs in, publishes, tags or writes to the registry.
+async function packAndVerify(head, noBuild = false) {
+  if (!noBuild) {
     console.log(`build: cargo build --release (${pkg.version} at ${head.slice(0, 8)})`);
     step('build', () => execFileSync('cargo', ['build', '--release'], { cwd: repo, stdio: ['ignore', 'inherit', 'inherit'] }));
   }
-
   const work = mkdtempSync(join(tmpdir(), 'hand-release-'));
   const tarballName = step('pack', () => {
     const out = npmOut(['pack', '--pack-destination', work], { cwd: here });
@@ -361,6 +402,104 @@ async function publishMode() {
   if (missing.length) fail('handshake', `baseline tools missing: ${missing.join(', ')}`);
 
   console.log(`check: ${tarballName} ${pkg.version} ${head.slice(0, 8)} tools=${handshake.tools} protocol=${handshake.protocol} exit=${handshake.code}`);
+  const bytes = statSync(tarball).size;
+  const sha256 = createHash('sha256').update(readFileSync(tarball)).digest('hex');
+  const files = step('pack-list', () => run('tar', ['-tzf', tarball], { cwd: work })).split(/\r?\n/).filter(Boolean);
+  return { work, tarballName, tarball, version, handshake, bytes, sha256, files };
+}
+
+async function checkMode() {
+  const head = preflight({ allowDirty: true });
+  const packed = await packAndVerify(head, skipBuild);
+  console.log(`check: tarball ${packed.tarballName} bytes=${packed.bytes} sha256=${packed.sha256}`);
+  console.log(`check: packed files (${packed.files.length}):`);
+  for (const name of packed.files) console.log(`  ${name}`);
+  rmSync(packed.work, { recursive: true, force: true });
+  console.log('check: all proofs passed; no login, no publish, no tag, no registry write');
+}
+
+// `npm trust list` may ask for a passkey. That is a finding, never a status
+// failure: --status stays read-only even when nobody is at the keyboard.
+function npmTrustList() {
+  let text;
+  try {
+    text = npmOut(['trust', 'list', pkg.name], { cwd: here, timeout: 20000 });
+  } catch (error) {
+    const detail = `${error?.stderr ?? ''}\n${error?.message ?? ''}`;
+    const last = detail.trim().split(/\r?\n/).filter(Boolean).slice(-1)[0] ?? 'npm trust list failed';
+    if (/passkey|one-time password|\botp\b|browser|sign in|log in|auth/i.test(detail)) return { status: 'needs-passkey', reason: last };
+    if (/E404|not found|no trusted|no publisher/i.test(detail)) return { status: 'absent', reason: 'no trusted publisher listed' };
+    return { status: 'unavailable', reason: last };
+  }
+  const lower = text.toLowerCase();
+  if (!lower.includes(GITHUB_REPO.toLowerCase()) || !lower.includes(WORKFLOW.toLowerCase())) {
+    return { status: 'absent', reason: 'listed, but not bound to this workflow and repository' };
+  }
+  return { status: 'bound', text };
+}
+
+async function statusMode() {
+  const user = npmUser();
+  console.log(`status: npm user ${user ?? 'not logged in'} (npm whoami, no passkey)`);
+
+  const registry = await authoritativeVersion(fetch, pkg.name, pkg.version);
+  if (registry.status === 'present') console.log(`status: registry ${pkg.name}@${pkg.version} present, gitHead ${registry.gitHead}`);
+  else console.log(`status: registry ${pkg.name}@${pkg.version} ${registry.status}${registry.reason ? ` (${registry.reason})` : ''}`);
+
+  const tag = step('status', () => remoteTagCommit((args) => run('git', args), `v${pkg.version}`));
+  console.log(`status: remote tag v${pkg.version} ${tag.status === 'present' ? tag.commit : tag.status}${tag.reason ? ` (${tag.reason})` : ''}`);
+
+  const trust = npmTrustList();
+  if (trust.status === 'needs-passkey') console.log(`status: trust: needs-passkey — ${trust.reason}; read-only finding, not a failure`);
+  else if (trust.status === 'bound') console.log(`status: trust: bound to ${GITHUB_REPO} ${WORKFLOW}`);
+  else console.log(`status: trust: ${trust.status} — ${trust.reason}`);
+
+  const conflicts = [];
+  // The closed historical identity is a disagreement by design, not a conflict.
+  const pinned = HISTORICAL_RELEASE_IDENTITY[pkg.version];
+  const historical = pinned && registry.status === 'present' && registry.gitHead === pinned.sourceCommit
+    && tag.status === 'present' && tag.commit === pinned.tagCommit;
+  if (!historical && registry.status === 'present' && tag.status === 'present' && registry.gitHead !== tag.commit) {
+    conflicts.push(`registry gitHead ${registry.gitHead} and tag v${pkg.version} ${tag.commit} disagree`);
+  }
+  if (registry.status === 'absent' && tag.status === 'present') {
+    conflicts.push(`tag v${pkg.version} exists but the version is not on the registry`);
+  }
+  if (conflicts.length) fail('status', conflicts.join('; '));
+  console.log('status: no contradictions');
+}
+async function publishMode() {
+  const head = preflight();
+  const registry = await authoritativeVersion(fetch, pkg.name, pkg.version);
+  const tag = step('identity', () => remoteTagCommit((args) => run('git', args), `v${pkg.version}`));
+  const decision = releaseIdentityDecision({ version: pkg.version, head, registry, tag });
+  if (decision.action === 'fail') fail('identity', decision.reason);
+  if (decision.action === 'skip') {
+    emitReleaseIdentity({ version: pkg.version, ...decision });
+    console.log(`publish: ${decision.reason}; nothing to publish, tag mode ${decision.tagMode}`);
+    return;
+  }
+
+  if (ci) {
+    console.log('publish: OIDC trusted publishing (no user token)');
+  } else {
+    let user = npmUser();
+    if (!user) {
+      if (!process.stdin.isTTY) fail('publish', 'not logged in: run this mode with --visible');
+      console.log('publish: npm login first (complete the browser passkey)');
+      step('publish', () => npmExec(['login', '--auth-type=web'], { cwd: here, stdio: ['inherit', 'inherit', 'inherit'] }));
+      user = npmUser();
+      if (!user) fail('publish', 'npm login finished but npm whoami still fails');
+    }
+    console.log(`publish: authenticated as ${user}`);
+  }
+
+  if (!skipBuild) {
+    console.log(`build: cargo build --release (${pkg.version} at ${head.slice(0, 8)})`);
+    step('build', () => execFileSync('cargo', ['build', '--release'], { cwd: repo, stdio: ['ignore', 'inherit', 'inherit'] }));
+  }
+
+  const packed = await packAndVerify(head, skipBuild);
 
   console.log('publish: npm publish --access public (a passkey URL may appear)');
   const publishArgs = ['publish', '--access', 'public'];
@@ -374,7 +513,7 @@ async function publishMode() {
     read: () => authoritativeVersion(fetch, pkg.name, pkg.version),
     expected: head,
   });
-  rmSync(work, { recursive: true, force: true });
+  rmSync(packed.work, { recursive: true, force: true });
   if (verdict.kind === 'conflict') fail('identity', verdict.reason);
   if (verdict.kind !== 'verified') {
     console.error(`PENDING registry: ${pkg.name}@${pkg.version} was accepted, but ${verdict.reason}.`);
@@ -388,8 +527,8 @@ async function publishMode() {
 
 async function trustMode() {
   const user = npmUser();
-  if (!user) fail('trust', `not logged in. Run: ${visibleWindow('--initial')}`);
-  if (!process.stdin.isTTY) fail('trust', `npm trust needs a visible terminal for the passkey. Run: ${visibleWindow('--trust')}`);
+  if (!user) fail('trust', 'not logged in: run --initial with --visible first');
+  if (!process.stdin.isTTY) fail('trust', 'npm trust needs a visible terminal for the passkey: run this mode with --visible');
   console.log(`trust: npm trust github ${pkg.name} --file ${WORKFLOW} --repository ${GITHUB_REPO} --allow-publish`);
   step('trust', () => npmExec(['trust', 'github', pkg.name, '--file', WORKFLOW, '--repository', GITHUB_REPO, '--allow-publish', '-y'], { cwd: here, stdio: ['inherit', 'inherit', 'inherit'] }));
 
@@ -414,9 +553,18 @@ async function trustMode() {
 const invokedDirectly = process.argv[1]
   && resolve(process.argv[1]).toLowerCase() === fileURLToPath(import.meta.url).toLowerCase();
 if (invokedDirectly) {
-  for (const mode of modes) {
-    if (mode === '--initial') await initial();
-    if (mode === '--publish') await publishMode();
-    if (mode === '--trust') await trustMode();
+  if (visible && !process.stdin.isTTY) {
+    process.exitCode = await visibleRun();
+  } else {
+    if (visible) console.log('visible: stdin is a TTY; running in place, no window needed');
+    if (check) await checkMode();
+    else if (status) await statusMode();
+    else {
+      for (const mode of modes) {
+        if (mode === '--initial') await initial();
+        if (mode === '--publish') await publishMode();
+        if (mode === '--trust') await trustMode();
+      }
+    }
   }
 }

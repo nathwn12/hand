@@ -10,7 +10,7 @@
 //! Safety: never moves the pointer, never sends input, never focuses,
 //! never captures the screen. Only the fixture HWNDs are touched.
 
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicIsize, AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 use windows_sys::Win32::Foundation::{HWND, RECT};
@@ -30,6 +30,123 @@ static MSG_MOUSEMOVE: AtomicU64 = AtomicU64::new(0);
 static MSG_KEYDOWN: AtomicU64 = AtomicU64::new(0);
 static MSG_CHAR: AtomicU64 = AtomicU64::new(0);
 static MSG_WHEEL: AtomicU64 = AtomicU64::new(0);
+
+/// Ground-truth journal protocol shared with the root conformance matrix.
+///
+/// A cooperating target reports what IT received, not what hand claims it
+/// sent. Each line is `event key=value ...`; `edit_hex`/`copy_hex`/`paste_hex`
+/// carry UTF-16 code units as 4-hex-digit groups so newlines and non-ASCII
+/// survive a line-oriented journal byte-for-byte. The standalone fixture the
+/// root matrix compiles from source writes the same lines; keeping the names
+/// here means the in-process fixture and the external one have one vocabulary.
+pub mod protocol {
+    /// A window reported its HWND and is ready for input.
+    pub const READY: &str = "ready";
+    /// A pointer down: `control`, `id`, `x`, `y`, `button`.
+    pub const CLICK: &str = "click";
+    /// A wheel message: `delta`, `control`, `id`, `offset` (scroll child).
+    pub const WHEEL: &str = "wheel";
+    /// A key message: `vk`, `up`, `control`, `id`.
+    pub const KEY: &str = "key";
+    /// A WM_CHAR code unit: `unit`, `control`, `id`.
+    pub const CHAR: &str = "char";
+    /// The edit control's whole text, as concatenated UTF-16 hex units.
+    pub const EDIT_HEX: &str = "edit_hex";
+    /// The text a Ctrl+C copied out of the selection.
+    pub const COPY_HEX: &str = "copy_hex";
+    /// The text a Ctrl+V wrote into the edit control.
+    pub const PASTE_HEX: &str = "paste_hex";
+    /// The current selection as `[start,end]` in UTF-16 units.
+    pub const SELECTION: &str = "selection";
+    /// Activation: `active=1|0` and a `tick` timestamp from the target.
+    pub const ACTIVATE: &str = "activate";
+    /// `SIZE_MINIMIZED` observed by the target's own window procedure.
+    pub const MINIMIZED: &str = "minimized";
+    /// Window rect after a move/resize: `l,t,r,b` in screen pixels.
+    pub const RECT: &str = "rect";
+    /// The target's own WM_CLOSE observation.
+    pub const CLOSE: &str = "close";
+
+    /// Encode UTF-16 units as hex groups with no separator.
+    pub fn hex_units(units: &[u16]) -> String {
+        let mut s = String::with_capacity(units.len() * 4);
+        for u in units {
+            s.push_str(&format!("{u:04x}"));
+        }
+        s
+    }
+}
+
+/// One event the fixture window observed itself.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum FixtureEvent {
+    /// Control id from a hit test and client point of a pointer down.
+    Click {
+        id: i32,
+        x: i32,
+        y: i32,
+        button: String,
+    },
+    /// A wheel delta at a point, the control under it and the resulting offset.
+    Wheel {
+        delta: i32,
+        x: i32,
+        y: i32,
+        id: i32,
+        offset: i32,
+    },
+    /// A key down/up or character, with the control that received it.
+    Key {
+        vk: u16,
+        up: bool,
+        id: i32,
+    },
+    Char {
+        unit: u16,
+        id: i32,
+    },
+    /// Activation gain/loss with the target's own `GetTickCount64` stamp.
+    Activate {
+        active: bool,
+        tick: u64,
+    },
+    /// The target saw `SIZE_MINIMIZED`.
+    Minimized,
+    /// The target saw a move/resize with this screen rect.
+    Rect(i32, i32, i32, i32),
+}
+
+/// The fixture's own record, written by its window procedure. Accessors are
+/// process-local; the root integration test uses the same protocol over a
+/// journal file because this test-only module cannot be linked into a root
+/// integration-test binary.
+static EVENTS: std::sync::LazyLock<std::sync::Mutex<Vec<FixtureEvent>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(Vec::new()));
+
+/// Drop all events recorded so far (call before a measured action).
+pub fn reset_events() {
+    EVENTS.lock().unwrap_or_else(|e| e.into_inner()).clear();
+}
+
+/// A snapshot of everything the fixture observed since the last reset.
+pub fn events() -> Vec<FixtureEvent> {
+    EVENTS.lock().unwrap_or_else(|e| e.into_inner()).clone()
+}
+
+fn events_push(e: FixtureEvent) {
+    EVENTS.lock().unwrap_or_else(|e| e.into_inner()).push(e);
+}
+
+/// Reset the observed scroll offset before a measured wheel action.
+pub fn reset_scroll_offset() {
+    SCROLL_OFFSET.store(0, Ordering::SeqCst);
+}
+
+/// The scroll child's current offset, changed only by wheel messages the
+/// fixture actually received at a point inside that child.
+pub fn scroll_offset() -> i32 {
+    SCROLL_OFFSET.load(Ordering::SeqCst) as i32
+}
 
 /// Zero the posted-message counters (test-only).
 pub fn reset_msg_counts() {
@@ -129,10 +246,69 @@ fn wide(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(std::iter::once(0)).collect()
 }
 
+/// The scrollable child's own window procedure. Its marker position is a
+/// pure function of the offset the fixture recorded from wheel messages, so
+/// a pixel diff before/after one scroll is proving the target's own state.
+/// Wheel delta is the HIGH word of wParam; the low word holds key state.
+fn wheel_delta(w: usize) -> i32 {
+    ((w >> 16) as u16 as i16) as i32
+}
+
+fn client_point(hwnd: HWND, l: isize) -> (i32, i32) {
+    // Wheel lParam carries SCREEN pixels (burst converts the client point
+    // before packing). The fixture is a borderless POPUP, so its window
+    // origin is its client origin: subtract GetWindowRect's left/top.
+    let mut rc = RECT::default();
+    unsafe { GetWindowRect(hwnd, &mut rc) };
+    (
+        (l as u16 as i16) as i32 - rc.left,
+        ((l >> 16) as u16 as i16) as i32 - rc.top,
+    )
+}
+
+/// Hit-test in the fixture's own coordinates. Ids match the child control
+/// ids, so a recorded event names a control, never just "a click".
+fn control_at(x: i32, y: i32) -> (&'static str, i32) {
+    if (10..270).contains(&x) && (10..34).contains(&y) {
+        return ("edit", 100);
+    }
+    if (10..270).contains(&x) && (44..68).contains(&y) {
+        return ("edit_ro", 102);
+    }
+    if (10..90).contains(&x) && (80..104).contains(&y) {
+        return ("button", 101);
+    }
+    if (10..270).contains(&x) && (120..260).contains(&y) {
+        return ("scroll", 103);
+    }
+    ("frame", 0)
+}
+
+/// The scroll child's offset, changed only by a wheel message the target
+/// actually received at a point inside that child.
+static SCROLL_OFFSET: AtomicIsize = AtomicIsize::new(0);
+
 unsafe extern "system" fn fixture_wndproc(hwnd: HWND, msg: u32, w: usize, l: isize) -> isize {
     match msg {
-        WM_LBUTTONDOWN => {
-            MSG_MOUSEDOWN.fetch_add(1, Ordering::SeqCst);
+        WM_LBUTTONDOWN | WM_RBUTTONDOWN | WM_MBUTTONDOWN => {
+            if msg == WM_LBUTTONDOWN {
+                MSG_MOUSEDOWN.fetch_add(1, Ordering::SeqCst);
+            }
+            let x = (l as u16 as i16) as i32;
+            let y = ((l >> 16) as u16 as i16) as i32;
+            let (control, id) = control_at(x, y);
+            let button = match msg {
+                WM_RBUTTONDOWN => "right",
+                WM_MBUTTONDOWN => "middle",
+                _ => "left",
+            };
+            events_push(FixtureEvent::Click {
+                id,
+                x,
+                y,
+                button: button.to_string(),
+            });
+            let _ = control;
         }
         WM_LBUTTONUP => {
             MSG_MOUSEUP.fetch_add(1, Ordering::SeqCst);
@@ -140,14 +316,60 @@ unsafe extern "system" fn fixture_wndproc(hwnd: HWND, msg: u32, w: usize, l: isi
         WM_MOUSEMOVE => {
             MSG_MOUSEMOVE.fetch_add(1, Ordering::SeqCst);
         }
-        WM_KEYDOWN => {
-            MSG_KEYDOWN.fetch_add(1, Ordering::SeqCst);
+        WM_KEYDOWN | WM_KEYUP => {
+            if msg == WM_KEYDOWN {
+                MSG_KEYDOWN.fetch_add(1, Ordering::SeqCst);
+            }
+            events_push(FixtureEvent::Key {
+                vk: w as u16,
+                up: msg == WM_KEYUP,
+                id: 100,
+            });
         }
         WM_CHAR => {
             MSG_CHAR.fetch_add(1, Ordering::SeqCst);
+            events_push(FixtureEvent::Char {
+                unit: w as u16,
+                id: 100,
+            });
         }
         WM_MOUSEWHEEL | WM_MOUSEHWHEEL => {
             MSG_WHEEL.fetch_add(1, Ordering::SeqCst);
+            let delta = wheel_delta(w);
+            let (x, y) = client_point(hwnd, l);
+            let (_, id) = control_at(x, y);
+            let offset = if id == 103 {
+                let step = if delta > 0 { 1 } else { -1 };
+                let before = SCROLL_OFFSET.fetch_add(step, Ordering::SeqCst);
+                (before + step) as i32
+            } else {
+                SCROLL_OFFSET.load(Ordering::SeqCst) as i32
+            };
+            events_push(FixtureEvent::Wheel {
+                delta,
+                x,
+                y,
+                id,
+                offset,
+            });
+        }
+        WM_ACTIVATE => {
+            events_push(FixtureEvent::Activate {
+                active: (w as u16) != 0,
+                tick: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_millis() as u64)
+                    .unwrap_or(0),
+            });
+        }
+        WM_SIZE | WM_MOVE => {
+            if msg == WM_SIZE && w == 0 {
+                events_push(FixtureEvent::Minimized);
+            }
+            let mut rc = RECT::default();
+            if unsafe { GetWindowRect(hwnd, &mut rc) } != 0 {
+                events_push(FixtureEvent::Rect(rc.left, rc.top, rc.right, rc.bottom));
+            }
         }
         _ => {}
     }
@@ -1186,6 +1408,56 @@ mod self_tests {
             unsafe { IsWindow(hwnd) },
             0,
             "fixture HWND must be destroyed after Drop"
+        );
+    }
+
+    /// The fixture's own window procedure records which control received an
+    /// event, not merely that a message arrived. In-process twin of the root
+    /// matrix's journal protocol.
+    #[test]
+    fn fixture_records_named_controls_and_scroll_offset() {
+        let _g = desktop();
+        reset_events();
+        reset_scroll_offset();
+        let f = Fixture::new();
+        let pack = |x: i32, y: i32| ((y as isize) << 16) | ((x as isize) & 0xffff);
+        unsafe {
+            for (x, y) in [(40, 22), (40, 94), (100, 180)] {
+                PostMessageW(f.hwnd(), WM_LBUTTONDOWN, 1usize, pack(x, y));
+            }
+            // Wheel lParam is a SCREEN point: the offscreen top-left plus
+            // the scroll child's client centre.
+            let mut rc = std::mem::zeroed::<RECT>();
+            assert_ne!(GetWindowRect(f.hwnd(), &mut rc), 0);
+            let p = pack(rc.left + 100, rc.top + 180);
+            PostMessageW(f.hwnd(), WM_MOUSEWHEEL, (120usize) << 16, p);
+            std::thread::sleep(Duration::from_millis(80));
+        }
+        let recorded = events();
+        let clicks: Vec<i32> = recorded
+            .iter()
+            .filter_map(|e| match e {
+                FixtureEvent::Click { id, .. } => Some(*id),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(clicks, vec![100, 101, 103], "named controls: {recorded:?}");
+        let wheels: Vec<(i32, i32)> = recorded
+            .iter()
+            .filter_map(|e| match e {
+                FixtureEvent::Wheel { delta, offset, .. } => Some((*delta, *offset)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            wheels,
+            vec![(120, 1)],
+            "the target's wheel record: {recorded:?}"
+        );
+        assert_eq!(
+            scroll_offset(),
+            1,
+            "the recorded scroll offset moved as requested"
         );
     }
 }

@@ -162,7 +162,10 @@ fn right_click_opens_the_pages_menu_and_snapshot_reports_it() {
     let hidden = evaluate(&mut s, "document.getElementById('menu').hidden", None);
     assert_eq!(hidden, json!(true), "the menu starts hidden");
 
-    let clicked = s.call("browser_click", json!({"element": "#rc", "button": "right"}));
+    let clicked = s.call(
+        "browser_click",
+        json!({"element": "#rc", "button": "right"}),
+    );
     assert!(!is_error(&clicked), "{}", text_of(&clicked));
 
     assert_eq!(
@@ -194,7 +197,11 @@ fn click_count_two_raises_dblclick() {
     let single = s.call("browser_click", json!({"element": "#dbl"}));
     assert!(!is_error(&single), "{}", text_of(&single));
     assert_eq!(
-        evaluate(&mut s, "document.getElementById('dbl-out').textContent", None),
+        evaluate(
+            &mut s,
+            "document.getElementById('dbl-out').textContent",
+            None
+        ),
         json!("dbl: 0"),
         "one click must not be a double click"
     );
@@ -202,7 +209,11 @@ fn click_count_two_raises_dblclick() {
     let double = s.call("browser_click", json!({"element": "#dbl", "clickCount": 2}));
     assert!(!is_error(&double), "{}", text_of(&double));
     assert_eq!(
-        evaluate(&mut s, "document.getElementById('dbl-out').textContent", None),
+        evaluate(
+            &mut s,
+            "document.getElementById('dbl-out').textContent",
+            None
+        ),
         json!("dbl: 1"),
         "clickCount 2 must raise exactly one dblclick"
     );
@@ -220,7 +231,9 @@ fn wheel_scrolls_the_document_and_reports_it() {
     let down = s.call("browser_wheel", json!({"deltaY": 400}));
     assert!(!is_error(&down), "{}", text_of(&down));
     let reported = structured(&down)["scroll"]["y"].as_f64().unwrap_or(-1.0);
-    let live = evaluate(&mut s, "window.scrollY", None).as_f64().unwrap_or(-1.0);
+    let live = evaluate(&mut s, "window.scrollY", None)
+        .as_f64()
+        .unwrap_or(-1.0);
     assert!(
         live >= 300.0,
         "a 400 px wheel must scroll the page (scrollY={live})"
@@ -251,7 +264,10 @@ fn drag_reorders_with_trusted_pointer_events() {
     );
     assert_eq!(before, json!("item1,item2,item3"));
 
-    let drag = s.call("browser_drag", json!({"from": "#item1", "to": "#item3", "steps": 8}));
+    let drag = s.call(
+        "browser_drag",
+        json!({"from": "#item1", "to": "#item3", "steps": 8}),
+    );
     assert!(!is_error(&drag), "{}", text_of(&drag));
     let structured_drag = structured(&drag);
     assert!(
@@ -268,15 +284,27 @@ fn drag_reorders_with_trusted_pointer_events() {
     assert_eq!(after, json!("item2,item3,item1"));
 
     let ledger = evaluate(&mut s, "window.__ev", None);
-    assert_eq!(ledger["trustedDown"], json!(1), "the press must be trusted: {ledger}");
-    assert_eq!(ledger["trustedUp"], json!(1), "the release must be trusted: {ledger}");
+    assert_eq!(
+        ledger["trustedDown"],
+        json!(1),
+        "the press must be trusted: {ledger}"
+    );
+    assert_eq!(
+        ledger["trustedUp"],
+        json!(1),
+        "the release must be trusted: {ledger}"
+    );
     assert_eq!(ledger["up"], json!(1));
     assert!(
         ledger["move"].as_u64().unwrap_or(0) >= 2,
         "the path needs move events: {ledger}"
     );
     assert_eq!(
-        evaluate(&mut s, "document.getElementById('drag-out').textContent", None),
+        evaluate(
+            &mut s,
+            "document.getElementById('drag-out').textContent",
+            None
+        ),
         json!("Item 2,Item 3,Item 1"),
         "the page's own drop handler must have run"
     );
@@ -298,10 +326,16 @@ fn element_screenshot_is_the_box_and_is_deterministic() {
         .as_f64()
         .expect("layout box width");
 
-    let first = s.call("browser_screenshot", json!({"element": "#shot", "deterministic": true}));
+    let first = s.call(
+        "browser_screenshot",
+        json!({"element": "#shot", "deterministic": true}),
+    );
     assert!(!is_error(&first), "{}", text_of(&first));
     let one = structured(&first).clone();
-    let second = s.call("browser_screenshot", json!({"element": "#shot", "deterministic": true}));
+    let second = s.call(
+        "browser_screenshot",
+        json!({"element": "#shot", "deterministic": true}),
+    );
     let two = structured(&second).clone();
 
     assert_eq!(one["element"], json!("#shot"));
@@ -310,17 +344,29 @@ fn element_screenshot_is_the_box_and_is_deterministic() {
         (width - box_w).abs() <= 1.0,
         "PNG IHDR width {width} must equal the layout box width {box_w}"
     );
-    assert_eq!(one["checksum"], two["checksum"], "deterministic bytes must match");
+    assert_eq!(
+        one["checksum"], two["checksum"],
+        "deterministic bytes must match"
+    );
     assert_eq!(one["bytes"], two["bytes"]);
 
-    let jpeg = s.call("browser_screenshot", json!({"format": "jpeg", "quality": 70}));
+    let jpeg = s.call(
+        "browser_screenshot",
+        json!({"format": "jpeg", "quality": 70}),
+    );
     assert!(!is_error(&jpeg), "{}", text_of(&jpeg));
     assert_eq!(structured(&jpeg)["mimeType"], json!("image/jpeg"));
 
-    let png_quality = s.call("browser_screenshot", json!({"format": "png", "quality": 70}));
+    let png_quality = s.call(
+        "browser_screenshot",
+        json!({"format": "png", "quality": 70}),
+    );
     assert!(is_error(&png_quality), "png + quality must be refused");
 
-    let wrong = s.call("browser_screenshot", json!({"element": "@e9999", "deterministic": true}));
+    let wrong = s.call(
+        "browser_screenshot",
+        json!({"element": "@e9999", "deterministic": true}),
+    );
     assert!(is_error(&wrong), "an unknown ref must fail");
     assert_eq!(structured(&wrong)["code"], json!("stale_ref"));
 }
@@ -339,7 +385,11 @@ fn oopif_eval_js_error_is_not_a_frame_lookup_error() {
         "browser_evaluate",
         json!({"frame": fid, "expression": "throw new Error('oopif-js-error')"}),
     );
-    assert!(is_error(&threw), "a throwing expression must be an error: {}", text_of(&threw));
+    assert!(
+        is_error(&threw),
+        "a throwing expression must be an error: {}",
+        text_of(&threw)
+    );
     let sc = structured(&threw);
     assert_eq!(
         sc["code"],
@@ -381,7 +431,10 @@ fn oopif_frame_snapshot_and_click_with_typed_unmapped_frame() {
         .cloned()
         .expect("the child frame's button");
     assert_eq!(node["name"], json!("Child action"));
-    assert_eq!(structured(&inside)["url"], json!(format!("{}/oopif-child.html", fx.b)));
+    assert_eq!(
+        structured(&inside)["url"],
+        json!(format!("{}/oopif-child.html", fx.b))
+    );
 
     let clicked = s.call(
         "browser_click",
@@ -389,21 +442,37 @@ fn oopif_frame_snapshot_and_click_with_typed_unmapped_frame() {
     );
     assert!(!is_error(&clicked), "{}", text_of(&clicked));
     assert_eq!(
-        evaluate(&mut s, "document.getElementById('child-out').textContent", Some(&fid)),
+        evaluate(
+            &mut s,
+            "document.getElementById('child-out').textContent",
+            Some(&fid)
+        ),
         json!("clicked"),
         "the click must land inside the out-of-process frame"
     );
 
     let child_ref = node["ref"].as_str().expect("ref").to_string();
-    let by_ref = s.call("browser_click", json!({"element": format!("@{child_ref}"), "frame": fid}));
+    let by_ref = s.call(
+        "browser_click",
+        json!({"element": format!("@{child_ref}"), "frame": fid}),
+    );
     assert!(!is_error(&by_ref), "{}", text_of(&by_ref));
     let cross = s.call("browser_click", json!({"element": "@e1", "frame": fid}));
-    assert!(is_error(&cross), "a main-frame ref must not be clicked in a frame");
+    assert!(
+        is_error(&cross),
+        "a main-frame ref must not be clicked in a frame"
+    );
 
     for (tool, args) in [
         ("browser_snapshot", json!({"frame": "NOSUCHFRAMEID"})),
-        ("browser_click", json!({"element": "#child-btn", "frame": "NOSUCHFRAMEID"})),
-        ("browser_evaluate", json!({"expression": "1", "frame": "NOSUCHFRAMEID"})),
+        (
+            "browser_click",
+            json!({"element": "#child-btn", "frame": "NOSUCHFRAMEID"}),
+        ),
+        (
+            "browser_evaluate",
+            json!({"expression": "1", "frame": "NOSUCHFRAMEID"}),
+        ),
     ] {
         let resp = s.call(tool, args);
         assert!(is_error(&resp), "{tool} with an unknown frame must fail");

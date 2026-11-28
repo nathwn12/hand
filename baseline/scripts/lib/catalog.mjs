@@ -27,11 +27,46 @@ export const DECLARED_ADDITIONS_PATH = resolve(
 );
 
 const ALLOWANCE_KEYS = ["inputSchema", "outputSchema"];
-export const DECLARABLE_METADATA_KEYS = ["description"];
+export const DECLARABLE_METADATA_KEYS = ["description", "rewrites"];
 const METADATA_KEY = "metadata";
 const TOP_LEVEL_KEYS = ["$comment", "version", METADATA_KEY, ...ALLOWANCE_KEYS];
 const PATH_SEGMENT = /^[A-Za-z0-9_$-]+$/;
 const TOOL_NAME = /^[A-Za-z0-9_$-]+$/;
+
+/**
+ * Property-level description rewrites are descriptors, not bare tool names:
+ * {tool, schema, path}. The comparator substitutes the floor value at that
+ * path before its equality check; both compare-catalog.mjs and
+ * tests/discovery.rs read the same validated declarations.
+ */
+function parseRewrites(path, entries) {
+  if (!Array.isArray(entries) || entries.length === 0) {
+    throw new Error(`${path}: metadata.rewrites must be a non-empty array of {tool, schema, path} descriptors`);
+  }
+  const seen = new Set();
+  return entries.map((entry) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      throw new Error(`${path}: metadata.rewrites entry is not an object: ${JSON.stringify(entry)}`);
+    }
+    const extra = Object.keys(entry).filter((key) => !["tool", "schema", "path"].includes(key));
+    if (extra.length) throw new Error(`${path}: metadata.rewrites entry has unknown key(s): ${extra.join(", ")}`);
+    const { tool, schema, path: dotted } = entry;
+    if (typeof tool !== "string" || !TOOL_NAME.test(tool)) {
+      throw new Error(`${path}: metadata.rewrites tool is not a bare tool name: ${JSON.stringify(tool)}`);
+    }
+    if (!["inputSchema", "outputSchema"].includes(schema)) {
+      throw new Error(`${path}: metadata.rewrites ${tool} has an unknown schema: ${JSON.stringify(schema)}`);
+    }
+    const segments = typeof dotted === "string" ? dotted.split(".") : [];
+    if (segments.length < 2 || !segments.every((segment) => PATH_SEGMENT.test(segment))) {
+      throw new Error(`${path}: metadata.rewrites ${tool} has a path that is not a dotted schema path: ${JSON.stringify(dotted)}`);
+    }
+    const key = `${tool}/${schema}/${dotted}`;
+    if (seen.has(key)) throw new Error(`${path}: metadata.rewrites repeats ${key}`);
+    seen.add(key);
+    return { tool, schema, path: dotted };
+  });
+}
 
 function loadDeclaredAdditions(path) {
   const parsed = JSON.parse(readFileSync(path, "utf8"));
@@ -73,6 +108,10 @@ function loadDeclaredAdditions(path) {
   declared[METADATA_KEY] = {};
   for (const key of DECLARABLE_METADATA_KEYS) {
     const names = metadata[key];
+    if (key === "rewrites") {
+      declared[METADATA_KEY][key] = names === undefined ? [] : parseRewrites(path, names);
+      continue;
+    }
     if (names === undefined) {
       declared[METADATA_KEY][key] = [];
       continue;
@@ -298,9 +337,70 @@ export function validateHandCatalog(catalog) {
   return issues;
 }
 
+const REWRITE_ABSENT = Symbol("absent");
+
+function valueAt(root, dotted) {
+  if (!root || typeof root !== "object") return REWRITE_ABSENT;
+  let node = root;
+  for (const segment of dotted.split(".")) {
+    if (!Object.hasOwn(node, segment)) return REWRITE_ABSENT;
+    node = node[segment];
+  }
+  return node;
+}
+
+function withValueAt(root, dotted, value) {
+  const clone = JSON.parse(JSON.stringify(root));
+  const segments = dotted.split(".");
+  const key = segments.pop();
+  const parent = segments.reduce(
+    (node, segment) => (node && typeof node === "object" && !Array.isArray(node) ? node[segment] : undefined),
+    clone,
+  );
+  parent[key] = JSON.parse(JSON.stringify(value));
+  return clone;
+}
+
+/**
+ * Apply metadata.rewrites from the allowance file. A rewrite declares that the
+ * description of an EXISTING property was deliberately changed in place, so the
+ * published value must differ from the floor value: an identical value is stale.
+ * Both paths must exist. The floor value is then substituted into the candidate
+ * before the equality check, so no other difference can hide behind a rewrite.
+ * The CLI (compare-catalog.mjs) and tests/discovery.rs use this same rule.
+ */
+export function applyDeclaredRewrites({ baseline, candidate, profile = "hand" }) {
+  const issues = [];
+  const applied = [];
+  if (profile !== "hand") return { tools: candidate.tools, issues, applied };
+  const floorByName = new Map(baseline.tools.map((tool) => [tool.name, tool]));
+  const tools = (candidate.tools ?? []).map((tool) => ({ ...tool }));
+  const byName = new Map(tools.map((tool) => [tool.name, tool]));
+  for (const rewrite of DECLARED_ADDITIONS.metadata.rewrites ?? []) {
+    const { tool: name, schema, path } = rewrite;
+    const label = `rewrite ${name} ${schema}.${path}`;
+    const floorTool = floorByName.get(name);
+    const published = byName.get(name);
+    if (!floorTool) { issues.push(`${label}: tool is not in the floor`); continue; }
+    if (!published) { issues.push(`${label}: tool is absent from the published body`); continue; }
+    const floorValue = valueAt(floorTool[schema], path);
+    const publishedValue = valueAt(published[schema], path);
+    if (floorValue === REWRITE_ABSENT) { issues.push(`${label}: path is absent from the floor`); continue; }
+    if (publishedValue === REWRITE_ABSENT) { issues.push(`${label}: path is absent from the published body`); continue; }
+    if (deepEqual(floorValue, publishedValue)) {
+      issues.push(`${label}: identical to the pin: a stale declaration`);
+      continue;
+    }
+    published[schema] = withValueAt(published[schema], path, floorValue);
+    applied.push(rewrite);
+  }
+  return { tools, issues, applied };
+}
+
 export function compareCatalogs({ baseline, candidate, profile = "hand" }) {
+  const rewrites = applyDeclaredRewrites({ baseline, candidate, profile });
   const base = indexTools(baseline.tools);
-  const cand = indexTools(candidate.tools);
+  const cand = indexTools(rewrites.tools);
   const report = {
     profile,
     strictMetadata: true,
@@ -313,6 +413,8 @@ export function compareCatalogs({ baseline, candidate, profile = "hand" }) {
     declaredAdditions: [],
     declaredMissing: [],
     metadataDrift: [],
+    rewrites: rewrites.applied,
+    rewriteIssues: rewrites.issues,
     warnings: [],
   };
 
@@ -385,7 +487,8 @@ export function compareCatalogs({ baseline, candidate, profile = "hand" }) {
     && report.schemaMismatches.length === 0
     && report.declaredMissing.length === 0
     && report.metadataDrift.length === 0
-    && report.duplicateNames.candidate.length === 0;
+    && report.duplicateNames.candidate.length === 0
+    && rewrites.issues.length === 0;
   return report;
 }
 

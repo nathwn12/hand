@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>same-document-transitions</title>
+<style>body{font:16px/1.4 system-ui,sans-serif;margin:16px}button{margin:4px}output{display:block;margin-top:12px}</style>
+</head><body>
+<button id="go">Start transition</button><div id="view">View one</div><output id="out">idle</output>
+<script>
+document.getElementById('go').onclick=()=>{const run=()=>{document.getElementById('view').textContent='View two';document.getElementById('out').textContent='transitioned';};if(document.startViewTransition)document.startViewTransition(run);else run();};
+</script>
+</body></html>

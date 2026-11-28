@@ -88,10 +88,7 @@ fn hwnd_of_class_and_pid(class: &str, pid: u32) -> Option<i64> {
         hits: Vec::new(),
     };
     unsafe {
-        EnumWindows(
-            Some(class_pid_cb),
-            &mut scan as *mut ClassPidScan as isize,
-        );
+        EnumWindows(Some(class_pid_cb), &mut scan as *mut ClassPidScan as isize);
     }
     scan.hits.first().copied()
 }
@@ -295,9 +292,7 @@ fn build_fixture_app() -> std::path::PathBuf {
 #[repr(C)]
 struct CoverClass {
     style: u32,
-    wnd_proc: Option<
-        unsafe extern "system" fn(*mut core::ffi::c_void, u32, usize, isize) -> isize,
-    >,
+    wnd_proc: Option<unsafe extern "system" fn(*mut core::ffi::c_void, u32, usize, isize) -> isize>,
     cls_extra: i32,
     wnd_extra: i32,
     instance: *mut core::ffi::c_void,
@@ -347,12 +342,7 @@ extern "system" {
     fn PostMessageW(hwnd: *mut core::ffi::c_void, msg: u32, w: usize, l: isize) -> i32;
     fn UpdateWindow(hwnd: *mut core::ffi::c_void) -> i32;
     fn WindowFromPoint(pt: CursorPoint) -> *mut core::ffi::c_void;
-    fn DefWindowProcW(
-        hwnd: *mut core::ffi::c_void,
-        msg: u32,
-        w: usize,
-        l: isize,
-    ) -> isize;
+    fn DefWindowProcW(hwnd: *mut core::ffi::c_void, msg: u32, w: usize, l: isize) -> isize;
 }
 
 #[link(name = "gdi32")]
@@ -413,7 +403,11 @@ impl LiveFixture {
             }
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
-        assert!(!found.is_null(), "fixture app window appeared for pid {}", child.id());
+        assert!(
+            !found.is_null(),
+            "fixture app window appeared for pid {}",
+            child.id()
+        );
         Self {
             child,
             dir,
@@ -443,7 +437,8 @@ fn screenshot_reports_capture_method() {
     let f = LiveFixture::launch();
     let frame = screenshot(f.hwnd);
     assert_eq!(
-        result(&frame)["isError"], json!(false),
+        result(&frame)["isError"],
+        json!(false),
         "fixture capture failed: {}",
         text_of(&frame)
     );
@@ -471,12 +466,25 @@ fn occluded_live_window_captures_with_foreground_unchanged() {
     // HWND_TOP + SWP_NOACTIVATE: place the fixture on top without stealing.
     const SWP_NOACTIVATE: u32 = 0x0010;
     unsafe {
-        SetWindowPos(fixture, std::ptr::null_mut(), 200, 200, 420, 320, SWP_NOACTIVATE);
+        SetWindowPos(
+            fixture,
+            std::ptr::null_mut(),
+            200,
+            200,
+            420,
+            320,
+            SWP_NOACTIVATE,
+        );
     }
     std::thread::sleep(std::time::Duration::from_millis(200));
     let hwnd = f.hwnd;
     let baseline = screenshot(hwnd);
-    assert_eq!(result(&baseline)["isError"], json!(false), "baseline capture: {}", text_of(&baseline));
+    assert_eq!(
+        result(&baseline)["isError"],
+        json!(false),
+        "baseline capture: {}",
+        text_of(&baseline)
+    );
     let baseline_img = image_data(&baseline);
 
     // An opaque cover, larger than the fixture, on top with no activation.
@@ -506,8 +514,8 @@ fn occluded_live_window_captures_with_foreground_unchanged() {
     assert!(!cover.is_null(), "cover window created");
     unsafe {
         ShowWindow(cover, 4); // SW_SHOWNOACTIVATE
-        // HWND_TOPMOST (-1) and a synchronous paint: the test thread has no
-        // message pump, so UpdateWindow is what actually puts pixels up.
+                              // HWND_TOPMOST (-1) and a synchronous paint: the test thread has no
+                              // message pump, so UpdateWindow is what actually puts pixels up.
         SetWindowPos(
             cover,
             (-1isize) as *mut core::ffi::c_void,
@@ -520,19 +528,19 @@ fn occluded_live_window_captures_with_foreground_unchanged() {
         UpdateWindow(cover);
     }
     std::thread::sleep(std::time::Duration::from_millis(250));
-    let at_centre = unsafe {
-        WindowFromPoint(CursorPoint {
-            x: 400,
-            y: 360,
-        })
-    };
+    let at_centre = unsafe { WindowFromPoint(CursorPoint { x: 400, y: 360 }) };
     assert_ne!(
         at_centre, fixture,
         "the cover must really be on top of the fixture at the sample point"
     );
 
     let occluded = screenshot(hwnd);
-    assert_eq!(result(&occluded)["isError"], json!(false), "occluded capture: {}", text_of(&occluded));
+    assert_eq!(
+        result(&occluded)["isError"],
+        json!(false),
+        "occluded capture: {}",
+        text_of(&occluded)
+    );
     let sc = &result(&occluded)["structuredContent"];
     assert_eq!(
         sc["captureMethod"].as_str(),

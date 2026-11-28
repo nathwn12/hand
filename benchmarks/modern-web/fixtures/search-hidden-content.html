@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>search-hidden-content</title>
+<style>body{font:16px/1.4 system-ui,sans-serif;margin:16px}button{margin:4px}output{display:block;margin-top:12px}</style>
+</head><body>
+<label for="q">Search</label><input id="q" type="search"><ul id="list"><li>Apple</li><li>Banana</li></ul><output id="out">idle</output>
+<script>
+document.getElementById('q').addEventListener('input',e=>{const q=e.target.value.toLowerCase();let n=0;[...document.querySelectorAll('#list li')].forEach(li=>{li.hidden=!li.textContent.toLowerCase().includes(q);if(!li.hidden)n++;});document.getElementById('out').textContent=String(n);});
+</script>
+</body></html>

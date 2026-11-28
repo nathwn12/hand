@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>dialog</title>
+<style>body{font:16px/1.4 system-ui,sans-serif;margin:16px}button{margin:4px}output{display:block;margin-top:12px}</style>
+</head><body>
+<button id="o">Open dialog</button><dialog id="d"><p>Hello from dialog</p><button id="c">Close</button></dialog><output id="out">idle</output>
+<script>
+const d=document.getElementById('d');document.getElementById('o').onclick=()=>{d.showModal();document.getElementById('out').textContent='dialog open';};document.getElementById('c').onclick=()=>{d.close();document.getElementById('out').textContent='dialog closed';};
+</script>
+</body></html>

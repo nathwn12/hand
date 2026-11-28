@@ -1,4 +1,3 @@
-
 /// Geometry and journal vocabulary shared by the anchor fixture app and the
 /// 14-case capture matrix. One owner for every number both sides assert.
 ///

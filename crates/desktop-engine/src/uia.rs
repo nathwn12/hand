@@ -1189,9 +1189,11 @@ fn uia_value_inner(hwnd: i64, path: &str) -> Result<String, String> {
 /// Read-only; Err when the control exposes no TogglePattern.
 pub fn uia_toggle_state(hwnd: i64, path: &str) -> Result<i32, String> {
     let p = path.to_string();
-    crate::deadline::bound(crate::deadline::Family::Uia, "uia_toggle_state", move || {
-        uia_toggle_state_inner(hwnd, &p)
-    })?
+    crate::deadline::bound(
+        crate::deadline::Family::Uia,
+        "uia_toggle_state",
+        move || uia_toggle_state_inner(hwnd, &p),
+    )?
 }
 
 fn uia_toggle_state_inner(hwnd: i64, path: &str) -> Result<i32, String> {
@@ -1205,7 +1207,8 @@ fn uia_toggle_state_inner(hwnd: i64, path: &str) -> Result<i32, String> {
         .map_err(|_| "element has no TogglePattern".to_string())?;
     let pat = unsafe { unk.query(&IID_TOGGLE_PATTERN) }
         .map_err(|hr| format!("uia-toggle pattern call failed: {}", crate::hr_text(hr)))?;
-    toggle_state_raw(&pat).map_err(|hr| format!("uia-toggle state read failed: {}", crate::hr_text(hr)))
+    toggle_state_raw(&pat)
+        .map_err(|hr| format!("uia-toggle state read failed: {}", crate::hr_text(hr)))
 }
 
 /// Read SelectionItemPattern.CurrentIsSelected for the UIA element at `path`.

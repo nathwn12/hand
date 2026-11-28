@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>scroll-snap-state-sync</title>
+<style>body{font:16px/1.4 system-ui,sans-serif;margin:16px}button{margin:4px}output{display:block;margin-top:12px}</style>
+</head><body>
+<button id="n">Next section</button><output id="out">1</output>
+<script>
+let i=1;document.getElementById('n').onclick=()=>{i++;document.getElementById('out').textContent=String(i);};
+</script>
+</body></html>

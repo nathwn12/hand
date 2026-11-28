@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>select-menu-interaction</title>
+<style>body{font:16px/1.4 system-ui,sans-serif;margin:16px}button{margin:4px}output{display:block;margin-top:12px}</style>
+</head><body>
+<label for="c">Country</label><select id="c"><option value="us">United States</option><option value="ca">Canada</option></select><output id="out">idle</output>
+<script>
+document.getElementById('c').addEventListener('change',e=>{document.getElementById('out').textContent=e.target.value;});
+</script>
+</body></html>

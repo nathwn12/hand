@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>design-token-reactivity</title>
+<style>body{font:16px/1.4 system-ui,sans-serif;margin:16px}button{margin:4px}output{display:block;margin-top:12px}
+:root{--accent:rgb(1,2,3)}#sw{color:var(--accent)}</style>
+</head><body>
+<button id="ch">Change token</button><div id="sw">Swatch</div><output id="out">idle</output>
+<script>
+document.getElementById('ch').onclick=()=>{document.documentElement.style.setProperty('--accent','rgb(4,5,6)');document.getElementById('out').textContent=getComputedStyle(document.getElementById('sw')).color;};
+</script>
+</body></html>

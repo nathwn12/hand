@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>tabs</title>
+<style>body{font:16px/1.4 system-ui,sans-serif;margin:16px}button{margin:4px}output{display:block;margin-top:12px}</style>
+</head><body>
+<div role="tablist"><button role="tab" id="t1" aria-selected="true">First</button><button role="tab" id="t2" aria-selected="false">Second</button></div><div role="tabpanel" id="p1">Panel first</div><div role="tabpanel" id="p2" hidden>Panel second</div><output id="out">idle</output>
+<script>
+document.getElementById('t2').onclick=()=>{document.getElementById('t1').setAttribute('aria-selected','false');document.getElementById('t2').setAttribute('aria-selected','true');document.getElementById('p1').hidden=true;document.getElementById('p2').hidden=false;document.getElementById('out').textContent='second';};
+</script>
+</body></html>

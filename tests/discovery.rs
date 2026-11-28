@@ -4,8 +4,9 @@
 //! floor tool body against the committed baseline (`baseline/hand-catalog.json`).
 //! The only allowed differences are the domain prefix, the properties listed
 //! under `inputSchema`/`outputSchema` in `baseline/declared-additions.json`, and
-//! the descriptions listed under `metadata.description` there. A changed schema,
-//! annotation, title or undeclared description fails here.
+//! the descriptions listed under `metadata.description` there, and the
+//! property-level rewrites listed under `metadata.rewrites` there. A changed
+//! schema, annotation, title or undeclared description fails here.
 
 mod common;
 
@@ -14,7 +15,7 @@ use std::collections::HashMap;
 use common::{text_of, tool, Session};
 use serde_json::{json, Value};
 
-const BROWSER_TOOLS: [&str; 34] = [
+const BROWSER_TOOLS: [&str; 36] = [
     "navigate",
     "snapshot",
     "screenshot",
@@ -48,10 +49,12 @@ const BROWSER_TOOLS: [&str; 34] = [
     "assert",
     "audit",
     "trace",
+    "metrics",
     "run",
+    "clipboard",
 ];
 
-const DESKTOP_TOOLS: [&str; 7] = [
+const DESKTOP_TOOLS: [&str; 8] = [
     "screenshot",
     "diff",
     "list_windows",
@@ -59,6 +62,7 @@ const DESKTOP_TOOLS: [&str; 7] = [
     "do",
     "cursor",
     "elements",
+    "record",
 ];
 
 #[test]
@@ -102,7 +106,7 @@ fn initialize_identifies_version_platform_and_both_engines() {
     assert_eq!(desktop["sourcePin"].as_str(), Some("0f790be"));
     assert_eq!(desktop["version"].as_str(), Some("8.0.0"));
     assert_eq!(desktop["available"].as_bool(), Some(true));
-    assert_eq!(desktop["toolCount"].as_u64(), Some(7));
+    assert_eq!(desktop["toolCount"].as_u64(), Some(8));
 
     let instructions = result["instructions"].as_str().expect("instructions");
     for needle in [
@@ -227,6 +231,72 @@ fn declared_descriptions(declared: &Value) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// One property-level description rewrite declared under `metadata.rewrites`.
+/// The published value at `<schema>.<path>` was deliberately changed in place;
+/// the floor value is substituted before the structural equality check.
+struct Rewrite {
+    tool: String,
+    schema: String,
+    path: String,
+}
+
+/// Property-level rewrites declared under `metadata.rewrites`. A malformed
+/// entry fails loudly instead of being silently skipped.
+fn declared_rewrites(declared: &Value) -> Vec<Rewrite> {
+    let Some(entries) = declared["metadata"]["rewrites"].as_array() else {
+        return Vec::new();
+    };
+    entries
+        .iter()
+        .map(|entry| {
+            let tool = entry["tool"].as_str().unwrap_or_else(|| {
+                panic!("metadata.rewrites entry has no bare tool name: {entry}")
+            });
+            let schema = entry["schema"]
+                .as_str()
+                .unwrap_or_else(|| panic!("metadata.rewrites {tool} has no schema: {entry}"));
+            assert!(
+                schema == "inputSchema" || schema == "outputSchema",
+                "metadata.rewrites {tool} has an unknown schema: {schema}"
+            );
+            let path = entry["path"].as_str().unwrap_or_else(|| {
+                panic!("metadata.rewrites {tool} {schema} has no path: {entry}")
+            });
+            assert!(
+                path.split('.').count() >= 2,
+                "metadata.rewrites {tool} {schema} has a path that is not dotted: {path}"
+            );
+            Rewrite {
+                tool: tool.to_string(),
+                schema: schema.to_string(),
+                path: path.to_string(),
+            }
+        })
+        .collect()
+}
+
+/// Resolve a dotted path to a value in `schema`, or None when absent.
+fn value_at<'a>(schema: &'a Value, path: &str) -> Option<&'a Value> {
+    let mut node = schema;
+    for segment in path.split('.') {
+        node = node.get(segment)?;
+    }
+    Some(node)
+}
+
+/// Replace the value at a dotted path in a cloned schema.
+fn set_path(root: &mut Value, path: &str, value: Value) {
+    let segments: Vec<&str> = path.split('.').collect();
+    let Some((key, parents)) = segments.split_last() else {
+        return;
+    };
+    if let Some(parent) = chain_mut(root, parents) {
+        if let Some(object) = parent.as_object_mut() {
+            object.insert((*key).to_string(), value);
+        }
+    }
+}
+
 /// True when the dotted path resolves to a key that exists in `schema`.
 fn has_path(schema: &Value, path: &str) -> bool {
     let mut node = schema;
@@ -259,7 +329,10 @@ fn strip_path(schema: &mut Value, path: &str) {
     }
     if parents.last() == Some(&"properties") {
         if let Some(holder) = chain_mut(schema, &parents[..parents.len() - 1]) {
-            if let Some(required) = holder.get_mut("required").and_then(|value| value.as_array_mut()) {
+            if let Some(required) = holder
+                .get_mut("required")
+                .and_then(|value| value.as_array_mut())
+            {
                 required.retain(|entry| entry.as_str() != Some(*key));
             }
         }
@@ -269,7 +342,8 @@ fn strip_path(schema: &mut Value, path: &str) {
 /// Every field of every floor tool body is the pinned one, except `name` (which
 /// gained the prefix), the properties listed under `inputSchema`/`outputSchema`
 /// in `baseline/declared-additions.json`, and the descriptions listed under
-/// `metadata.description` there. This is the executable compatibility inventory
+/// `metadata.description` there, and the property rewrites listed under
+/// `metadata.rewrites` there. This is the executable compatibility inventory
 /// for the catalog.
 ///
 /// The reference is the committed floor, not `browser_engine::list()`: the
@@ -280,20 +354,26 @@ fn tool_bodies_are_engine_bodies_under_the_prefix() {
     let mut s = Session::spawn();
     let published = s.list_tools();
 
-    let floor: Value = serde_json::from_str(FLOOR_CATALOG).expect("baseline/hand-catalog.json parses");
+    let floor: Value =
+        serde_json::from_str(FLOOR_CATALOG).expect("baseline/hand-catalog.json parses");
     let declared: Value =
         serde_json::from_str(DECLARED_ADDITIONS).expect("baseline/declared-additions.json parses");
-    assert_eq!(declared["version"], json!(1), "the allowance file is versioned");
+    assert_eq!(
+        declared["version"],
+        json!(1),
+        "the allowance file is versioned"
+    );
 
     if let Some(metadata) = declared["metadata"].as_object() {
         for key in metadata.keys() {
-            assert_eq!(
-                key, "description",
-                "baseline/declared-additions.json: metadata may only declare description"
+            assert!(
+                key == "description" || key == "rewrites",
+                "baseline/declared-additions.json: metadata may only declare description and rewrites, not {key}"
             );
         }
     }
     let declared_descriptions = declared_descriptions(&declared);
+    let declared_rewrites = declared_rewrites(&declared);
 
     let floor_tools = floor["tools"].as_array().expect("floor tools");
     assert_eq!(floor_tools.len(), 32, "the committed floor is 32 tools");
@@ -301,7 +381,11 @@ fn tool_bodies_are_engine_bodies_under_the_prefix() {
     for want in floor_tools {
         let name = want["name"].as_str().expect("floor tool name");
         let got = tool(&published, name);
-        assert_eq!(got["name"].as_str(), Some(name), "{name} body drifted: name");
+        assert_eq!(
+            got["name"].as_str(),
+            Some(name),
+            "{name} body drifted: name"
+        );
 
         for key in ["inputSchema", "outputSchema"] {
             let paths = declared_paths(&declared, key, name);
@@ -313,6 +397,23 @@ fn tool_bodies_are_engine_bodies_under_the_prefix() {
                 );
             }
             let mut stripped = got[key].clone();
+            for rewrite in &declared_rewrites {
+                if rewrite.tool != name || rewrite.schema != key {
+                    continue;
+                }
+                let path = &rewrite.path;
+                let floor_value = value_at(&want[key], path).unwrap_or_else(|| {
+                    panic!("{name} {key} {path}: declared rewrite path is absent from the floor")
+                });
+                let published_value = value_at(&got[key], path).unwrap_or_else(|| {
+                    panic!("{name} {key} {path}: declared rewrite path is absent from the published body")
+                });
+                assert_ne!(
+                    published_value, floor_value,
+                    "{name} {key} {path}: published value is identical to the pin: a stale declaration"
+                );
+                set_path(&mut stripped, path, floor_value.clone());
+            }
             for path in &paths {
                 strip_path(&mut stripped, path);
             }
@@ -331,7 +432,10 @@ fn tool_bodies_are_engine_bodies_under_the_prefix() {
             "{name} title drifted from baseline/hand-catalog.json: title has no declared exceptions"
         );
 
-        if declared_descriptions.iter().any(|declared| declared == name) {
+        if declared_descriptions
+            .iter()
+            .any(|declared| declared == name)
+        {
             assert_ne!(
                 got["description"], want["description"],
                 "{name} description is declared as rewritten in \
@@ -354,6 +458,13 @@ fn tool_bodies_are_engine_bodies_under_the_prefix() {
         assert!(
             floor_names.contains(&name.as_str()),
             "{name} is declared as a rewritten description but is not a floor tool"
+        );
+    }
+    for rewrite in &declared_rewrites {
+        assert!(
+            floor_names.contains(&rewrite.tool.as_str()),
+            "{} is declared as a rewritten property but is not a floor tool",
+            rewrite.tool
         );
     }
 }

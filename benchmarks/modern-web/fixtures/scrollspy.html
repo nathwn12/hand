@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>scrollspy</title>
+<style>body{font:16px/1.4 system-ui,sans-serif;margin:16px}button{margin:4px}output{display:block;margin-top:12px}</style>
+</head><body>
+<nav><a href="#s2" id="l2">Section two</a></nav><section id="s1">One</section><section id="s2">Two</section><output id="out">idle</output>
+<script>
+document.getElementById('l2').onclick=e=>{e.preventDefault();document.getElementById('out').textContent='s2';};
+</script>
+</body></html>

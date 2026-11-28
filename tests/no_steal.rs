@@ -2,21 +2,26 @@
 //! Puppet 8.0.0 `tests/no_steal.rs` (pinned `0f790be`) and extended to cover
 //! the browser engine tree as well, because one executable now carries both.
 //!
-//! Original contract, unchanged:
+//! Contract, updated for the explicit opt-ins:
 //!
-//! 1. STATIC: the forbidden APIs (`SendInput`, `SetCursorPos`,
-//!    `SetForegroundWindow`, `BringWindowToTop`, `mouse_event`) have ZERO
-//!    call sites anywhere ÔÇö including `src/gate.rs`, which holds no
-//!    injection API at all. A new call site anywhere turns this test red.
+//! 1. STATIC: the always-forbidden APIs (`BringWindowToTop`, `mouse_event`,
+//!    `keybd_event`, `SetPhysicalCursorPos`, ...) have ZERO call sites
+//!    anywhere. `SendInput` and `SetCursorPos` live ONLY in the desktop
+//!    engine's pointer seam (`burst.rs`); `SetForegroundWindow` lives only in
+//!    that burst seam and in the `desktop_window` focus seam (`winop.rs`),
+//!    behind the `allow_foreground` decision. No opt-in writer is in `gate.rs`.
 //! 2. WIRE: `tools/list` declares `target` on every acting/capturing tool and
-//!    keeps the (now inert) `allow_foreground`/`allow_cursor`/
-//!    `allow_clipboard` flags so old callers get a typed refusal instead of
-//!    an "unexpected keyword" error.
+//!    keeps `allow_foreground`/`allow_cursor` (real opt-ins, default off),
+//!    `cursor_restore` (default ON), `allow_clipboard` and
+//!    `restore_clipboard`, so old callers get a typed refusal instead of an
+//!    "unexpected keyword" error.
 //! 3. SERVER: a typed target failure comes back as an MCP tool error with a
 //!    machine-readable `code` (`target_gone` / `bad_target`), never a
-//!    foreground fallback; a gated burst refuses with `no_foreground_policy` /
-//!    `no_cursor_policy` / `no_clipboard_policy` and reports zero
-//!    events and zero `sendinput_calls`.
+//!    foreground fallback; an unflagged burst refuses with
+//!    `no_foreground_policy` / `no_cursor_policy` / `no_clipboard_policy`
+//!    and reports zero events and zero `sendinput_calls`. Flagged real input
+//!    still needs a locked target and a passing point guard
+//!    (`point_not_target`).
 //!
 //! The live read-only check (an existing real window captured without
 //! changing the foreground) is gated by `PUPPET_LIVE_DESKTOP=1`.
@@ -31,13 +36,20 @@ use serde_json::Value;
 
 const TIMEOUT: Duration = Duration::from_secs(30);
 
+/// Writers with no legitimate path at all: a call site is a defect.
 const FORBIDDEN: &[&str] = &[
-    "SendInput",
-    "SetCursorPos",
-    "SetForegroundWindow",
     "BringWindowToTop",
     "mouse_event",
+    "keybd_event",
+    "SetPhysicalCursorPos",
+    "SetActiveWindow",
+    "SwitchToThisWindow",
+    "AttachThreadInput",
+    "SetFocus",
 ];
+
+/// The only three real-input writers, legal only behind a top-level opt-in.
+const OPT_IN: &[&str] = &["SendInput", "SetCursorPos", "SetForegroundWindow"];
 
 fn src_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("crates/desktop-engine/src")
@@ -85,6 +97,28 @@ fn call_sites(text: &str, symbol: &str) -> Vec<String> {
         .collect()
 }
 
+/// Pin the pure `allow_foreground` decision that gates the two foreground
+/// verbs. It lives in a lib crate this binary package does not link, so the
+/// available seam is the source itself; the lib's own unit tests assert the
+/// same matrix. Both the focus test and the opt-in seam test call this.
+fn assert_foreground_decision_pinned() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let winop = std::fs::read_to_string(root.join("crates/desktop-engine/src/winop.rs"))
+        .expect("winop.rs readable");
+    let core: String = winop.chars().filter(|c| !c.is_whitespace()).collect();
+    for needle in [
+        "pub(crate)fnverb_needs_foreground(act:&str)->bool{act==\"focus\"||act==\"maximize\"}",
+        "ifverb_needs_foreground(act)&&!allow_foreground{VerbDecision::RefuseForeground}else{VerbDecision::Proceed}",
+        "foreground_decision(v,false),VerbDecision::RefuseForeground",
+        "foreground_decision(v,true),VerbDecision::Proceed",
+    ] {
+        assert!(
+            core.contains(needle),
+            "winop.rs no longer pins the allow_foreground decision: {needle:?}"
+        );
+    }
+}
+
 #[test]
 fn forbidden_apis_live_nowhere() {
     let mut files = Vec::new();
@@ -110,6 +144,100 @@ fn forbidden_apis_live_nowhere() {
         );
     }
     println!("NO_STEAL_STATIC_OK symbols={FORBIDDEN:?} banished from src/");
+}
+
+/// The opt-in writers live in TWO named seams, never in the pure gate:
+///
+/// * `burst.rs`: `SendInput`, `SetCursorPos` and the `focus_window`
+///   `SetForegroundWindow` call.
+/// * `winop.rs`: the `desktop_window` `focus` `SetForegroundWindow` call,
+///   downstream of `foreground_decision` (plus the ignored live test's
+///   foreground restore in its `#[cfg(test)]` half).
+///
+/// `FORBIDDEN` above is untouched: every always-forbidden name still has ZERO
+/// call sites everywhere. This test only narrows where the three opt-ins may
+/// be called, and pins that the window seam's focus call is behind the flag.
+#[test]
+fn opt_in_input_apis_live_only_in_the_pointer_seam() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let burst = std::fs::read_to_string(root.join("crates/desktop-engine/src/burst.rs"))
+        .expect("burst.rs readable");
+    let winop = std::fs::read_to_string(root.join("crates/desktop-engine/src/winop.rs"))
+        .expect("winop.rs readable");
+
+    // Both named seams still own real call sites.
+    for sym in OPT_IN {
+        assert!(
+            !call_sites(&burst, sym).is_empty(),
+            "{sym} must have a real call site in the burst opt-in seam"
+        );
+    }
+    assert!(
+        !call_sites(&winop, "SetForegroundWindow").is_empty(),
+        "the desktop_window focus seam must own a real SetForegroundWindow call site"
+    );
+
+    let gate = std::fs::read_to_string(root.join("crates/desktop-engine/src/gate.rs"))
+        .expect("gate.rs readable");
+    let mut files = Vec::new();
+    for dir in all_src_dirs() {
+        rs_files(&dir, &mut files);
+    }
+    for f in &files {
+        let name = f.file_name().and_then(|x| x.to_str()).unwrap_or("");
+        if name == "burst.rs" || name == "winop.rs" {
+            continue;
+        }
+        let text = std::fs::read_to_string(f).expect("source file readable");
+        for sym in OPT_IN {
+            assert!(
+                call_sites(&text, sym).is_empty(),
+                "{sym} call site outside the two opt-in seams: {:?}",
+                f.file_name()
+            );
+        }
+    }
+    // The window seam may own ONLY the focus writer; pointer writers stay in burst.rs.
+    for sym in ["SendInput", "SetCursorPos"] {
+        assert!(
+            call_sites(&winop, sym).is_empty(),
+            "{sym} call site in winop.rs: pointer writers belong to burst.rs only"
+        );
+    }
+    for sym in OPT_IN {
+        assert!(
+            call_sites(&gate, sym).is_empty(),
+            "{sym} must not be called from the pure gate"
+        );
+    }
+
+    // Pin the dispatch order in the PRODUCTION half: the refusal arm returns
+    // before the focus branch that calls SetForegroundWindow. The ignored
+    // live-test foreground restore lives in the #[cfg(test)] half and is not
+    // production-reachable.
+    let prod = winop.split("#[cfg(test)]").next().unwrap_or("");
+    let guard =
+        "if foreground_decision(&act, a.allow_foreground) == VerbDecision::RefuseForeground {";
+    let focus = "if act == \"focus\" {";
+    let call = "SetForegroundWindow(h);";
+    let (gi, fi, ci) = (
+        prod.find(guard)
+            .expect("the focus writer must be gated by foreground_decision"),
+        prod.find(focus).expect("the focus branch must exist"),
+        prod.find(call)
+            .expect("the production focus call site must exist"),
+    );
+    assert!(
+        gi < fi && fi < ci,
+        "SetForegroundWindow must be downstream of the allow_foreground decision: guard={gi} focus={fi} call={ci}"
+    );
+
+    // Both foreground verbs refuse with the flag off, and the flag turns the
+    // decision to Proceed (same helper the focus wire test uses).
+    assert_foreground_decision_pinned();
+    println!(
+        "NO_STEAL_OPT_IN_OK cursor=burst.rs focus=burst.rs+winop.rs(gated) banned=zero-everywhere"
+    );
 }
 
 #[test]
@@ -145,7 +273,6 @@ fn gate_holds_no_permits_and_no_injection_apis() {
     }
     println!("NO_STEAL_MINT_OK permits=0 injection-apis=0");
 }
-
 
 struct Session {
     child: Child,
@@ -286,12 +413,61 @@ fn every_acting_tool_declares_target_and_the_gate_flags() {
         Some(&Value::from(false)),
         "allow_clipboard must default to false, got: {ab}"
     );
+    let rc = props.get("restore_clipboard").expect("restore_clipboard");
+    assert_eq!(
+        rc.get("type").and_then(|t| t.as_str()),
+        Some("boolean"),
+        "restore_clipboard must be a boolean, got: {rc}"
+    );
+    assert_eq!(
+        rc.get("default"),
+        Some(&Value::from(false)),
+        "restore_clipboard must default to false, got: {rc}"
+    );
     assert!(
         ab.get("description")
             .and_then(|d| d.as_str())
             .unwrap_or("")
             .contains("global clipboard"),
         "allow_clipboard must state what it permits, got: {ab}"
+    );
+    let cr = props.get("cursor_restore").expect("cursor_restore");
+    assert_eq!(
+        cr.get("type").and_then(|t| t.as_str()),
+        Some("boolean"),
+        "cursor_restore must be a boolean, got: {cr}"
+    );
+    assert_eq!(
+        cr.get("default"),
+        Some(&Value::from(true)),
+        "cursor_restore must default to true, got: {cr}"
+    );
+    for (name, prop) in [
+        (
+            "allow_cursor",
+            props.get("allow_cursor").expect("allow_cursor"),
+        ),
+        (
+            "allow_foreground",
+            props.get("allow_foreground").expect("allow_foreground"),
+        ),
+        ("cursor_restore", cr),
+    ] {
+        let desc = prop
+            .get("description")
+            .and_then(|d| d.as_str())
+            .unwrap_or("");
+        assert!(
+            !desc.is_empty(),
+            "{name} must state what the flag buys: {prop}"
+        );
+    }
+    assert!(
+        props["allow_cursor"]["description"]
+            .as_str()
+            .unwrap_or("")
+            .contains("point_not_target"),
+        "allow_cursor must state the point guard"
     );
     let lw = tool(&tools, "desktop_list_windows")["inputSchema"]["properties"]
         .as_object()
@@ -451,12 +627,16 @@ fn window_focus_is_the_only_explicit_focus_and_reports_telemetry() {
     println!("NO_STEAL_WINDOW_OK {text}");
 }
 
-/// Double-explicit focus is gone: `action:"focus"` is refused with
-/// no_foreground_policy whether or not `allow_foreground:true` is passed ÔÇö
-/// no flag buys the foreground. The refusal happens before any activation,
-/// so this is safe on a live desktop.
+/// `desktop_window focus` is the one verb that takes the foreground, so the
+/// owner must opt in. Both halves are proved without stealing focus here:
+///
+/// * WIRE: with `allow_foreground` false the reply is `no_foreground_policy`
+///   and the foreground window does not move.
+/// * DECISION: with the flag true the decision is `Proceed`. That arm is
+///   source-pinned (and unit-tested in desktop-engine) instead of called over
+///   the wire, because calling it here would activate a real window.
 #[test]
-fn focus_is_refused_with_or_without_the_flag() {
+fn focus_is_refused_without_the_flag_and_allowed_only_with_it() {
     let mut s = Session::spawn();
     let resp = s.call(20, "desktop_list_windows", serde_json::json!({}));
     let windows = resp["result"]["structuredContent"]["windows"]
@@ -469,37 +649,64 @@ fn focus_is_refused_with_or_without_the_flag() {
             && w["title"].as_str().map(|t| !t.trim().is_empty()) == Some(true)
             && w["minimized"].as_bool() == Some(false)
     }) else {
-        println!("SKIP focus-without-flag: no visible window to name");
+        println!(
+            "SKIP focus-without-flag: no visible window to name; decision half still asserted"
+        );
+        assert_foreground_decision_pinned();
         return;
     };
     let hwnd = w["hwnd"].as_i64().expect("hwnd");
     let fg_before = foregound_now();
-    for (id, flag) in [(21, false), (22, true)] {
-        let resp = s.call(
-            id,
-            "desktop_window",
-            serde_json::json!({"action": "focus", "target": {"hwnd": hwnd}, "allow_foreground": flag}),
-        );
-        let sc = resp["result"]["structuredContent"].clone();
-        assert_eq!(
-            sc["ok"].as_bool(),
-            Some(false),
-            "focus (flag={flag}) must fail: {sc}"
-        );
-        assert_eq!(
-            sc["code"].as_str(),
-            Some("no_foreground_policy"),
-            "focus (flag={flag}) must be typed: {sc}"
-        );
-    }
+    let resp = s.call(
+        21,
+        "desktop_window",
+        serde_json::json!({"action": "focus", "target": {"hwnd": hwnd}, "allow_foreground": false}),
+    );
+    let sc = resp["result"]["structuredContent"].clone();
+    assert_eq!(
+        sc["ok"].as_bool(),
+        Some(false),
+        "an unflagged focus must fail: {sc}"
+    );
+    assert_eq!(
+        sc["code"].as_str(),
+        Some("no_foreground_policy"),
+        "an unflagged focus must be typed: {sc}"
+    );
+    let err = sc["error"].as_str().unwrap_or("");
+    assert!(
+        err.contains("window action:focus"),
+        "refusal must name the verb: {err}"
+    );
+    assert!(
+        err.contains("allow_foreground:true"),
+        "refusal must name the flag: {err}"
+    );
+    assert!(
+        err.contains("it takes the foreground"),
+        "refusal must name the effect: {err}"
+    );
+    assert_eq!(
+        sc["foregroundUnchanged"].as_bool(),
+        Some(true),
+        "the reply must report the foreground held: {sc}"
+    );
+    assert_eq!(
+        sc["foregroundChanged"].as_bool(),
+        Some(false),
+        "the reply must report no activation: {sc}"
+    );
     assert_eq!(
         foregound_now(),
         fg_before,
         "a refused focus must not activate anything"
     );
-    println!("NO_STEAL_FOCUS_FLAG_OK hwnd={hwnd} fg={fg_before}");
-}
 
+    assert_foreground_decision_pinned();
+    println!(
+        "NO_STEAL_FOCUS_FLAG_OK hwnd={hwnd} fg={fg_before} wire=refused decision=proceed-with-flag"
+    );
+}
 
 fn live() -> bool {
     if std::env::var("HAND_LIVE_DESKTOP").as_deref() == Ok("1") {
@@ -662,7 +869,6 @@ fn window_text(hwnd: i64) -> String {
     let n = unsafe { GetWindowTextW(hwnd as _, buf.as_mut_ptr(), buf.len() as i32) };
     String::from_utf16_lossy(&buf[..n.max(0) as usize])
 }
-
 
 /// The decision core below restates the rule the burst gate already applies
 /// (`src/fixture.rs`: `FgOutcome` / `fg_outcome` / `FG_SAMPLES` /

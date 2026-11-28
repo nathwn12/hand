@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>checkbox</title>
+<style>body{font:16px/1.4 system-ui,sans-serif;margin:16px}button{margin:4px}output{display:block;margin-top:12px}</style>
+</head><body>
+<label><input type="checkbox" id="c"> Accept terms</label><output id="out">idle</output>
+<script>
+document.getElementById('c').onchange=e=>{document.getElementById('out').textContent=e.target.checked?'checked':'unchecked';};
+</script>
+</body></html>

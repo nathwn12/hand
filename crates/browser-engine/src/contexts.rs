@@ -197,7 +197,6 @@ fn plain(e: &str) -> String {
     e.to_string()
 }
 
-
 fn hook_flag(name: &str) -> bool {
     std::env::var(name).map(|v| v == "1").unwrap_or(false)
 }
@@ -232,7 +231,6 @@ async fn hook_slow(phase: &str) {
         tokio::time::sleep(Duration::from_millis(ms)).await;
     }
 }
-
 
 /// Lifecycle of a tracked context. `Creating` is visible on purpose: a caller
 /// must be able to see work in flight (and a shutdown must be able to report
@@ -493,7 +491,6 @@ impl ContextRegistry {
                "unverified": unverified, "failed": failed})
     }
 
-
     async fn dispatch_args(self: &Arc<Self>, args: &Value) -> Result<Value, ToolErr> {
         let action = match args.get("action").and_then(|v| v.as_str()) {
             Some(a) if !a.is_empty() => a.to_string(),
@@ -549,7 +546,10 @@ impl ContextRegistry {
         let locale = args.get("locale").and_then(|v| v.as_str());
         let timezone = args.get("timezone").and_then(|v| v.as_str());
         let mode = args.get("mode").and_then(|v| v.as_str());
-        let prompt = args.get("prompt").and_then(|v| v.as_bool()).unwrap_or(false);
+        let prompt = args
+            .get("prompt")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
         let state_path = args.get("path").and_then(|v| v.as_str());
 
         match action.as_str() {
@@ -645,7 +645,6 @@ impl ContextRegistry {
             _ => unreachable!("action already validated against the closed set"),
         }
     }
-
 
     /// Create a context and its first page. The entry is tracked before the
     /// first CDP call - with its own acquisition token - and the acquisition
@@ -1819,7 +1818,6 @@ impl ContextRegistry {
         }))
     }
 
-
     /// The page an emulation acts on. No `name` is the LEGACY default page -
     /// the same page `browser_navigate` and `browser_evaluate` use - so the
     /// manifest can set a clock or locale and read it back through the legacy
@@ -1844,8 +1842,7 @@ impl ContextRegistry {
         if st.entries[idx].phase != Phase::Ready {
             return Err(still_creating(&name));
         }
-        let context_id = st
-            .entries[idx]
+        let context_id = st.entries[idx]
             .id()
             .map(str::to_string)
             .ok_or_else(|| attached_unknown(&name))?;
@@ -1864,7 +1861,11 @@ impl ContextRegistry {
     /// so the page's own script computes the frozen instant; the tool then
     /// removes the script so later documents keep the real clock. The value
     /// returned is read back from the page, not echoed from the request.
-    async fn clock(&self, want_name: Option<&str>, instant: Option<&str>) -> Result<Value, ToolErr> {
+    async fn clock(
+        &self,
+        want_name: Option<&str>,
+        instant: Option<&str>,
+    ) -> Result<Value, ToolErr> {
         let Some(instant) = instant else {
             return Err(invalid(
                 "context: clock needs 'iso' (an RFC 3339 instant), or 'clock' with the same value",
@@ -2054,14 +2055,19 @@ impl ContextRegistry {
             ));
         }
         if grants.is_empty() {
-            return Err(invalid("context: permissions needs a non-empty 'grant' array"));
+            return Err(invalid(
+                "context: permissions needs a non-empty 'grant' array",
+            ));
         }
         let mut st = self.state.lock().await;
         let (session, context_id, label) = self.emulation_target(&mut st, want_name).await?;
         drop(st);
         let mut params = json!({"permissions": grants});
         if let Some(id) = &context_id {
-            params.as_object_mut().expect("object").insert("browserContextId".into(), json!(id));
+            params
+                .as_object_mut()
+                .expect("object")
+                .insert("browserContextId".into(), json!(id));
         }
         self.browser
             .cdp_raw("Browser.grantPermissions", params, None)
@@ -2122,7 +2128,10 @@ impl ContextRegistry {
         }
         let mut params = json!({});
         if let Some(id) = &context_id {
-            params.as_object_mut().expect("object").insert("browserContextId".into(), json!(id));
+            params
+                .as_object_mut()
+                .expect("object")
+                .insert("browserContextId".into(), json!(id));
         }
         self.browser
             .cdp_raw("Storage.clearCookies", params, None)
@@ -2194,8 +2203,12 @@ impl ContextRegistry {
         )
         .await
         .map_err(ToolErr::from)?;
-        let entries: Vec<Value> = serde_json::from_str(listed.as_str().unwrap_or("[]"))
-            .map_err(|e| invalid(format!("context: export_state cannot read localStorage: {e}")))?;
+        let entries: Vec<Value> =
+            serde_json::from_str(listed.as_str().unwrap_or("[]")).map_err(|e| {
+                invalid(format!(
+                    "context: export_state cannot read localStorage: {e}"
+                ))
+            })?;
         let artifact = json!({
             "version": 1, "tool": "browser_context", "kind": "state",
             "origin": origin, "cookies": jar, "localStorage": entries,
@@ -2212,7 +2225,10 @@ impl ContextRegistry {
                 return Err(err(
                     ToolCode::InvalidArgs,
                     ToolReason::Unreadable,
-                    format!("context: export_state cannot create '{}': {e}", parent.display()),
+                    format!(
+                        "context: export_state cannot create '{}': {e}",
+                        parent.display()
+                    ),
                 ));
             }
         }
@@ -2349,7 +2365,11 @@ impl ContextRegistry {
         .await
         .map_err(ToolErr::from)?;
         let after_entries: Vec<Value> = serde_json::from_str(listed.as_str().unwrap_or("[]"))
-            .map_err(|e| invalid(format!("context: import_state cannot read localStorage: {e}")))?;
+            .map_err(|e| {
+                invalid(format!(
+                    "context: import_state cannot read localStorage: {e}"
+                ))
+            })?;
         for c in cookies {
             let (name, value, domain, path) = (
                 c["name"].as_str().unwrap_or(""),
@@ -2375,7 +2395,9 @@ impl ContextRegistry {
                 return Err(err(
                     ToolCode::Error,
                     ToolReason::Mismatch,
-                    format!("context: import_state: a localStorage item did not round-trip: {pair}"),
+                    format!(
+                        "context: import_state: a localStorage item did not round-trip: {pair}"
+                    ),
                 ));
             }
         }
@@ -2491,7 +2513,6 @@ impl std::fmt::Debug for ContextRegistry {
         f.debug_struct("ContextRegistry").finish_non_exhaustive()
     }
 }
-
 
 const SELECT_AFFECTS: &str =
     "browser_context actions that omit `name` only; legacy browser_* tools keep acting on the \
@@ -2687,7 +2708,6 @@ pub fn capability_info() -> Value {
         }
     })
 }
-
 
 #[derive(Clone, Debug)]
 struct PageInfo {
@@ -3364,7 +3384,6 @@ fn pick_page<'a>(entry: &'a Entry, want: Option<&str>) -> Result<&'a str, ToolEr
             }),
     }
 }
-
 
 async fn create_browser_context(browser: &Browser) -> Result<String, String> {
     let r = browser

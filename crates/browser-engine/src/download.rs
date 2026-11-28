@@ -49,16 +49,14 @@ pub fn schema() -> Value {
 
 /// SHA-256 round constants.
 const SHA_K: [u32; 64] = [
-    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4,
-    0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe,
-    0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f,
-    0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7,
-    0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc,
-    0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b,
-    0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116,
-    0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
-    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7,
-    0xc67178f2,
+    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+    0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+    0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+    0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
 ];
 
 /// SHA-256 over the delivered bytes, lowercase hex. Self-contained so this
@@ -134,7 +132,13 @@ fn bare_mime(mime: &str) -> &str {
 }
 
 fn mime_for_name(name: &str) -> &'static str {
-    match name.rsplit('.').next().unwrap_or("").to_ascii_lowercase().as_str() {
+    match name
+        .rsplit('.')
+        .next()
+        .unwrap_or("")
+        .to_ascii_lowercase()
+        .as_str()
+    {
         "txt" | "text" | "log" | "csv" => "text/plain",
         "html" | "htm" => "text/html",
         "json" => "application/json",
@@ -214,10 +218,13 @@ pub async fn handle(browser: &Browser, args: &Value) -> Result<Value, ToolErr> {
         return Err(e);
     }
 
-    let dir_str = args
-        .get("dir")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| invalid("browser_download: missing required arg 'dir'".to_string(), ToolReason::MissingArg, "dir"))?;
+    let dir_str = args.get("dir").and_then(|v| v.as_str()).ok_or_else(|| {
+        invalid(
+            "browser_download: missing required arg 'dir'".to_string(),
+            ToolReason::MissingArg,
+            "dir",
+        )
+    })?;
     let dir = PathBuf::from(dir_str);
     if !dir.is_absolute() {
         return Err(invalid(
@@ -237,25 +244,41 @@ pub async fn handle(browser: &Browser, args: &Value) -> Result<Value, ToolErr> {
     let accept: Vec<String> = args
         .get("accept")
         .and_then(|v| v.as_array())
-        .map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect())
+        .map(|a| {
+            a.iter()
+                .filter_map(|x| x.as_str().map(str::to_string))
+                .collect()
+        })
         .unwrap_or_default();
     let timeout_ms = match args.get("timeoutMs") {
         None => 15_000u64,
-        Some(v) => v
-            .as_u64()
-            .ok_or_else(|| invalid("browser_download: 'timeoutMs' must be an integer >= 0".to_string(), ToolReason::BadValue, "timeoutMs"))?,
+        Some(v) => v.as_u64().ok_or_else(|| {
+            invalid(
+                "browser_download: 'timeoutMs' must be an integer >= 0".to_string(),
+                ToolReason::BadValue,
+                "timeoutMs",
+            )
+        })?,
     };
     let max_bytes = match args.get("maxBytes") {
         None => None,
         Some(v) => Some(v.as_u64().ok_or_else(|| {
-            invalid("browser_download: 'maxBytes' must be an integer >= 0".to_string(), ToolReason::BadValue, "maxBytes")
+            invalid(
+                "browser_download: 'maxBytes' must be an integer >= 0".to_string(),
+                ToolReason::BadValue,
+                "maxBytes",
+            )
         })?),
     };
     let filename = match args.get("filename") {
         None => None,
         Some(v) => {
             let name = v.as_str().ok_or_else(|| {
-                invalid("browser_download: 'filename' must be a string".to_string(), ToolReason::BadValue, "filename")
+                invalid(
+                    "browser_download: 'filename' must be a string".to_string(),
+                    ToolReason::BadValue,
+                    "filename",
+                )
             })?;
             if name.is_empty() || name.contains(['/', '\\', '\0']) || name == "." || name == ".." {
                 return Err(invalid(
@@ -312,16 +335,31 @@ pub async fn handle(browser: &Browser, args: &Value) -> Result<Value, ToolErr> {
         .map_err(ToolErr::fallback)?;
     // Restore the engine default; the delivered file stays where it landed.
     let _ = browser
-        .cdp_raw("Browser.setDownloadBehavior", json!({"behavior": "default"}), None)
+        .cdp_raw(
+            "Browser.setDownloadBehavior",
+            json!({"behavior": "default"}),
+            None,
+        )
         .await;
 
-    let suggested = record.get("filename").and_then(|v| v.as_str()).unwrap_or("").to_string();
-    let file_path = record.get("filePath").and_then(|v| v.as_str()).unwrap_or("").to_string();
-    let mut names = vec![suggested.clone(), file_path
-        .rsplit(['/', '\\'])
-        .next()
+    let suggested = record
+        .get("filename")
+        .and_then(|v| v.as_str())
         .unwrap_or("")
-        .to_string()];
+        .to_string();
+    let file_path = record
+        .get("filePath")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let mut names = vec![
+        suggested.clone(),
+        file_path
+            .rsplit(['/', '\\'])
+            .next()
+            .unwrap_or("")
+            .to_string(),
+    ];
     if let Some(name) = &filename {
         names.push(name.clone());
     }
@@ -330,7 +368,9 @@ pub async fn handle(browser: &Browser, args: &Value) -> Result<Value, ToolErr> {
         cleanup_partials(&dir, &names);
         let prose = match state {
             "aborted" => format!("browser_download: download exceeded maxBytes and was cancelled"),
-            "canceled" | "interrupted" => format!("browser_download: download was cancelled ({state})"),
+            "canceled" | "interrupted" => {
+                format!("browser_download: download was cancelled ({state})")
+            }
             _ => format!("browser_download: no download completed within {timeout_ms}ms"),
         };
         let (code, reason) = match state {
@@ -343,23 +383,37 @@ pub async fn handle(browser: &Browser, args: &Value) -> Result<Value, ToolErr> {
 
     let delivered = if !file_path.is_empty() {
         let p = PathBuf::from(&file_path);
-        if p.is_file() { Some(p) } else { None }
+        if p.is_file() {
+            Some(p)
+        } else {
+            None
+        }
     } else {
         None
     }
     .or_else(|| {
         let candidate = dir.join(filename.as_deref().unwrap_or(&suggested));
-        if candidate.is_file() { Some(candidate) } else { None }
+        if candidate.is_file() {
+            Some(candidate)
+        } else {
+            None
+        }
     })
     .or_else(|| {
         let candidate = dir.join(&suggested);
-        if candidate.is_file() { Some(candidate) } else { None }
+        if candidate.is_file() {
+            Some(candidate)
+        } else {
+            None
+        }
     })
-    .ok_or_else(|| ToolErr::typed(
-        format!("browser_download: CDP reported completion but no file landed in '{dir_str}'"),
-        json!({"code": ToolCode::FileNotFound.as_str(), "reason": ToolReason::Missing.as_str(),
+    .ok_or_else(|| {
+        ToolErr::typed(
+            format!("browser_download: CDP reported completion but no file landed in '{dir_str}'"),
+            json!({"code": ToolCode::FileNotFound.as_str(), "reason": ToolReason::Missing.as_str(),
                "tool": "browser_download"}),
-    ))?;
+        )
+    })?;
 
     let bytes = std::fs::read(&delivered).map_err(|e| ToolErr::typed(
         format!("browser_download: cannot read delivered file: {e}"),
@@ -370,7 +424,10 @@ pub async fn handle(browser: &Browser, args: &Value) -> Result<Value, ToolErr> {
         if bytes.len() as u64 > max {
             cleanup_partials(&dir, &names);
             return Err(cancelled(
-                format!("browser_download: delivered file is {} bytes, over maxBytes {max}", bytes.len()),
+                format!(
+                    "browser_download: delivered file is {} bytes, over maxBytes {max}",
+                    bytes.len()
+                ),
                 ToolCode::Cancelled,
                 ToolReason::BudgetExceeded,
                 &record,
@@ -378,9 +435,16 @@ pub async fn handle(browser: &Browser, args: &Value) -> Result<Value, ToolErr> {
         }
     }
 
-    let response_mime = record.get("mimeType").and_then(|v| v.as_str()).unwrap_or("");
+    let response_mime = record
+        .get("mimeType")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     let out_name = filename.clone().unwrap_or_else(|| {
-        delivered.file_name().and_then(|n| n.to_str()).unwrap_or(&suggested).to_string()
+        delivered
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(&suggested)
+            .to_string()
     });
     let mime = if bare_mime(response_mime).is_empty() {
         mime_for_name(&out_name).to_string()

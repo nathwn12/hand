@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>anchor-positioning-tab-underline</title>
+<style>body{font:16px/1.4 system-ui,sans-serif;margin:16px}button{margin:4px}output{display:block;margin-top:12px}</style>
+</head><body>
+<div role="tablist"><button role="tab" id="t1" aria-selected="true">One</button><button role="tab" id="t2" aria-selected="false">Two</button><div id="underline" style="height:2px;background:#06c;width:40px"></div></div><output id="out">idle</output>
+<script>
+document.getElementById('t2').onclick=()=>{document.getElementById('underline').style.marginLeft='60px';document.getElementById('out').textContent='two';};
+</script>
+</body></html>

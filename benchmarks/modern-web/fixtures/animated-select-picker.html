@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>animated-select-picker</title>
+<style>body{font:16px/1.4 system-ui,sans-serif;margin:16px}button{margin:4px}output{display:block;margin-top:12px}</style>
+</head><body>
+<button id="p" aria-haspopup="listbox" aria-expanded="false">Choose color</button><ul id="lb" role="listbox" hidden><li role="option" id="red">Red</li></ul><output id="out">idle</output>
+<script>
+document.getElementById('p').onclick=()=>{document.getElementById('lb').hidden=false;document.getElementById('p').setAttribute('aria-expanded','true');};document.getElementById('red').onclick=()=>{document.getElementById('out').textContent='red';};
+</script>
+</body></html>

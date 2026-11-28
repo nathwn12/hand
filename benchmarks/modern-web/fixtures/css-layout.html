@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>css-layout</title>
+<style>body{font:16px/1.4 system-ui,sans-serif;margin:16px}button{margin:4px}output{display:block;margin-top:12px}
+#grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}</style>
+</head><body>
+<div id="grid"><span>A</span><span>B</span><span>C</span></div><button id="b">Check layout</button><output id="out">idle</output>
+<script>
+document.getElementById('b').onclick=()=>{document.getElementById('out').textContent=String(getComputedStyle(document.getElementById('grid')).gridTemplateColumns.split(' ').length);};
+</script>
+</body></html>

@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>swipe-to-remove</title>
+<style>body{font:16px/1.4 system-ui,sans-serif;margin:16px}button{margin:4px}output{display:block;margin-top:12px}</style>
+</head><body>
+<div id="item">Item one</div><button id="rm">Remove item</button><output id="out">1</output>
+<script>
+document.getElementById('rm').onclick=()=>{document.getElementById('item').remove();document.getElementById('out').textContent='0';};
+</script>
+</body></html>

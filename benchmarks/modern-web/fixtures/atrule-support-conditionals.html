@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>atrule-support-conditionals</title>
+<style>body{font:16px/1.4 system-ui,sans-serif;margin:16px}button{margin:4px}output{display:block;margin-top:12px}
+@supports (display:grid){#d{--support:yes}}</style>
+</head><body>
+<button id="s">Check support</button><div id="d">Result</div><output id="out">idle</output>
+<script>
+document.getElementById('s').onclick=()=>{document.getElementById('out').textContent=getComputedStyle(document.getElementById('d')).getPropertyValue('--support').trim()||'no';};
+</script>
+</body></html>

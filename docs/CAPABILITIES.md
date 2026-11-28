@@ -9,7 +9,7 @@ not to be claimed.
 | | |
 |---|---|
 | Host | `NECESSE`, Windows 11 Pro, x64, Ryzen 7 5800X, 31.9 GB |
-| Build | `cargo` 1.100.0, dev and release profiles, `hand 0.3.0` |
+| Build | `cargo` 1.100.0, dev and release profiles, `hand 0.4.0` |
 | Browser | full `chrome` 158.0.8127.36 (`Google Chrome for Testing`) |
 | Browser path | `%LOCALAPPDATA%\gladius\chromium\158.0.8127.36-6a8ad290\chrome-win64\chrome.exe` |
 | Browser SHA-256 | `f304cbc534586babe4e1e49817ab6d562f3ac9bf7d0d49f8ebb15295997f8fd6` (matches `crates/browser-engine/scripts/chromium-manifest.json`) |
@@ -21,7 +21,7 @@ The smaller `chrome-headless-shell` is an opt-in fallback selected with `GLADIUS
 | Capability | Evidence |
 |---|---|
 | One executable, one stdio MCP connection | `tests/discovery.rs` (7 tests): initialize, ping, tools/list, tools/call, server/discover, version gate |
-| Both catalogs plus hand's own tools, legacy bodies byte-identical except the declared additions in `baseline/declared-additions.json` | `catalog_is_the_floor_plus_hand_additions`, `tool_bodies_are_engine_bodies_under_the_prefix` (compares each published body with `baseline/hand-catalog.json` after the declared paths are checked present and stripped; `baseline/test/declared-additions.test.mjs` proves it red on an undeclared addition and on a deleted one); independent `baseline/scripts/compare-catalog.mjs` PASS: 32/32 legacy tools compared, additional hand tools reported as extras, 10 declared addition groups, 7 description differences. The live catalog is **41** tools: the 32-name compatibility floor plus nine hand additions (`browser_context`, `browser_wheel`, `browser_drag`, `browser_form`, `browser_download`, `browser_assert`, `browser_audit`, `browser_trace`, `browser_run`). Additions are reported as extras by the independent comparison and are never entered in `baseline/declared-additions.json` |
+| Both catalogs plus hand's own tools, legacy bodies byte-identical except the declared additions in `baseline/declared-additions.json` | `catalog_is_the_floor_plus_hand_additions`, `tool_bodies_are_engine_bodies_under_the_prefix` (compares each published body with `baseline/hand-catalog.json` after the declared paths are checked present and stripped; `baseline/test/declared-additions.test.mjs` proves it red on an undeclared addition and on a deleted one); independent `baseline/scripts/compare-catalog.mjs --serve target/release/hand.exe` PASS: 32/32 legacy tools compared, 12 hand tools reported as extras, 42 declared addition groups, 1 property-description rewrite and 0 undeclared title/description differences. The live catalog is **44** tools: 36 `browser_*` (the floor's 25 Gladius browser bodies plus 11 hand additions — `browser_context`, `browser_wheel`, `browser_drag`, `browser_form`, `browser_download`, `browser_assert`, `browser_audit`, `browser_trace`, `browser_metrics`, `browser_run`, `browser_clipboard`) and 8 `desktop_*` (the floor's 7 Puppet bodies plus `desktop_record`). Additions are reported as extras by the independent comparison and are never entered in `baseline/declared-additions.json` |
 | Isolated, named browser contexts over the real MCP route | `tests/context_wire.rs`: published schema; two contexts with separate cookie jars; legacy page and legacy tab space untouched; `targets select` refuses a context page; typed errors; H12: `browser_snapshot` and `browser_assert` read a named context page only when the call says `context:` (with `page:` when the context holds several pages), name the context and page target in the reply, and refuse an unknown context/page as a typed `invalid_target`/`not_found` instead of falling back to the legacy page, while a call without `context:` still reads the legacy page; shutdown disposes only hand's contexts (two clients attached to one external engine, the other's context, page and cookie survive) |
 | Browser backend identity and availability | `initialize_identifies_version_platform_and_both_engines`: `gladius` pin, `puppet` pin, platform, counts, instructions |
 | Live headless browser inspect → act → verify | `tests/browser_live.rs`: loopback fixture; navigate, AX snapshot, click by `@eN`, DOM effect proven by evaluate, type into a labelled field and read back |
@@ -38,11 +38,11 @@ The smaller `chrome-headless-shell` is an opt-in fallback selected with `GLADIUS
 | Hidden launch cleanup | `tests/hidden_cleanup.rs`: hard server kill reaps the controlled target and child; a failed launch reports `ok:false` and `isError:true`; the test cleanup terminates only identity-verified processes (image plus creation time) |
 | Browser and desktop shutdown bounds | `tests/server_regressions.rs` (11 tests): a timed-out capture still restores; a timed-out or cancelled call can still land its action and says so; a full pool answers typed `busy`; EOF drain is globally bounded and names the abandoned work; a blocking desktop job cannot stop the process indefinitely |
 | No-steal and hidden safety after shutdown changes | `tests/no_steal.rs` (12 tests) and `tests/hidden_cleanup.rs` (7 tests) still pass on this tree |
-| No foreground takeover or pointer movement | same test + `HAND_LIVE_DESKTOP=1 cargo test --test no_steal live_read_only_target_capture_keeps_foreground` (captured a real GitHub Desktop window, foreground stayed on the terminal); `desktop_live` and `desktop_matrix` run their live proofs under the same `HAND_LIVE_DESKTOP=1` gate and name their skip on a bare session - a hosted runner has no foreground holder, measured |
-| Desktop no-steal static, wire and gate checks | `tests/no_steal.rs`, 12 tests: banned APIs absent from all three source trees; target on every acting tool; zero `sendinput_calls`; focus refused with and without the flag; dead target typed; clipboard write refused while the burst continues |
+| No foreground takeover or pointer movement on the default path | same test + `HAND_LIVE_DESKTOP=1 cargo test --test no_steal live_read_only_target_capture_keeps_foreground` (captured a real GitHub Desktop window, foreground stayed on the terminal); `desktop_live` and `desktop_matrix` run their live proofs under the same `HAND_LIVE_DESKTOP=1` gate and name their skip on a bare session - a hosted runner has no foreground holder, measured |
+| Desktop no-steal static, wire and gate checks | `tests/no_steal.rs`, 12 tests: every pointer/focus writer except the three opt-in ones (`SendInput`, `SetCursorPos`, `SetForegroundWindow`) absent from all three source trees and named in `noSteal.optInImports`; target on every acting tool; zero `sendinput_calls` on the default path; focus refused without the flag; dead target typed; clipboard write refused while the burst continues |
 | Browser cancellation | `tests/cancel.rs`: typed `cancelled` immediately, no late second response, engine usable afterwards |
 | Desktop cancellation admission | `tests/cancel.rs`: token published before the worker, cancelled job stays silent (direct through the production wrapper) |
-| Vendored engine unit tests | `cargo test -p browser-engine`: 91/91 (includes the B6 literal-redaction and HAR-date checks, Chromium pin-drift and full-Chrome identity); `cargo test -p desktop-engine -- --skip live_`: 215/215 |
+| Vendored engine unit tests | `cargo test -p browser-engine --lib`: 136/136 (includes B2–B7, page metrics, page clipboard, video padding and the Chromium pin/full-Chrome identity checks); `cargo test -p desktop-engine --lib -- --skip live_`: 255/255 (1 ignored, 29 live tests filtered out) |
 | Clean EOF shutdown with a launched engine | `tests/lifecycle.rs`: exit 0, bounded; a manual probe observed 0.06 s, zero owned Chrome processes before and after, and the next start swept the previous run's stale owned profile |
 | Pinned browser artifact | File SHA-256 recomputed and equal to the manifest; `--version` reports 158.0.8127.36 |
 | Selector engine: `role=`, `role=…[name="…"]`, `name=`, `text=`, `label=` | `tests/selectors.rs` (17 tests), resolved on `Accessibility.getFullAXTree` and acted on by backend id. Uniqueness is enforced before acting: zero → `invalid_target`/`not_found`, many → `invalid_target`/`ambiguous` listing every candidate. Names match case-insensitively after whitespace normalisation, and the resolver accepts both the raw AX name and the name `browser_snapshot` prints. `text=` reads visible text with fragments concatenated, innermost owner first; `label=` accepts only `labelfor`/`labelwrapped` provenance. CSS keeps first-match, `@eN` stays snapshot-bound with typed stale refs. Measured on 158.0.8127.36: a frame's tree excludes iframe content (the iframe is one opaque node), so scope is one frame tree and the refusals say so. |
@@ -52,8 +52,12 @@ The smaller `chrome-headless-shell` is an opt-in fallback selected with `GLADIUS
 | Trusted drag with a data transfer | red-line-then-green test: a trusted drag carries a `dataTransfer` into the page's `dragover` and `drop` handlers. CDP has no `dragstart` dispatch, so the page's native `dragstart` sees an empty `DataTransfer`; the tool description states this and the test locks it |
 | Ordered form batches | red-line-then-green test: `browser_form` runs an ordered batch and reports a per-step status and verdict |
 | Browser download | red-line-then-green test: `browser_download` writes to a caller-supplied directory and reports SHA-256 and MIME; a cancelled download cleans up its partial file |
-| Browser assertions | red-line-then-green test: `browser_assert` covers `dom`, `text`, `url` and `ax` with bounded polling (`ax` reads the same accessibility tree `browser_snapshot` prints); `network` answers a typed `not_implemented` |
-| Browser trace | red-line-then-green test: `browser_trace` writes a HAR 1.2 wrapping the existing CDP Network ring plus one deterministic step PNG, counts literal HAR redactions (no regex, no false detection), refuses a relative dir and a `video` request as typed errors, and cancel removes only owned artifacts |
+| Browser assertions | red-line-then-green test: `browser_assert` covers `dom`, `text`, `url`, `ax` and `network` with bounded polling (`ax` reads the same accessibility tree `browser_snapshot` prints). `network` reads the live CDP ring `browser_network` drains, enables it lazily for observation only, and answers a false verdict with a note on an empty ring; unknown or empty expectation keys are refused typed `invalid_args` |
+| Browser trace | red-line-then-green test: `browser_trace` writes a HAR 1.2 wrapping the existing CDP Network ring plus one deterministic step PNG, counts literal HAR redactions (no regex, no false detection) and refuses a relative dir as a typed error. `video:true` writes a playable MJPEG AVI from an acknowledged CDP screencast at constant frame rate, repeating the previous frame for late/tail slots and reporting `capturedFrames` (fresh), `paddedFrames` (repeats) and `frames` (all slots) in the manifest; cancel removes only owned artifacts |
+| Page metrics | `crates/browser-engine/src/metrics.rs` unit tests: the schema is read-only, measured timings and Vitals are returned with real values, and an unmeasured entry stays `null` with a `reason` and a per-field `<field>Reason` |
+| Page clipboard | `crates/browser-engine/src/clipboard.rs` unit tests (9): a read needs no flag and reports `systemClipboard:true`, a write round-trips only with `allow_clipboard:true` and is refused `no_clipboard_policy` before the page without it, oversized text is `too_large` before the page, a rejected promise is `clipboard_unavailable`, and `about:blank`/`data:` pages are refused. In Chromium `navigator.clipboard` IS the Windows clipboard, so a write replaces the owner's text; hand calls no Windows clipboard API itself |
+| Desktop recording | `crates/desktop-engine/src/record.rs` unit tests and the live fixture test: one targeted window to a playable MJPEG AVI, with `capturedFrames` for fresh captures, `frames` for every chunk and overrun slots dropped or repeating the previous frame; a vanished target names the frames written, and a first-slot overrun writes no file |
+| Desktop opt-ins and clipboard | `crates/desktop-engine/src/gate.rs`, `src/burst.rs` and `src/winop.rs` unit tests: `allow_cursor`, `allow_foreground` and `allow_clipboard` are the only gates to real pointer, focus and `CF_UNICODETEXT` writes; a point off the locked target is `point_not_target`; `restore_clipboard` restores the prior text; `clipboard_get` distinguishes `no_text_format` (checked before `OpenClipboard`) from `clipboard_unavailable` after the bounded retry; empty `actions[]` is typed `invalid_args` and a dry run reports `delivered:"none"`. `desktop_window` gives `allow_foreground` to focus/maximize only |
 | Per-monitor v2 DPI awareness | the process sets per-monitor v2 DPI awareness and reads it back at startup; `doctor` reports it |
 | Typed capture codes for frame and no-steal faults | `blank_frame`, `stale_frame`, `too_large` and `no_steal_violation` are typed codes; `no_steal_violation` fails closed and returns no pixels |
 | Repeatable browser task suite | `node fixtures/run-tasks.mjs`: pass=30 pending=0 fail=0, exit 0, including t30 trace/HAR/cancel; t30 was red (`PEND waits for browser_trace`) before row B6 landed; B13: `--repeat 3` → three consecutive clean runs, pass=90 pending=0 fail=0, exit 0 |
@@ -69,6 +73,7 @@ cargo test -p browser-engine
 cargo test -p desktop-engine -- --skip live_
 $env:HAND_LIVE_DESKTOP='1'; cargo test --test no_steal live_read_only_target_capture_keeps_foreground
 node baseline/scripts/compare-catalog.mjs --serve target\debug\hand.exe --baseline hand
+node baseline/scripts/compare-catalog.mjs --serve target\release\hand.exe
 node fixtures/run-tasks.mjs
 ```
 
@@ -93,9 +98,10 @@ These are not implemented, not exercised, or not safe to claim from this slice.
   native `dragstart` sees an empty `DataTransfer`. Trusted `dragover`/`drop`
   with a `dataTransfer` is verified above; that empty `dragstart` is the stated
   limit, not a drop driven end to end from `dragstart`.
-- Assertions: `browser_assert` covers `dom`, `text`, `url` and `ax` with
-  bounded polling (verified above). Its `network` kind answers a typed
-  `not_implemented` and is not claimed.
+- Assertions: all five `browser_assert` kinds (`dom`, `text`, `url`, `ax`,
+  `network`) are shipped and receipted above. The remaining limit belongs to
+  `network`: it reads only the CDP ring this engine observes, and an empty ring
+  is a false verdict with a note, never a pass.
 - Responsive viewport audit (row B7) is landed and receipted above; its
   remaining limit is named there: four measured checks, not a screen-reader
   verdict or a full WCAG audit.
@@ -103,9 +109,12 @@ These are not implemented, not exercised, or not safe to claim from this slice.
   `browser.network_get`'s CDP ring and deterministic step captures into a
   caller's absolute directory; `redact[]` is literal and counted, never regex
   or automatic secret detection; cancel deletes only the names it wrote. The
-  `video` field is a named typed `not_implemented` - no CDP screencast wrapper
-  is shipped. Retention expiry is not implemented: retention is the caller's
-  directory and retention cleanup is cancel's owned-file removal.
+  `video` field now writes a playable MJPEG AVI from a CDP screencast: frames
+  are acknowledged, the file is constant-rate with previous-frame repeats for
+  late and tail slots, and the manifest reports `capturedFrames`,
+  `paddedFrames` and `frames`; no external encoder is used. Retention expiry is
+  still not implemented: retention is the caller's directory and retention
+  cleanup is cancel's owned-file removal.
 
 ### Desktop additions from the specification
 
@@ -118,8 +127,14 @@ These are not implemented, not exercised, or not safe to claim from this slice.
   leak); the 14-case capture matrix landed with 8 passes at 0 px anchor error
   and 6 Unverified-named on hardware (scales 125/150/200, a second monitor,
   an elevated process, the UAC secure desktop).
-- Clipboard reads (unchanged engine surface; not exercised here) — clipboard
-  writes remain prohibited.
+- Clipboard is no longer uniformly prohibited. `browser_clipboard` reads and
+  writes the page clipboard through `navigator.clipboard`, which in Chromium is
+  the Windows clipboard: a write replaces the owner's text and needs
+  `allow_clipboard:true`, while hand calls no Windows clipboard API itself.
+  `desktop_do` `clipboard_get` reads the owner's clipboard without a flag;
+  `clipboard_set` writes real `CF_UNICODETEXT` only with `allow_clipboard:true`
+  and `restore_clipboard:true` restores the previous text. A desktop clipboard
+  write is still an explicit opt-in, never a default.
 - Occluded capture is receipted (PrintWindow, byte-identical to the
   unoccluded frame); a minimized window returns the typed
   `window_minimized` and restores. The secure-desktop and elevated cases
@@ -136,7 +151,7 @@ existing target takes precedence over the hidden-launch request.
 - `oc-hand` OpenCode wiring: an installed copy serves the local
   OpenCode config; its version follows the release. Public remote
   `github.com/nathwn12/hand`; `hand-mcp` is published on npm through
-  `0.1.1` and `0.2.0`, with `0.3.0` shipping as this release.
+  `0.1.1` and `0.2.0`, with `0.4.0` shipping as this release.
 - Product and executable are `hand`; the repo, crate and binary were renamed
   from `hand-mcp`. Fixture ids, baseline captures and benchmark receipt schemas
   keep the `hand-mcp` names on purpose: they record what was measured, and

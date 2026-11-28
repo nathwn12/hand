@@ -1,5 +1,5 @@
 {
-  "$comment": "The one place a legacy tool may differ by hand. `inputSchema` and `outputSchema` list dotted paths relative to the schema object, so a top-level property is 'properties.<name>': each listed path must be PRESENT in the candidate (a missing or renamed one fails), and every property this file does not list must stay structurally identical to the pinned body in hand-catalog.json. `metadata.description` lists bare tool names whose description was deliberately rewritten: such a tool's description must DIFFER from the pin (an identical one is a stale declaration), and an unlisted description difference fails. `title` has no declared exceptions at all. A new entry needs its justification in docs/COMPATIBILITY.md under 'Intentional differences', and an entry is staged with the commit that ships it.",
+  "$comment": "The one place a legacy tool may differ by hand. `inputSchema` and `outputSchema` list dotted paths relative to the schema object, so a top-level property is 'properties.<name>': each listed path must be PRESENT in the candidate (a missing or renamed one fails), and every property this file does not list must stay structurally identical to the pinned body in hand-catalog.json. `metadata.description` lists bare tool names whose description was deliberately rewritten: such a tool's description must DIFFER from the pin (an identical one is a stale declaration), and an unlisted description difference fails. `metadata.rewrites` lists {tool, schema, path} descriptors for an existing property whose description was deliberately rewritten in place: the published value at <schema>.<path> MUST DIFFER from the pin's value at the same path (an identical value is a stale declaration and fails), and the pin's value is then substituted before the equality check so nothing else hides behind it. A path absent from the floor or from the published body fails, naming the tool, schema and path. `title` has no declared exceptions at all. A new entry needs its justification in docs/COMPATIBILITY.md under 'Intentional differences', and an entry is staged with the commit that ships it.",
   "version": 1,
   "inputSchema": {
     "browser_assert_layout": [
@@ -50,6 +50,15 @@
     ],
     "desktop_screenshot": [
       "properties.privacyMasks"
+    ],
+    "desktop_do": [
+      "properties.allow_cursor.description",
+      "properties.allow_foreground.description",
+      "properties.cursor_restore",
+      "properties.restore_clipboard"
+    ],
+    "desktop_window": [
+      "properties.allow_foreground.description"
     ]
   },
   "outputSchema": {
@@ -102,6 +111,17 @@
       "properties.noSteal",
       "properties.clipboardUnchanged",
       "properties.masks"
+    ],
+    "desktop_do": [
+      "properties.clipboard",
+      "properties.cursorMoved",
+      "properties.cursorRestored",
+      "properties.foregroundRestored"
+    ],
+    "desktop_window": [
+      "properties.foregroundAfter",
+      "properties.foregroundBefore",
+      "properties.foregroundChanged"
     ]
   },
   "metadata": {
@@ -119,7 +139,15 @@
       "desktop_diff",
       "desktop_do",
       "desktop_elements",
-      "desktop_screenshot"
+      "desktop_screenshot",
+      "desktop_window"
+    ],
+    "rewrites": [
+      {
+        "tool": "desktop_do",
+        "schema": "inputSchema",
+        "path": "properties.allow_clipboard.description"
+      }
     ]
   }
 }

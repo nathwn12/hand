@@ -331,7 +331,6 @@ fn main() {
 }
 "##;
 
-
 #[link(name = "kernel32")]
 extern "system" {
     fn OpenProcess(access: u32, inherit: i32, pid: u32) -> *mut core::ffi::c_void;
@@ -575,7 +574,6 @@ fn live_image(pid: u32) -> Option<String> {
     }
 }
 
-
 fn scratch(tag: &str) -> PathBuf {
     let dir = std::env::temp_dir()
         .join("opencode")
@@ -692,7 +690,6 @@ fn hidden_args(exe: &Path, journal: &Path, with_child: bool) -> Value {
         "settle_ms": 0,
     })
 }
-
 
 /// Regression: `desktop:"hidden"` alongside an explicit `target` is the legacy
 /// target-wins path - nothing is launched and the call keeps the ordinary

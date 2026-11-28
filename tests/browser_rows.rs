@@ -114,7 +114,11 @@ impl Fixture {
                 }
             }
         })];
-        Fixture { base, stop, handles }
+        Fixture {
+            base,
+            stop,
+            handles,
+        }
     }
 }
 
@@ -191,7 +195,12 @@ fn child_frame(s: &mut Session) -> String {
         .as_array()
         .expect("frames")
         .iter()
-        .find(|f| f.get("url").and_then(|v| v.as_str()).unwrap_or("").ends_with("/frame"))
+        .find(|f| {
+            f.get("url")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .ends_with("/frame")
+        })
         .and_then(|f| f.get("frameId").and_then(|v| v.as_str()))
         .map(str::to_string)
         .unwrap_or_else(|| panic!("no child frame in fixture: {}", text_of(&targets)))
@@ -204,47 +213,71 @@ fn b11_browser_form_runs_ordered_steps_with_partial_failure() {
     let mut s = Session::spawn();
 
     let names = s.list_tools();
-    assert!(names.iter().any(|t| t["name"] == "browser_form"),
-            "catalog must publish browser_form");
+    assert!(
+        names.iter().any(|t| t["name"] == "browser_form"),
+        "catalog must publish browser_form"
+    );
 
     let r = navigate_with_retry(&mut s, &format!("{}/form", fx.base));
     assert!(!is_error(&r), "{}", text_of(&r));
 
     // A missing field fails its step but the batch continues and submits.
-    let r = s.call("browser_form", json!({
-        "fields": [
-            {"field": "#name", "action": "type", "value": "Ada"},
-            {"field": "#missing", "action": "type", "value": "x"},
-            {"field": "#color", "action": "select", "value": "blue"},
-            {"field": "#ok", "action": "check"}
-        ],
-        "submit": "#go"
-    }));
+    let r = s.call(
+        "browser_form",
+        json!({
+            "fields": [
+                {"field": "#name", "action": "type", "value": "Ada"},
+                {"field": "#missing", "action": "type", "value": "x"},
+                {"field": "#color", "action": "select", "value": "blue"},
+                {"field": "#ok", "action": "check"}
+            ],
+            "submit": "#go"
+        }),
+    );
     assert!(!is_error(&r), "form batch failed: {}", text_of(&r));
     let sc = structured(&r);
     let steps = sc["steps"].as_array().expect("steps");
     assert_eq!(steps.len(), 4, "one step per field: {sc:?}");
     assert_eq!(steps[0]["field"].as_str().unwrap_or(""), "#name");
     assert_eq!(steps[0]["status"].as_str().unwrap_or(""), "ok");
-    assert_eq!(steps[1]["status"].as_str().unwrap_or(""), "error", "partial failure: {sc:?}");
-    assert!(steps[1]["error"].as_str().unwrap_or("").len() > 0, "error detail: {sc:?}");
+    assert_eq!(
+        steps[1]["status"].as_str().unwrap_or(""),
+        "error",
+        "partial failure: {sc:?}"
+    );
+    assert!(
+        steps[1]["error"].as_str().unwrap_or("").len() > 0,
+        "error detail: {sc:?}"
+    );
     assert_eq!(steps[2]["status"].as_str().unwrap_or(""), "ok");
     assert_eq!(steps[3]["status"].as_str().unwrap_or(""), "ok");
-    assert_eq!(sc["submitted"].as_bool(), Some(true), "submitted even after a step error");
+    assert_eq!(
+        sc["submitted"].as_bool(),
+        Some(true),
+        "submitted even after a step error"
+    );
     assert_eq!(sc["verdict"].as_str().unwrap_or(""), "fail");
 
     let state = evaluate(&mut s, "JSON.stringify({n:document.getElementById('name').value, c:document.getElementById('color').value, k:document.getElementById('ok').checked, sub:window.submitted})");
-    let state: Value = serde_json::from_str(state.as_str().expect("json string")).expect("parse state");
+    let state: Value =
+        serde_json::from_str(state.as_str().expect("json string")).expect("parse state");
     assert_eq!(state["n"].as_str().unwrap_or(""), "Ada");
     assert_eq!(state["c"].as_str().unwrap_or(""), "blue");
     assert_eq!(state["k"].as_bool(), Some(true));
-    assert_eq!(state["sub"].as_i64(), Some(1), "one submit per batch: {state:?}");
+    assert_eq!(
+        state["sub"].as_i64(),
+        Some(1),
+        "one submit per batch: {state:?}"
+    );
 
     // An all-good batch yields a pass verdict.
-    let r = s.call("browser_form", json!({
-        "fields": [{"field": "#name", "action": "type", "value": "Grace"}],
-        "submit": "#go"
-    }));
+    let r = s.call(
+        "browser_form",
+        json!({
+            "fields": [{"field": "#name", "action": "type", "value": "Grace"}],
+            "submit": "#go"
+        }),
+    );
     assert!(!is_error(&r), "{}", text_of(&r));
     let sc = structured(&r);
     assert_eq!(sc["verdict"].as_str().unwrap_or(""), "pass");
@@ -259,36 +292,78 @@ fn b10_native_datatransfer_drag_is_trusted() {
     let r = navigate_with_retry(&mut s, &format!("{}/drag", fx.base));
     assert!(!is_error(&r), "{}", text_of(&r));
 
-    let r = s.call("browser_drag", json!({
-        "from": "#src", "to": "#dst", "steps": 8,
-        "dataTransfer": {"text/plain": "payload-42", "application/x-hand": "row-7"}
-    }));
+    let r = s.call(
+        "browser_drag",
+        json!({
+            "from": "#src", "to": "#dst", "steps": 8,
+            "dataTransfer": {"text/plain": "payload-42", "application/x-hand": "row-7"}
+        }),
+    );
     assert!(!is_error(&r), "drag failed: {}", text_of(&r));
     let sc = structured(&r);
-    assert!(sc["dragEvents"].as_i64().unwrap_or(0) >= 3, "drag events: {sc:?}");
+    assert!(
+        sc["dragEvents"].as_i64().unwrap_or(0) >= 3,
+        "drag events: {sc:?}"
+    );
 
     let log = evaluate(&mut s, "window.dragLog");
     let arr = log.as_array().expect("dragLog array");
-    let start = arr.iter().find(|e| e["type"] == "dragstart").expect("dragstart");
-    assert_eq!(start["trusted"].as_bool(), Some(true), "dragstart trusted: {start:?}");
-    let start_types = start["types"].as_array().expect("dragstart DataTransfer.types array");
-    assert!(start_types.is_empty(), "CDP items must not be claimed on native dragstart: {start:?}");
+    let start = arr
+        .iter()
+        .find(|e| e["type"] == "dragstart")
+        .expect("dragstart");
+    assert_eq!(
+        start["trusted"].as_bool(),
+        Some(true),
+        "dragstart trusted: {start:?}"
+    );
+    let start_types = start["types"]
+        .as_array()
+        .expect("dragstart DataTransfer.types array");
+    assert!(
+        start_types.is_empty(),
+        "CDP items must not be claimed on native dragstart: {start:?}"
+    );
     let drop = arr.iter().find(|e| e["type"] == "drop").expect("drop");
-    assert_eq!(drop["trusted"].as_bool(), Some(true), "drop trusted: {drop:?}");
-    let types = drop["types"].as_array().expect("drop DataTransfer.types array");
-    assert!(types.iter().any(|t| t.as_str() == Some("text/plain")), "text/plain item missing from page DataTransfer: {drop:?}");
-    assert!(types.iter().any(|t| t.as_str() == Some("application/x-hand")), "application/x-hand item missing from page DataTransfer: {drop:?}");
-    assert_eq!(drop["text"].as_str().unwrap_or(""), "payload-42", "drop data: {drop:?}");
-    assert_eq!(drop["extra"].as_str().unwrap_or(""), "row-7", "second mime item: {drop:?}");
+    assert_eq!(
+        drop["trusted"].as_bool(),
+        Some(true),
+        "drop trusted: {drop:?}"
+    );
+    let types = drop["types"]
+        .as_array()
+        .expect("drop DataTransfer.types array");
+    assert!(
+        types.iter().any(|t| t.as_str() == Some("text/plain")),
+        "text/plain item missing from page DataTransfer: {drop:?}"
+    );
+    assert!(
+        types
+            .iter()
+            .any(|t| t.as_str() == Some("application/x-hand")),
+        "application/x-hand item missing from page DataTransfer: {drop:?}"
+    );
+    assert_eq!(
+        drop["text"].as_str().unwrap_or(""),
+        "payload-42",
+        "drop data: {drop:?}"
+    );
+    assert_eq!(
+        drop["extra"].as_str().unwrap_or(""),
+        "row-7",
+        "second mime item: {drop:?}"
+    );
 }
 
 #[test]
 fn b9_frame_scoped_layout_assert_layout_visual() {
     let _g = serial();
     let fx = Fixture::start();
-    let visual_dir = std::env::temp_dir().join(format!("hand-browser-rows-visual-{}", std::process::id()));
+    let visual_dir =
+        std::env::temp_dir().join(format!("hand-browser-rows-visual-{}", std::process::id()));
     let _ = std::fs::create_dir_all(&visual_dir);
-    let mut s = Session::spawn_with_env(&[("GLADIUS_VISUAL_DIR", visual_dir.to_string_lossy().as_ref())]);
+    let mut s =
+        Session::spawn_with_env(&[("GLADIUS_VISUAL_DIR", visual_dir.to_string_lossy().as_ref())]);
     let r = navigate_with_retry(&mut s, &format!("{}/frames", fx.base));
     assert!(!is_error(&r), "{}", text_of(&r));
     let fid = child_frame(&mut s);
@@ -299,34 +374,57 @@ fn b9_frame_scoped_layout_assert_layout_visual() {
     assert_eq!(structured(&main)["count"].as_i64(), Some(0));
 
     // Frame-scoped layout finds it, with a real measured rect.
-    let scoped = s.call("browser_layout", json!({"selector": "#in-frame", "frame": fid}));
-    assert!(!is_error(&scoped), "frame layout failed: {}", text_of(&scoped));
+    let scoped = s.call(
+        "browser_layout",
+        json!({"selector": "#in-frame", "frame": fid}),
+    );
+    assert!(
+        !is_error(&scoped),
+        "frame layout failed: {}",
+        text_of(&scoped)
+    );
     let sc = structured(&scoped);
     assert_eq!(sc["count"].as_i64(), Some(1), "frame layout: {sc:?}");
     let el = &sc["elements"][0];
-    assert!(el["rect"]["w"].as_f64().unwrap_or(0.0) > 0.0, "frame rect: {el:?}");
+    assert!(
+        el["rect"]["w"].as_f64().unwrap_or(0.0) > 0.0,
+        "frame rect: {el:?}"
+    );
     assert_eq!(el["computed"]["display"].as_str().unwrap_or(""), "block");
 
     // assert_layout honours the same frame contract.
-    let a = s.call("browser_assert_layout", json!({
-        "selector": "#in-frame", "frame": fid,
-        "checks": {"exists": true, "visible": true,
-                   "box": {"w": 120.0, "h": 40.0, "tolerance": 1.0}}
-    }));
+    let a = s.call(
+        "browser_assert_layout",
+        json!({
+            "selector": "#in-frame", "frame": fid,
+            "checks": {"exists": true, "visible": true,
+                       "box": {"w": 120.0, "h": 40.0, "tolerance": 1.0}}
+        }),
+    );
     assert!(!is_error(&a), "frame assert_layout failed: {}", text_of(&a));
     let asc = structured(&a);
-    assert_eq!(asc["pass"].as_bool(), Some(true), "checks: {:?}", asc["checks"]);
+    assert_eq!(
+        asc["pass"].as_bool(),
+        Some(true),
+        "checks: {:?}",
+        asc["checks"]
+    );
 
     // visual accepts the same frame id and scopes its capture to it.
-    let v = s.call("browser_visual", json!({
-        "action": "save", "name": "frame-baseline", "frame": fid
-    }));
+    let v = s.call(
+        "browser_visual",
+        json!({
+            "action": "save", "name": "frame-baseline", "frame": fid
+        }),
+    );
     assert!(!is_error(&v), "frame visual failed: {}", text_of(&v));
     let vsc = structured(&v);
     assert_eq!(vsc["frame"].as_str(), Some(fid.as_str()));
     let clip = &vsc["clip"];
-    assert!((clip["w"].as_f64().unwrap_or(0.0) - 300.0).abs() <= 1.0,
-            "capture must be clipped to the 300px iframe: {clip:?}");
+    assert!(
+        (clip["w"].as_f64().unwrap_or(0.0) - 300.0).abs() <= 1.0,
+        "capture must be clipped to the 300px iframe: {clip:?}"
+    );
     drop(s);
     let _ = std::fs::remove_dir_all(&visual_dir);
 }
@@ -338,32 +436,58 @@ fn b12_navigate_reports_observed_status_redirects_timings() {
     let mut s = Session::spawn();
 
     let r = navigate_with_retry(&mut s, &format!("{}/redirect", fx.base));
-    assert!(!is_error(&r), "redirect navigation must succeed: {}", text_of(&r));
+    assert!(
+        !is_error(&r),
+        "redirect navigation must succeed: {}",
+        text_of(&r)
+    );
     let sc = structured(&r);
-    assert_eq!(sc["url"].as_str().unwrap_or(""), format!("{}/next", fx.base));
+    assert_eq!(
+        sc["url"].as_str().unwrap_or(""),
+        format!("{}/next", fx.base)
+    );
     assert_eq!(sc["title"].as_str().unwrap_or(""), "Next Page");
 
     let obs = &sc["observed"];
     assert_eq!(obs["status"].as_i64(), Some(200), "real navigation status");
     let chain = obs["redirects"].as_array().expect("redirects is an array");
-    assert!(!chain.is_empty(), "a 302 hop must appear in the redirect chain");
     assert!(
-        chain.iter().any(|h| h["url"].as_str().unwrap_or("").contains("/redirect")),
+        !chain.is_empty(),
+        "a 302 hop must appear in the redirect chain"
+    );
+    assert!(
+        chain
+            .iter()
+            .any(|h| h["url"].as_str().unwrap_or("").contains("/redirect")),
         "chain must name the redirect hop: {chain:?}"
     );
     let tm = &obs["timings"];
     for k in ["request", "response", "finish"] {
-        assert!(tm[k].as_f64().unwrap_or(-1.0) >= 0.0, "timing {k} missing: {tm:?}");
+        assert!(
+            tm[k].as_f64().unwrap_or(-1.0) >= 0.0,
+            "timing {k} missing: {tm:?}"
+        );
     }
 
     // A same-document (fragment) navigation never hits the network: there is
     // no HTTP status to report, so observed.status is null with a note.
     let r2 = navigate_with_retry(&mut s, &format!("{}/next#frag", fx.base));
-    assert!(!is_error(&r2), "fragment navigation must succeed: {}", text_of(&r2));
-    let o2 = &structured(&r2)["observed"];
-    assert!(o2["status"].is_null(), "client-side navigation status must be null: {o2:?}");
     assert!(
-        o2["note"].as_str().unwrap_or("").to_ascii_lowercase().contains("null"),
+        !is_error(&r2),
+        "fragment navigation must succeed: {}",
+        text_of(&r2)
+    );
+    let o2 = &structured(&r2)["observed"];
+    assert!(
+        o2["status"].is_null(),
+        "client-side navigation status must be null: {o2:?}"
+    );
+    assert!(
+        o2["note"]
+            .as_str()
+            .unwrap_or("")
+            .to_ascii_lowercase()
+            .contains("null"),
         "null status must say so: {o2:?}"
     );
 }
@@ -379,8 +503,10 @@ fn b5_download_writes_file_with_sha256_mime_and_cleans_up() {
     let mut s = Session::spawn();
 
     let names = s.list_tools();
-    assert!(names.iter().any(|t| t["name"] == "browser_download"),
-            "catalog must publish browser_download");
+    assert!(
+        names.iter().any(|t| t["name"] == "browser_download"),
+        "catalog must publish browser_download"
+    );
 
     let dir = download_dir("ok");
     let _ = std::fs::remove_dir_all(&dir);
@@ -389,34 +515,71 @@ fn b5_download_writes_file_with_sha256_mime_and_cleans_up() {
     let page = navigate_with_retry(&mut s, &format!("{}/dl", fx.base));
     assert!(!is_error(&page), "{}", text_of(&page));
 
-    let r = s.call("browser_download", json!({
-        "dir": dir.to_string_lossy(), "accept": ["text/plain"],
-        "timeoutMs": 15000, "maxBytes": 1024, "filename": "hand-task.txt"
-    }));
+    let r = s.call(
+        "browser_download",
+        json!({
+            "dir": dir.to_string_lossy(), "accept": ["text/plain"],
+            "timeoutMs": 15000, "maxBytes": 1024, "filename": "hand-task.txt"
+        }),
+    );
     assert!(!is_error(&r), "download failed: {}", text_of(&r));
     let sc = structured(&r).clone();
-    assert_eq!(sc["bytes"].as_u64(), Some(DOWNLOAD_BYTES.len() as u64), "delivered bytes: {sc:?}");
-    assert_eq!(sc["sha256"].as_str().unwrap_or(""), DOWNLOAD_SHA256, "real SHA-256: {sc:?}");
-    assert_eq!(sc["mimeType"].as_str().unwrap_or(""), "text/plain", "mime: {sc:?}");
-    assert_eq!(sc["filename"].as_str().unwrap_or(""), "hand-task.txt", "filename: {sc:?}");
+    assert_eq!(
+        sc["bytes"].as_u64(),
+        Some(DOWNLOAD_BYTES.len() as u64),
+        "delivered bytes: {sc:?}"
+    );
+    assert_eq!(
+        sc["sha256"].as_str().unwrap_or(""),
+        DOWNLOAD_SHA256,
+        "real SHA-256: {sc:?}"
+    );
+    assert_eq!(
+        sc["mimeType"].as_str().unwrap_or(""),
+        "text/plain",
+        "mime: {sc:?}"
+    );
+    assert_eq!(
+        sc["filename"].as_str().unwrap_or(""),
+        "hand-task.txt",
+        "filename: {sc:?}"
+    );
     assert!(sc["headers"].is_object(), "headers: {sc:?}");
-    assert!(sc["durationMs"].as_u64().unwrap_or(u64::MAX) < 15000, "duration: {sc:?}");
+    assert!(
+        sc["durationMs"].as_u64().unwrap_or(u64::MAX) < 15000,
+        "duration: {sc:?}"
+    );
     let path = std::path::PathBuf::from(sc["path"].as_str().expect("path"));
     assert!(path.is_absolute(), "path must be absolute: {path:?}");
-    assert_eq!(std::fs::read(&path).expect("delivered file").as_slice(), DOWNLOAD_BYTES);
+    assert_eq!(
+        std::fs::read(&path).expect("delivered file").as_slice(),
+        DOWNLOAD_BYTES
+    );
 
     // Over-maxBytes is a cancel: it fails typed and leaves no partial file.
     let cancel_dir = download_dir("cancel");
     let _ = std::fs::remove_dir_all(&cancel_dir);
     std::fs::create_dir_all(&cancel_dir).expect("create cancel dir");
-    let r2 = s.call("browser_download", json!({
-        "dir": cancel_dir.to_string_lossy(), "maxBytes": 0, "timeoutMs": 15000
-    }));
-    assert!(is_error(&r2), "over-maxBytes must fail typed: {}", text_of(&r2));
-    let leftovers: Vec<_> = std::fs::read_dir(&cancel_dir).expect("read cancel dir")
-        .filter_map(Result::ok).collect();
-    assert!(leftovers.is_empty(), "no partial file may remain: {:?}",
-        leftovers.iter().map(|e| e.file_name()).collect::<Vec<_>>());
+    let r2 = s.call(
+        "browser_download",
+        json!({
+            "dir": cancel_dir.to_string_lossy(), "maxBytes": 0, "timeoutMs": 15000
+        }),
+    );
+    assert!(
+        is_error(&r2),
+        "over-maxBytes must fail typed: {}",
+        text_of(&r2)
+    );
+    let leftovers: Vec<_> = std::fs::read_dir(&cancel_dir)
+        .expect("read cancel dir")
+        .filter_map(Result::ok)
+        .collect();
+    assert!(
+        leftovers.is_empty(),
+        "no partial file may remain: {:?}",
+        leftovers.iter().map(|e| e.file_name()).collect::<Vec<_>>()
+    );
 
     let _ = std::fs::remove_dir_all(&dir);
     let _ = std::fs::remove_dir_all(&cancel_dir);
@@ -429,16 +592,30 @@ fn b2_assert_reports_expected_observed_verdict_for_dom_text_url() {
     let mut s = Session::spawn();
 
     let names = s.list_tools();
-    assert!(names.iter().any(|t| t["name"] == "browser_assert"),
-            "catalog must publish browser_assert");
+    assert!(
+        names.iter().any(|t| t["name"] == "browser_assert"),
+        "catalog must publish browser_assert"
+    );
+
+    // Arm the CDP ring before the first request so the network assertion
+    // below reads a real observation, not a lazy-enabled empty buffer.
+    let armed = s.call("browser_network", json!({"action": "get"}));
+    assert!(
+        !is_error(&armed),
+        "arming network capture failed: {}",
+        text_of(&armed)
+    );
 
     let page = navigate_with_retry(&mut s, &format!("{}/next", fx.base));
     assert!(!is_error(&page), "{}", text_of(&page));
 
-    let dom = s.call("browser_assert", json!({
-        "kind": "dom", "target": "h1",
-        "expected": {"exists": true, "text": "next"}
-    }));
+    let dom = s.call(
+        "browser_assert",
+        json!({
+            "kind": "dom", "target": "h1",
+            "expected": {"exists": true, "text": "next"}
+        }),
+    );
     assert!(!is_error(&dom), "dom assert failed: {}", text_of(&dom));
     let d = structured(&dom);
     assert_eq!(d["verdict"].as_bool(), Some(true), "dom verdict: {d:?}");
@@ -450,69 +627,192 @@ fn b2_assert_reports_expected_observed_verdict_for_dom_text_url() {
     // An @eN ref from a real snapshot resolves as a dom target too.
     let snap = s.call("browser_snapshot", json!({}));
     assert!(!is_error(&snap), "{}", text_of(&snap));
-    let nodes = structured(&snap)["nodes"].as_array().cloned().unwrap_or_default();
-    let refs: Vec<String> = nodes.iter()
-        .filter_map(|n| n["ref"].as_str().map(str::to_string)).collect();
+    let nodes = structured(&snap)["nodes"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    let refs: Vec<String> = nodes
+        .iter()
+        .filter_map(|n| n["ref"].as_str().map(str::to_string))
+        .collect();
     assert!(!refs.is_empty(), "snapshot must mint refs");
-    let by_ref = s.call("browser_assert", json!({
-        "kind": "dom", "target": refs[0], "expected": {"exists": true}
-    }));
-    assert!(!is_error(&by_ref), "ref assert failed: {}", text_of(&by_ref));
+    let by_ref = s.call(
+        "browser_assert",
+        json!({
+            "kind": "dom", "target": refs[0], "expected": {"exists": true}
+        }),
+    );
+    assert!(
+        !is_error(&by_ref),
+        "ref assert failed: {}",
+        text_of(&by_ref)
+    );
     assert_eq!(structured(&by_ref)["verdict"].as_bool(), Some(true));
 
-    let text = s.call("browser_assert", json!({
-        "kind": "text", "expected": {"contains": "next"}
-    }));
+    let text = s.call(
+        "browser_assert",
+        json!({
+            "kind": "text", "expected": {"contains": "next"}
+        }),
+    );
     assert!(!is_error(&text), "text assert failed: {}", text_of(&text));
     assert_eq!(structured(&text)["verdict"].as_bool(), Some(true));
 
-    let url = s.call("browser_assert", json!({
-        "kind": "url", "expected": {"matches": "^http://.*/next$"}
-    }));
+    let url = s.call(
+        "browser_assert",
+        json!({
+            "kind": "url", "expected": {"matches": "^http://.*/next$"}
+        }),
+    );
     assert!(!is_error(&url), "url assert failed: {}", text_of(&url));
     assert_eq!(structured(&url)["verdict"].as_bool(), Some(true));
 
     // A still-false check is a normal verdict, not a timeout error: it carries
     // the LAST observed value and stops at the poll budget.
-    let fail = s.call("browser_assert", json!({
-        "kind": "text", "expected": {"contains": "NOT-ON-PAGE"},
-        "timeoutMs": 300, "pollMs": 50
-    }));
-    assert!(!is_error(&fail), "a false verdict must not be an error: {}", text_of(&fail));
+    let fail = s.call(
+        "browser_assert",
+        json!({
+            "kind": "text", "expected": {"contains": "NOT-ON-PAGE"},
+            "timeoutMs": 300, "pollMs": 50
+        }),
+    );
+    assert!(
+        !is_error(&fail),
+        "a false verdict must not be an error: {}",
+        text_of(&fail)
+    );
     let f = structured(&fail);
     assert_eq!(f["verdict"].as_bool(), Some(false), "false verdict: {f:?}");
-    assert!(f["observed"]["text"].as_str().unwrap_or("").contains("next"),
-            "last observed text: {f:?}");
+    assert!(
+        f["observed"]["text"]
+            .as_str()
+            .unwrap_or("")
+            .contains("next"),
+        "last observed text: {f:?}"
+    );
 
     // ax reads the same Accessibility tree the snapshot renders: the h1 on
     // this page is a heading named "next" (the page title is "Next Page").
     // The verdict is the string the frozen ax fixture expects, and every
     // check carries its measurement.
-    let ax = s.call("browser_assert", json!({
-        "kind": "ax", "target": "role=heading[name=\"next\"]",
-        "expected": {"role": "heading", "name": "next"}
-    }));
+    let ax = s.call(
+        "browser_assert",
+        json!({
+            "kind": "ax", "target": "role=heading[name=\"next\"]",
+            "expected": {"role": "heading", "name": "next"}
+        }),
+    );
     assert!(!is_error(&ax), "ax assert failed: {}", text_of(&ax));
     let a = structured(&ax);
-    assert_eq!(a["verdict"].as_str().unwrap_or(""), "pass", "ax verdict: {a:?}");
-    assert!(a["observed"]["source"].as_str().unwrap_or("").contains("Accessibility.getFullAXTree"),
-            "ax must read the snapshot's AX tree: {a:?}");
+    assert_eq!(
+        a["verdict"].as_str().unwrap_or(""),
+        "pass",
+        "ax verdict: {a:?}"
+    );
+    assert!(
+        a["observed"]["source"]
+            .as_str()
+            .unwrap_or("")
+            .contains("Accessibility.getFullAXTree"),
+        "ax must read the snapshot's AX tree: {a:?}"
+    );
     let ax_checks = a["evidence"]["checks"].as_array().expect("checks");
     assert_eq!(ax_checks.len(), 3, "exists + role + name: {a:?}");
-    assert!(ax_checks.iter().all(|c| c["pass"] == true), "checks: {ax_checks:?}");
+    assert!(
+        ax_checks.iter().all(|c| c["pass"] == true),
+        "checks: {ax_checks:?}"
+    );
 
     // A false ax check is a normal verdict, not a typed error.
-    let ax_miss = s.call("browser_assert", json!({
-        "kind": "ax", "target": "role=heading[name=\"Not On This Page\"]",
-        "expected": {"role": "heading", "name": "Not On This Page"}, "timeoutMs": 200
-    }));
-    assert!(!is_error(&ax_miss), "a false ax verdict must not be an error: {}", text_of(&ax_miss));
-    assert_eq!(structured(&ax_miss)["verdict"].as_str().unwrap_or(""), "fail");
+    let ax_miss = s.call(
+        "browser_assert",
+        json!({
+            "kind": "ax", "target": "role=heading[name=\"Not On This Page\"]",
+            "expected": {"role": "heading", "name": "Not On This Page"}, "timeoutMs": 200
+        }),
+    );
+    assert!(
+        !is_error(&ax_miss),
+        "a false ax verdict must not be an error: {}",
+        text_of(&ax_miss)
+    );
+    assert_eq!(
+        structured(&ax_miss)["verdict"].as_str().unwrap_or(""),
+        "fail"
+    );
 
-    // network stays honestly unimplemented rather than faked.
-    let network = s.call("browser_assert", json!({"kind": "network", "expected": {}}));
-    assert!(is_error(&network), "network must be a typed not_implemented");
-    assert_eq!(structured(&network)["code"].as_str().unwrap_or(""), "not_implemented");
+    // network reads the live CDP ring. A non-matching URL is still a normal
+    // verdict: false with the closest misses as evidence, never a minted true.
+    let miss = s.call(
+        "browser_assert",
+        json!({
+            "kind": "network",
+            "expected": {"url": format!("{}/NOT-ON-THE-WIRE", fx.base), "minCount": 1},
+            "timeoutMs": 200, "pollMs": 50
+        }),
+    );
+    assert!(
+        !is_error(&miss),
+        "a missing network match is a verdict, not an error: {}",
+        text_of(&miss)
+    );
+    let m = structured(&miss);
+    assert_eq!(
+        m["verdict"].as_bool(),
+        Some(false),
+        "a non-matching URL must be false: {m:?}"
+    );
+    assert!(
+        m["observed"]["total"].as_u64().unwrap_or(0) >= 1,
+        "the ring must hold the navigation: {m:?}"
+    );
+    assert_eq!(
+        m["observed"]["matchedCount"].as_u64(),
+        Some(0),
+        "no false match: {m:?}"
+    );
+    assert!(
+        m["evidence"]["closestMisses"]
+            .as_array()
+            .is_some_and(|a| !a.is_empty()),
+        "evidence must name the near misses: {m:?}"
+    );
+    assert!(
+        m["evidence"]["note"].is_null(),
+        "a populated ring needs no empty-ring note: {m:?}"
+    );
+
+    // The navigation we made is on that same ring: its URL is a real request.
+    let real_url = format!("{}/next", fx.base);
+    let network = s.call(
+        "browser_assert",
+        json!({
+            "kind": "network",
+            "expected": {"url": real_url, "minCount": 1},
+            "timeoutMs": 1000, "pollMs": 50
+        }),
+    );
+    assert!(
+        !is_error(&network),
+        "network assert failed: {}",
+        text_of(&network)
+    );
+    let n = structured(&network);
+    assert_eq!(
+        n["verdict"].as_bool(),
+        Some(true),
+        "a real request must pass: {n:?}"
+    );
+    assert!(
+        n["observed"]["matchedCount"].as_u64().unwrap_or(0) >= 1,
+        "matched count: {n:?}"
+    );
+    assert!(
+        n["evidence"]["matched"]
+            .as_array()
+            .is_some_and(|a| !a.is_empty()),
+        "evidence must name the matched request: {n:?}"
+    );
 }
 
 #[test]
@@ -522,59 +822,137 @@ fn b7_audit_measures_six_viewports_with_evidence_per_check() {
     let mut s = Session::spawn();
 
     let names = s.list_tools();
-    assert!(names.iter().any(|t| t["name"] == "browser_audit"),
-            "catalog must publish browser_audit");
+    assert!(
+        names.iter().any(|t| t["name"] == "browser_audit"),
+        "catalog must publish browser_audit"
+    );
 
     let page = navigate_with_retry(&mut s, &format!("{}/audit", fx.base));
     assert!(!is_error(&page), "{}", text_of(&page));
     let default_width = evaluate(&mut s, "window.innerWidth").as_i64().unwrap_or(0);
 
-    let r = s.call("browser_audit", json!({
-        "viewports": [360, 390, 768, 1024, 1440, 2560],
-        "checks": ["overflow", "contrast", "focus", "targetSize"]
-    }));
+    let r = s.call(
+        "browser_audit",
+        json!({
+            "viewports": [360, 390, 768, 1024, 1440, 2560],
+            "checks": ["overflow", "contrast", "focus", "targetSize"]
+        }),
+    );
     assert!(!is_error(&r), "audit failed: {}", text_of(&r));
     let sc = structured(&r).clone();
-    assert_eq!(sc["verdict"].as_str().unwrap_or(""), "pass", "audit must complete: {sc:?}");
+    assert_eq!(
+        sc["verdict"].as_str().unwrap_or(""),
+        "fail",
+        "a page that fails a requested check must not report pass: {sc:?}"
+    );
+    assert_eq!(
+        sc["measured"].as_str().unwrap_or(""),
+        "pass",
+        "every requested check produced a measurement: {sc:?}"
+    );
     let records = sc["viewports"].as_array().expect("viewports");
     assert_eq!(records.len(), 6, "one record per viewport: {sc:?}");
 
     for (i, rec) in records.iter().enumerate() {
         let requested = [360, 390, 768, 1024, 1440, 2560][i];
-        assert_eq!(rec["width"].as_i64(), Some(requested), "live read-back: {rec:?}");
-        for key in ["scrollWidth", "overflow", "contrast", "focus", "targetSize", "verdict"] {
+        assert_eq!(
+            rec["width"].as_i64(),
+            Some(requested),
+            "live read-back: {rec:?}"
+        );
+        for key in [
+            "scrollWidth",
+            "overflow",
+            "contrast",
+            "focus",
+            "targetSize",
+            "verdict",
+        ] {
             assert!(rec.get(key).is_some(), "missing {key}: {rec:?}");
         }
         let sw = rec["scrollWidth"].as_i64().unwrap_or(0);
-        let cw = rec["overflow"]["observed"]["clientWidth"].as_i64().unwrap_or(0);
+        let cw = rec["overflow"]["observed"]["clientWidth"]
+            .as_i64()
+            .unwrap_or(0);
         assert!(sw > 0 && cw > 0, "measured widths: {rec:?}");
-        assert_eq!(rec["overflow"]["observed"]["excess"].as_i64(), Some(sw - cw));
+        assert_eq!(
+            rec["overflow"]["observed"]["excess"].as_i64(),
+            Some(sw - cw)
+        );
         if requested == 360 {
             assert!(sw > cw, "360px must show the deliberate overflow: {rec:?}");
         }
         for key in ["overflow", "contrast", "focus", "targetSize"] {
-            assert!(rec[key].get("observed").is_some(), "{key} needs a measurement: {rec:?}");
-            assert!(rec[key].get("expected").is_some(), "{key} needs an expectation: {rec:?}");
-            assert!(rec[key].get("pass").is_some(), "{key} needs a pass flag: {rec:?}");
+            assert!(
+                rec[key].get("observed").is_some(),
+                "{key} needs a measurement: {rec:?}"
+            );
+            assert!(
+                rec[key].get("expected").is_some(),
+                "{key} needs an expectation: {rec:?}"
+            );
+            assert!(
+                rec[key].get("pass").is_some(),
+                "{key} needs a pass flag: {rec:?}"
+            );
         }
-        assert!(rec["contrast"]["formula"].as_str().unwrap_or("").contains("0.2126"),
-                "contrast must state its formula: {rec:?}");
-        let ratio = rec["contrast"]["observed"]["ratio"].as_f64().unwrap_or(99.0);
-        assert!(ratio > 0.0 && ratio < 4.5, "low-contrast block must be named: {rec:?}");
-        assert_eq!(rec["contrast"]["observed"]["selector"].as_str().unwrap_or(""), "#low-contrast");
-        assert_eq!(rec["focus"]["observed"]["ringVisible"].as_bool(), Some(false),
-                   "one of the focused controls has no ring: {rec:?}");
-        let no_ring = rec["focus"]["observed"]["noRing"].as_array().expect("noRing");
-        assert!(no_ring.iter().any(|n| n.as_str() == Some("#focusable")),
-                "the control whose focus rule suppresses the ring must be named: {rec:?}");
-        let small = rec["targetSize"]["observed"]["small"].as_array().expect("small targets");
-        assert!(small.iter().any(|t| t["selector"] == "#tiny"), "tiny target must be named: {rec:?}");
-        assert_eq!(rec["verdict"].as_bool(), Some(false), "the page fails these checks: {rec:?}");
+        assert!(
+            rec["contrast"]["formula"]
+                .as_str()
+                .unwrap_or("")
+                .contains("0.2126"),
+            "contrast must state its formula: {rec:?}"
+        );
+        let ratio = rec["contrast"]["observed"]["ratio"]
+            .as_f64()
+            .unwrap_or(99.0);
+        assert!(
+            ratio > 0.0 && ratio < 4.5,
+            "low-contrast block must be named: {rec:?}"
+        );
+        assert_eq!(
+            rec["contrast"]["observed"]["selector"]
+                .as_str()
+                .unwrap_or(""),
+            "#low-contrast"
+        );
+        assert_eq!(
+            rec["focus"]["observed"]["ringVisible"].as_bool(),
+            Some(false),
+            "one of the focused controls has no ring: {rec:?}"
+        );
+        let no_ring = rec["focus"]["observed"]["noRing"]
+            .as_array()
+            .expect("noRing");
+        assert!(
+            no_ring.iter().any(|n| n.as_str() == Some("#focusable")),
+            "the control whose focus rule suppresses the ring must be named: {rec:?}"
+        );
+        let small = rec["targetSize"]["observed"]["small"]
+            .as_array()
+            .expect("small targets");
+        assert!(
+            small.iter().any(|t| t["selector"] == "#tiny"),
+            "tiny target must be named: {rec:?}"
+        );
+        assert_eq!(
+            rec["verdict"].as_str().unwrap_or(""),
+            "fail",
+            "the page fails these checks: {rec:?}"
+        );
+        assert_eq!(
+            rec["verdict"].as_str(),
+            sc["verdict"].as_str(),
+            "per-viewport and top-level verdicts agree: {rec:?} {sc:?}"
+        );
     }
 
     // The matrix restores the connection-wide viewport override.
     let after = evaluate(&mut s, "window.innerWidth").as_i64().unwrap_or(0);
-    assert_eq!(after, default_width, "viewport must be restored after the audit");
+    assert_eq!(
+        after, default_width,
+        "viewport must be restored after the audit"
+    );
 }
 
 #[test]
@@ -584,8 +962,10 @@ fn b6_trace_writes_har_with_counted_redaction_and_cancel_cleans_up() {
     let mut s = Session::spawn();
 
     let tools = s.list_tools();
-    assert!(tools.iter().any(|t| t["name"] == "browser_trace"),
-            "catalog must publish browser_trace");
+    assert!(
+        tools.iter().any(|t| t["name"] == "browser_trace"),
+        "catalog must publish browser_trace"
+    );
 
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -595,66 +975,147 @@ fn b6_trace_writes_har_with_counted_redaction_and_cancel_cleans_up() {
     let dir_str = dir.to_string_lossy().to_string();
 
     // Both refusals are typed and land before any file is created.
-    let relative = s.call("browser_trace", json!({"dir": "relative/trace", "har": true}));
-    assert!(is_error(&relative), "a relative dir must be refused: {}", text_of(&relative));
+    let relative = s.call(
+        "browser_trace",
+        json!({"dir": "relative/trace", "har": true}),
+    );
+    assert!(
+        is_error(&relative),
+        "a relative dir must be refused: {}",
+        text_of(&relative)
+    );
     let sc = structured(&relative);
     assert_eq!(sc["code"].as_str().unwrap_or(""), "invalid_args");
     assert_eq!(sc["reason"].as_str().unwrap_or(""), "bad_value");
     assert_eq!(sc["arg"].as_str().unwrap_or(""), "dir");
-
-    let video = s.call("browser_trace", json!({"dir": dir_str, "video": true}));
-    assert!(is_error(&video), "video must stay typed not_implemented: {}", text_of(&video));
-    let sc = structured(&video);
-    assert_eq!(sc["code"].as_str().unwrap_or(""), "not_implemented");
-    assert_eq!(sc["field"].as_str().unwrap_or(""), "video");
-    assert!(!dir.exists(), "a refusal must not create the caller's directory");
+    assert!(
+        !dir.exists(),
+        "a refusal must not create the caller's directory"
+    );
 
     // Arm the existing CDP Network ring, then navigate to a URL that carries
     // the literal we will redact. The HAR must wrap that real observation.
     let armed = s.call("browser_network", json!({"action": "get"}));
-    assert!(!is_error(&armed), "arming network capture failed: {}", text_of(&armed));
+    assert!(
+        !is_error(&armed),
+        "arming network capture failed: {}",
+        text_of(&armed)
+    );
     let page = navigate_with_retry(&mut s, &format!("{}/trace?Authorization=secret", fx.base));
     assert!(!is_error(&page), "{}", text_of(&page));
 
-    let r = s.call("browser_trace", json!({
-        "dir": dir_str,
-        "screenshots": true,
-        "har": true,
-        "redact": ["Authorization", "not-on-this-page"]
-    }));
+    let r = s.call(
+        "browser_trace",
+        json!({
+            "dir": dir_str,
+            "screenshots": true,
+            "har": true,
+            "redact": ["Authorization", "not-on-this-page"]
+        }),
+    );
     assert!(!is_error(&r), "trace failed: {}", text_of(&r));
     let sc = structured(&r).clone();
     assert_eq!(sc["ok"].as_bool(), Some(true), "trace payload: {sc:?}");
     assert_eq!(sc["dir"].as_str(), Some(dir_str.as_str()));
     let files = sc["files"].as_array().expect("files");
-    assert_eq!(files.len(), 2, "one HAR and one deterministic step: {sc:?}");
-    assert!(sc["bytes"].as_u64().unwrap_or(0) > 0, "bytes must be counted: {sc:?}");
+    assert_eq!(
+        files.len(),
+        3,
+        "HAR, one deterministic step and the manifest: {sc:?}"
+    );
+    let names: Vec<&str> = files.iter().filter_map(|f| f["name"].as_str()).collect();
+    assert!(
+        names.contains(&"trace.har")
+            && names.contains(&"step-0001.png")
+            && names.contains(&"manifest.json"),
+        "artifact names: {files:?}"
+    );
+    assert!(
+        sc["bytes"].as_u64().unwrap_or(0) > 0,
+        "bytes must be counted: {sc:?}"
+    );
 
     let har_path = dir.join("trace.har");
     let shot_path = dir.join("step-0001.png");
+    let manifest_path = dir.join("manifest.json");
+    let manifest: Value =
+        serde_json::from_str(&std::fs::read_to_string(&manifest_path).expect("manifest on disk"))
+            .expect("manifest is valid JSON");
+    let listed: Vec<&str> = manifest["files"]
+        .as_array()
+        .expect("manifest files")
+        .iter()
+        .filter_map(|f| f["name"].as_str())
+        .collect();
+    assert!(
+        listed.contains(&"trace.har") && listed.contains(&"step-0001.png"),
+        "manifest names the HAR and the step: {manifest:?}"
+    );
+    assert!(
+        manifest["video"].is_null(),
+        "no video was requested: {manifest:?}"
+    );
     let har_text = std::fs::read_to_string(&har_path).expect("HAR on disk");
     let har: Value = serde_json::from_str(&har_text).expect("HAR is valid JSON");
-    assert_eq!(har["log"]["version"].as_str(), Some("1.2"), "HAR 1.2: {har:?}");
-    assert!(har["log"]["comment"].as_str().unwrap_or("").contains("browser.network_get"),
-            "HAR must name the capture it wraps");
+    assert_eq!(
+        har["log"]["version"].as_str(),
+        Some("1.2"),
+        "HAR 1.2: {har:?}"
+    );
+    assert!(
+        har["log"]["comment"]
+            .as_str()
+            .unwrap_or("")
+            .contains("browser.network_get"),
+        "HAR must name the capture it wraps"
+    );
     let entries = har["log"]["entries"].as_array().expect("entries");
-    assert!(!entries.is_empty(), "the armed ring must have real network entries");
-    assert!(entries.iter().all(|e| e["_capture"]["source"] == "browser.network_get"),
-            "every entry must name its source: {entries:?}");
-    assert!(entries.iter().any(|e| e["request"]["url"].as_str().unwrap_or("").contains("/trace")),
-            "the traced navigation must appear: {entries:?}");
-    assert!(!har_text.contains("Authorization"), "literal must be gone from the HAR text");
-    assert!(har_text.contains("[REDACTED]"), "replacement marker must be visible");
+    assert!(
+        !entries.is_empty(),
+        "the armed ring must have real network entries"
+    );
+    assert!(
+        entries
+            .iter()
+            .all(|e| e["_capture"]["source"] == "browser.network_get"),
+        "every entry must name its source: {entries:?}"
+    );
+    assert!(
+        entries.iter().any(|e| e["request"]["url"]
+            .as_str()
+            .unwrap_or("")
+            .contains("/trace")),
+        "the traced navigation must appear: {entries:?}"
+    );
+    assert!(
+        !har_text.contains("Authorization"),
+        "literal must be gone from the HAR text"
+    );
+    assert!(
+        har_text.contains("[REDACTED]"),
+        "replacement marker must be visible"
+    );
     let redactions = sc["redactions"].as_array().expect("redactions");
     let found = |literal: &str| redactions.iter().find(|r| r["literal"] == literal).cloned();
     let hit = found("Authorization").expect("named literal");
     assert_eq!(hit["marker"].as_str(), Some("[REDACTED]"));
-    assert!(hit["count"].as_u64().unwrap_or(0) >= 1, "counted occurrence: {hit:?}");
+    assert!(
+        hit["count"].as_u64().unwrap_or(0) >= 1,
+        "counted occurrence: {hit:?}"
+    );
     let miss = found("not-on-this-page").expect("a literal with zero hits is still named");
-    assert_eq!(miss["count"].as_u64(), Some(0), "no false detection: {miss:?}");
+    assert_eq!(
+        miss["count"].as_u64(),
+        Some(0),
+        "no false detection: {miss:?}"
+    );
 
     let shot = std::fs::read(&shot_path).expect("deterministic step on disk");
-    assert!(shot.len() > 1000 && shot.starts_with(b"\x89PNG"), "real PNG: {} bytes", shot.len());
+    assert!(
+        shot.len() > 1000 && shot.starts_with(b"\x89PNG"),
+        "real PNG: {} bytes",
+        shot.len()
+    );
 
     // Cancel removes only what this tool wrote; a caller's file survives.
     let bystander = dir.join("caller-note.txt");
@@ -662,13 +1123,122 @@ fn b6_trace_writes_har_with_counted_redaction_and_cancel_cleans_up() {
     let cancel = s.call("browser_trace", json!({"action": "cancel"}));
     assert!(!is_error(&cancel), "cancel failed: {}", text_of(&cancel));
     assert_eq!(structured(&cancel)["ok"].as_bool(), Some(true));
-    assert!(!har_path.exists() && !shot_path.exists(), "owned artifacts removed on cancel");
-    assert_eq!(std::fs::read_to_string(&bystander).expect("bystander survived"), "keep me");
+    assert!(
+        !har_path.exists() && !shot_path.exists() && !manifest_path.exists(),
+        "owned artifacts removed on cancel"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&bystander).expect("bystander survived"),
+        "keep me"
+    );
 
     let cancel_again = s.call("browser_trace", json!({"action": "cancel"}));
-    assert!(!is_error(&cancel_again), "cancel is idempotent: {}", text_of(&cancel_again));
+    assert!(
+        !is_error(&cancel_again),
+        "cancel is idempotent: {}",
+        text_of(&cancel_again)
+    );
     assert_eq!(structured(&cancel_again)["ok"].as_bool(), Some(true));
     let _ = std::fs::remove_dir_all(&dir);
+
+    // video is implemented: a bounded CDP screencast lands as a playable
+    // MJPEG AVI, accounted for in both the reply and the manifest. Keep the
+    // page changing so the screencast delivers real frames, not just a name.
+    let video_dir = trace_dir("b6-video");
+    let video_dir_str = video_dir.to_string_lossy().to_string();
+    let _ = evaluate(&mut s, "(function(){var n=0;window.__handAnim=setInterval(function(){n++;document.querySelector('h1').style.marginLeft=(n%12)+'px';},60);return 'armed';})()");
+    let video = s.call(
+        "browser_trace",
+        json!({
+            "dir": video_dir_str, "video": true, "videoDurationMs": 1000
+        }),
+    );
+    assert!(!is_error(&video), "video trace failed: {}", text_of(&video));
+    let v = structured(&video).clone();
+    assert_eq!(v["ok"].as_bool(), Some(true), "video payload: {v:?}");
+    assert_eq!(v["dir"].as_str(), Some(video_dir_str.as_str()));
+    let vf = v["files"].as_array().expect("video artifact list");
+    assert_eq!(vf.len(), 2, "AVI and its manifest: {v:?}");
+    let avi_file = vf
+        .iter()
+        .find(|f| f["name"] == "trace.avi")
+        .expect("reply lists trace.avi");
+    assert_eq!(avi_file["kind"], "video", "typed file kind: {avi_file:?}");
+    let avi_path = video_dir.join("trace.avi");
+    let avi = std::fs::read(&avi_path).expect("AVI on disk");
+    assert_eq!(
+        avi_file["bytes"].as_u64(),
+        Some(avi.len() as u64),
+        "AVI bytes counted: {avi_file:?}"
+    );
+    assert!(
+        avi.starts_with(b"RIFF"),
+        "RIFF magic: {:?}",
+        &avi[..avi.len().min(4)]
+    );
+    assert!(avi.len() > 12 && &avi[8..12] == b"AVI ", "AVI form type");
+    let frames = movi_frames(&avi);
+    assert!(frames >= 1, "the AVI must carry at least one 00dc frame");
+    assert!(
+        vf.iter().any(|f| f["name"] == "manifest.json"),
+        "reply lists manifest.json: {v:?}"
+    );
+
+    let vm: Value = serde_json::from_str(
+        &std::fs::read_to_string(video_dir.join("manifest.json")).expect("video manifest on disk"),
+    )
+    .expect("manifest is valid JSON");
+    let vb = &vm["video"];
+    assert_eq!(
+        vb["container"].as_str(),
+        Some("mjpeg-avi"),
+        "video facts: {vb:?}"
+    );
+    assert_eq!(
+        vb["frames"].as_u64(),
+        Some(frames as u64),
+        "manifest frame count: {vb:?}"
+    );
+    assert!(
+        vb["capturedFrames"].as_u64().unwrap_or(0) >= 1,
+        "fresh frames counted: {vb:?}"
+    );
+    assert!(vb["paddedFrames"].is_u64(), "repeat frames counted: {vb:?}");
+    assert_eq!(
+        vb["durationMs"].as_u64(),
+        Some(1000),
+        "bounded window: {vb:?}"
+    );
+    assert!(
+        vb["fps"].as_u64().unwrap_or(0) >= 1,
+        "frame rate named: {vb:?}"
+    );
+    assert!(
+        vb["firstFrameTsMs"].as_f64().is_some(),
+        "first frame timestamp named: {vb:?}"
+    );
+    assert!(
+        vb["lastFrameTsMs"].as_f64().is_some(),
+        "last frame timestamp named: {vb:?}"
+    );
+    assert_eq!(
+        vb["bytes"].as_u64(),
+        Some(avi.len() as u64),
+        "manifest names AVI bytes: {vb:?}"
+    );
+
+    let cancel_video = s.call("browser_trace", json!({"action": "cancel"}));
+    assert!(
+        !is_error(&cancel_video),
+        "video cancel failed: {}",
+        text_of(&cancel_video)
+    );
+    assert_eq!(structured(&cancel_video)["ok"].as_bool(), Some(true));
+    assert!(
+        !avi_path.exists() && !video_dir.join("manifest.json").exists(),
+        "video artifacts removed on cancel"
+    );
+    let _ = std::fs::remove_dir_all(&video_dir);
 }
 
 /// A per-test absolute trace directory, unique so two tests never share the
@@ -681,6 +1251,25 @@ fn trace_dir(tag: &str) -> std::path::PathBuf {
     std::env::temp_dir().join(format!("hand-trace-{tag}-{}-{nanos}", std::process::id()))
 }
 
+/// Count the `00dc` JPEG chunks inside the `movi` list of a real MJPEG AVI.
+/// idx1 repeats the FOURCC as an index entry, so only `movi` is walked.
+fn movi_frames(avi: &[u8]) -> usize {
+    let pos = avi
+        .windows(4)
+        .position(|w| w == b"movi")
+        .expect("movi list");
+    let size = u32::from_le_bytes(avi[pos - 4..pos].try_into().unwrap()) as usize;
+    let end = pos + size;
+    let mut at = pos + 4;
+    let mut frames = 0;
+    while at + 8 <= end && &avi[at..at + 4] == b"00dc" {
+        let len = u32::from_le_bytes(avi[at + 4..at + 8].try_into().unwrap()) as usize;
+        at += 8 + len + len % 2;
+        frames += 1;
+    }
+    frames
+}
+
 #[test]
 fn navigate_404_reports_the_real_status() {
     let _g = serial();
@@ -688,10 +1277,21 @@ fn navigate_404_reports_the_real_status() {
     let mut s = Session::spawn();
 
     let r = navigate_with_retry(&mut s, &format!("{}/missing", fx.base));
-    assert!(!is_error(&r), "an HTTP 404 is still a navigation: {}", text_of(&r));
+    assert!(
+        !is_error(&r),
+        "an HTTP 404 is still a navigation: {}",
+        text_of(&r)
+    );
     let sc = structured(&r);
-    assert_eq!(sc["observed"]["status"].as_i64(), Some(404), "observed status: {sc}");
-    assert_eq!(evaluate(&mut s, "document.querySelector('h1').textContent"), json!("missing"));
+    assert_eq!(
+        sc["observed"]["status"].as_i64(),
+        Some(404),
+        "observed status: {sc}"
+    );
+    assert_eq!(
+        evaluate(&mut s, "document.querySelector('h1').textContent"),
+        json!("missing")
+    );
 }
 
 #[test]
@@ -702,10 +1302,17 @@ fn assert_dom_false_keeps_the_last_observed_value() {
     let page = navigate_with_retry(&mut s, &format!("{}/next", fx.base));
     assert!(!is_error(&page), "{}", text_of(&page));
 
-    let r = s.call("browser_assert", json!({
-        "kind": "dom", "target": "h1", "expected": {"exists": false}, "timeoutMs": 300
-    }));
-    assert!(!is_error(&r), "a false verdict is not an error: {}", text_of(&r));
+    let r = s.call(
+        "browser_assert",
+        json!({
+            "kind": "dom", "target": "h1", "expected": {"exists": false}, "timeoutMs": 300
+        }),
+    );
+    assert!(
+        !is_error(&r),
+        "a false verdict is not an error: {}",
+        text_of(&r)
+    );
     let sc = structured(&r);
     assert_eq!(sc["verdict"], false, "the h1 exists: {sc}");
     assert_eq!(sc["expected"], json!({"exists": false}));
@@ -720,15 +1327,25 @@ fn assert_text_poll_waits_for_delayed_content() {
     let page = navigate_with_retry(&mut s, &format!("{}/delayed", fx.base));
     assert!(!is_error(&page), "{}", text_of(&page));
 
-    let r = s.call("browser_assert", json!({
-        "kind": "text", "expected": {"contains": "ready now"},
-        "timeoutMs": 3000, "pollMs": 50
-    }));
-    assert!(!is_error(&r), "poll must find the late text: {}", text_of(&r));
+    let r = s.call(
+        "browser_assert",
+        json!({
+            "kind": "text", "expected": {"contains": "ready now"},
+            "timeoutMs": 3000, "pollMs": 50
+        }),
+    );
+    assert!(
+        !is_error(&r),
+        "poll must find the late text: {}",
+        text_of(&r)
+    );
     let sc = structured(&r);
     assert_eq!(sc["verdict"], true, "verdict: {sc}");
     assert!(
-        sc["observed"]["text"].as_str().unwrap_or("").contains("ready now"),
+        sc["observed"]["text"]
+            .as_str()
+            .unwrap_or("")
+            .contains("ready now"),
         "observed text: {sc}"
     );
     assert!(
@@ -746,7 +1363,11 @@ fn assert_unknown_kind_is_a_typed_refusal() {
     let sc = structured(&r);
     assert_eq!(sc["code"], "invalid_args", "typed code: {sc}");
     assert_eq!(sc["arg"], "kind", "bad argument named: {sc}");
-    assert!(text_of(&r).to_lowercase().contains("unknown kind"), "reason: {}", text_of(&r));
+    assert!(
+        text_of(&r).to_lowercase().contains("unknown kind"),
+        "reason: {}",
+        text_of(&r)
+    );
 }
 
 #[test]
@@ -772,15 +1393,25 @@ fn download_accept_list_refuses_a_wrong_mime() {
     let dir = download_dir("mime");
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).expect("create dir");
-    let r = s.call("browser_download", json!({
-        "dir": dir.to_string_lossy(), "accept": ["image/png"], "timeoutMs": 15000
-    }));
+    let r = s.call(
+        "browser_download",
+        json!({
+            "dir": dir.to_string_lossy(), "accept": ["image/png"], "timeoutMs": 15000
+        }),
+    );
     assert!(is_error(&r), "a MIME outside accept must refuse typed");
     let sc = structured(&r);
     assert_eq!(sc["code"], "invalid_args", "typed code: {sc}");
     assert_eq!(sc["arg"], "accept", "bad argument named: {sc}");
-    let leftovers: Vec<_> = std::fs::read_dir(&dir).expect("read dir").filter_map(Result::ok).collect();
-    assert!(leftovers.is_empty(), "a refused download leaves no file: {:?}", leftovers.iter().map(|e| e.file_name()).collect::<Vec<_>>());
+    let leftovers: Vec<_> = std::fs::read_dir(&dir)
+        .expect("read dir")
+        .filter_map(Result::ok)
+        .collect();
+    assert!(
+        leftovers.is_empty(),
+        "a refused download leaves no file: {:?}",
+        leftovers.iter().map(|e| e.file_name()).collect::<Vec<_>>()
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -797,15 +1428,27 @@ fn trace_har_only_writes_one_file() {
     let page = navigate_with_retry(&mut s, &format!("{}/trace", fx.base));
     assert!(!is_error(&page), "{}", text_of(&page));
 
-    let r = s.call("browser_trace", json!({"dir": dir_str, "har": true, "screenshots": false}));
+    let r = s.call(
+        "browser_trace",
+        json!({"dir": dir_str, "har": true, "screenshots": false}),
+    );
     assert!(!is_error(&r), "trace: {}", text_of(&r));
     let sc = structured(&r);
     let files = sc["files"].as_array().expect("files");
-    assert_eq!(files.len(), 1, "HAR only, no step PNG: {sc}");
+    assert_eq!(files.len(), 2, "HAR and the manifest that lists it: {sc}");
+    let names: Vec<&str> = files.iter().filter_map(|f| f["name"].as_str()).collect();
+    assert!(
+        names.contains(&"trace.har") && names.contains(&"manifest.json"),
+        "HAR-only artifact names: {files:?}"
+    );
     assert_eq!(files[0]["name"], "trace.har", "file name: {sc}");
     assert_eq!(files[0]["kind"], "har", "typed file kind: {sc}");
     assert!(dir.join("trace.har").is_file(), "HAR on disk");
-    assert!(!dir.join("step-0001.png").exists(), "no screenshot requested");
+    assert!(dir.join("manifest.json").is_file(), "manifest on disk");
+    assert!(
+        !dir.join("step-0001.png").exists(),
+        "no screenshot requested"
+    );
 
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -823,15 +1466,33 @@ fn trace_empty_redact_list_is_accepted_and_named() {
     let page = navigate_with_retry(&mut s, &format!("{}/trace", fx.base));
     assert!(!is_error(&page), "{}", text_of(&page));
 
-    let r = s.call("browser_trace", json!({
-        "dir": dir_str, "har": true, "screenshots": true, "redact": []
-    }));
-    assert!(!is_error(&r), "an empty redaction list must be valid: {}", text_of(&r));
+    let r = s.call(
+        "browser_trace",
+        json!({
+            "dir": dir_str, "har": true, "screenshots": true, "redact": []
+        }),
+    );
+    assert!(
+        !is_error(&r),
+        "an empty redaction list must be valid: {}",
+        text_of(&r)
+    );
     let sc = structured(&r);
     assert_eq!(sc["ok"], true, "trace payload: {sc}");
     let redactions = sc["redactions"].as_array().expect("redactions");
-    assert!(redactions.is_empty(), "nothing named when nothing is redacted: {sc}");
-    assert_eq!(sc["files"].as_array().expect("files").len(), 2, "both artifacts: {sc}");
+    assert!(
+        redactions.is_empty(),
+        "nothing named when nothing is redacted: {sc}"
+    );
+    let files = sc["files"].as_array().expect("files");
+    assert_eq!(files.len(), 3, "HAR, step and manifest: {sc}");
+    let names: Vec<&str> = files.iter().filter_map(|f| f["name"].as_str()).collect();
+    assert!(
+        names.contains(&"trace.har")
+            && names.contains(&"step-0001.png")
+            && names.contains(&"manifest.json"),
+        "artifact names: {files:?}"
+    );
 
     let _ = std::fs::remove_dir_all(&dir);
 }

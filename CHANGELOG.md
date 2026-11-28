@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-11-28
+
+### Added
+
+- `browser_metrics`: an eleventh hand browser tool, reading measured page timings (TTFB, DOMContentLoaded, load) and Web Vitals (FCP, LCP, CLS, INP proxy) through read-only page evaluation. Every number is measured; an entry with no data is `null` with a `reason` and a per-field `<field>Reason`, never a fabricated zero. `context:` reads a page of a named isolated context. The catalog is now 44 tools: 36 browser, 8 desktop; the pinned floor stays 32.
+- `browser_trace` video: opt-in MJPEG AVI written by hand from a CDP screencast, with no external encoder. Every screencast frame is acknowledged and the AVI is constant-rate: a late or tail slot repeats the previous frame so the file spans the requested duration. The manifest reports `frames` (all slots), `capturedFrames` (fresh screencast frames) and `paddedFrames` (repeats) beside `durationMs`, `fps`, `bytes` and `container: "mjpeg-avi"`. `videoDurationMs` is 250–15000 (an out-of-range value is clamped and reported), and cancellation removes only the files the call wrote. `video` defaults off, so the existing HAR plus step-screenshot bundle is unchanged for callers that do not ask for it.
+- `desktop_do` clipboard opt-in: `allow_clipboard:true` permits one real `CF_UNICODETEXT` write; without it `clipboard_set` is refused `no_clipboard_policy` before the clipboard is opened. `restore_clipboard:true` snapshots the previous text before the first write and restores it after the last action, including a partial or failed burst; empty or non-text content is cleared on restore. Both flags default to false: restore is opt-in, not automatic, and `clipboard_get` reads never need either flag.
+- `desktop_do` pointer and focus opt-in: `allow_cursor:true` unlocks a real pointer move for `move` and coordinate pointer verbs, only with a locked target; a point not on the target or its descendants is refused `point_not_target`, and without a target the call refuses `target_required`. `cursor_restore:true` (the default) restores the entry pointer after the last action. `allow_foreground:true` unlocks `focus_window`; `focus_guard:true` restores the entry foreground when the call changed it.
+- `browser_clipboard`: read or write the PAGE clipboard through `navigator.clipboard` (`Runtime.evaluate` with `awaitPromise:true` and `userGesture:true`; `Browser.grantPermissions` for `clipboardReadWrite` and `clipboardSanitizedWrite` scoped to the page's real origin). In Chromium `navigator.clipboard` IS the Windows clipboard: a write REPLACES the owner's clipboard text (the previous contents are neither snapshotted nor restored) and requires `allow_clipboard:true`; a read needs no flag. hand calls no Windows clipboard API itself and synthesises no desktop input. `action=write` requires non-empty `text` capped at 1 MiB, with an oversized write typed `too_large` before the page is touched; `action=read` returns the page clipboard text capped at 1 MiB with `truncated` when it was cut, and a rejected clipboard call is typed `clipboard_unavailable` with the page's own error message. `context:` reads or writes a page of a named isolated browser context (`page:` selects a specific page); `about:blank` and `data:` pages have no real origin and are refused.
+- `desktop_record`: record ONE targeted window to a playable MJPEG AVI file without ever activating the window, moving the pointer or touching the clipboard. `target` is required (an object or selector string), resolved to one top-level window and revalidated before every frame with no fallback to the foreground window; `out` is required, an absolute `.avi` path whose parent exists and whose file does not, with a pre-existing, relative or wrong-extension path refused as typed `invalid_args` before any capture. `duration_ms` 250..15000 (default 3000), `fps` 1..15 (default 8), `max_px` 160..1280 (default 960) and `quality` 1..100 (default 75) are clamped and named in `warnings[]`; overrun slots are dropped (and, once a frame exists, the previous JPEG is written again to keep the AVI constant-rate) and counted in `droppedFrames`; `capturedFrames` counts only fresh captures and `frames` counts every AVI chunk. Foreground, pointer and clipboard invariants are measured before and after like screenshot. If the target vanishes mid-recording the typed result names the frames already written and the partial AVI is kept; if no frame was captured the result is `capture_unavailable` and no file is written.
+
+### Changed
+
+- The default path is unchanged: no pointer movement, no focus theft and no clipboard write. Every new capability above is behind an explicit opt-in, so an existing caller keeps the no-steal contract byte for byte.
+- Capture and desktop replies now name the three pointer/focus writers the binary links for the opt-in paths in `noSteal.optInImports`; `bannedImports` lists every other writer and must stay empty.
+
+### Fixed
+
+- `browser_assert` refuses unknown or empty expectation keys instead of silently ignoring them: an ignored key became an empty `contains` needle that passed.
+- `browser_run` counts an assertion whose verdict is false (or the string `"fail"` for `ax`) as an `assert_failed` step, so the batch's `ok` is false, and reports `assertions {passed, failed}` over steps that carried a verdict.
+- `browser_audit`'s top-level verdict now means every requested check measured and passed, `measured` carries coverage alone, and the page's focus is restored with a failed restore named rather than reported as success.
+- `desktop_window`'s `allow_foreground` is a permission for focus/maximize only; the other verbs always proceed no-steal.
+- `desktop_do {actions:[]}` is now a typed `invalid_args`/`bad_value` before any action runs; a dry run validates but reports `delivered:"none"` on every result.
+- The clipboard open path retries transient contention (30 attempts, 2 ms backoff, 60 ms cap), naming the stage and Win32 error in `clipboard_unavailable`.
+- `desktop_do` `clipboard_get` reports a distinct `no_text_format` result when the clipboard is empty or holds no `CF_UNICODETEXT`; the check runs before `OpenClipboard`, so it never reports a retry that did not happen.
+
 ## [0.3.4] - 2026-11-26
 
 ### Changed

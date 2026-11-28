@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>accessible-error-announcement</title>
+<style>body{font:16px/1.4 system-ui,sans-serif;margin:16px}button{margin:4px}output{display:block;margin-top:12px}
+</style>
+</head><body>
+<label for="mail">Email</label><input id="mail" aria-invalid="false"><div id="err" role="alert"></div><output id="out">idle</output>
+<script>
+document.getElementById('mail').addEventListener('input',e=>{if(e.target.value==='bad'){e.target.setAttribute('aria-invalid','true');document.getElementById('err').textContent='Enter a valid email';document.getElementById('out').textContent='invalid';}});
+</script>
+</body></html>

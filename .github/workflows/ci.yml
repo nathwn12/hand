@@ -1,0 +1,198 @@
+# nathwn12 house CI - one shape, adapted to hand.
+# The required check is the workflow `ci` (job names `static`, `test`).
+# hand has no branch protection today, but the names are still a contract.
+# Docs-only changes keep the check green: every step is scoped and skipped,
+# never the trigger. The file list comes from the GitHub API, never from a
+# checkout of untrusted PR code, and every checkout is fetch-depth: 1.
+#
+# Toolchain: hand declares rust-version 1.88, but the current tree uses
+# AtomicU32::try_update (stable since 1.95), so a 1.88 pin cannot compile
+# today. publish.yml already uses stable; CI follows that until the owning
+# lane either replaces the call or raises rust-version and adds a toolchain
+# pin. No rust-toolchain.toml is added here for that reason.
+name: ci
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'push' }}
+
+env:
+  CARGO_INCREMENTAL: '0'
+  CARGO_TERM_COLOR: always
+
+jobs:
+  static:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+      - name: Scope from the API
+        id: scope
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          BEFORE: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          docs='^(.*\.md|docs/.*|LICEN[CS]E(\.md)?)$'
+          files=""
+          code=true
+          if [ "$EVENT" = "pull_request" ]; then
+            files="$(gh api "repos/$REPO/pulls/$PR/files" --paginate --jq '.[].filename')"
+          elif [ "$EVENT" = "push" ] && [ -n "$BEFORE" ] && [ "${BEFORE//0/}" != "" ]; then
+            files="$(gh api "repos/$REPO/compare/$BEFORE...$SHA" --paginate --jq '.files[].filename')"
+          fi
+          if [ -n "$files" ] && ! printf '%s\n' "$files" | grep -qvE "$docs"; then
+            code=false
+          fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@stable
+        if: steps.scope.outputs.code == 'true'
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        if: steps.scope.outputs.code == 'true'
+        with:
+          key: ci-static-stable
+      - uses: actions/setup-node@v4
+        if: steps.scope.outputs.code == 'true'
+        with:
+          node-version: 22
+      - name: fmt
+        if: steps.scope.outputs.code == 'true'
+        run: cargo fmt --all --check
+      - name: clippy
+        if: steps.scope.outputs.code == 'true'
+        run: cargo clippy --all-targets --locked -- -D warnings
+      - name: docs-check
+        if: steps.scope.outputs.code == 'true'
+        run: node docs-check.mjs --strict
+      - name: Scope
+        if: always()
+        shell: bash
+        run: |
+          echo "scope: ${{ steps.scope.outputs.code == 'true' && 'code changed - static gate ran' || 'docs-only - static skipped, check stays green' }}"
+
+  test:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+      - name: Scope from the API
+        id: scope
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          BEFORE: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          docs='^(.*\.md|docs/.*|LICEN[CS]E(\.md)?)$'
+          files=""
+          code=true
+          if [ "$EVENT" = "pull_request" ]; then
+            files="$(gh api "repos/$REPO/pulls/$PR/files" --paginate --jq '.[].filename')"
+          elif [ "$EVENT" = "push" ] && [ -n "$BEFORE" ] && [ "${BEFORE//0/}" != "" ]; then
+            files="$(gh api "repos/$REPO/compare/$BEFORE...$SHA" --paginate --jq '.files[].filename')"
+          fi
+          if [ -n "$files" ] && ! printf '%s\n' "$files" | grep -qvE "$docs"; then
+            code=false
+          fi
+          browser=false
+          desktop=false
+          full=false
+          if [ "$code" = "true" ]; then
+            if [ "$EVENT" != "pull_request" ] || [ -z "$files" ]; then
+              # push, dispatch, or an API failure yields no list: run everything.
+              full=true
+            elif printf '%s\n' "$files" | grep -qE '^(src/|Cargo\.toml$|Cargo\.lock$|build\.rs$|docs-check\.mjs$|\.github/workflows/ci\.yml$)'; then
+              full=true
+            else
+              printf '%s\n' "$files" | grep -qE '^crates/browser-engine/' && browser=true
+              printf '%s\n' "$files" | grep -qE '^crates/desktop-engine/' && desktop=true
+              if [ "$browser" = "false" ] && [ "$desktop" = "false" ]; then
+                full=true   # tests/, baseline/, scripts/ etc: full-suite backstop
+              fi
+            fi
+          fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "browser=$browser" >> "$GITHUB_OUTPUT"
+          echo "desktop=$desktop" >> "$GITHUB_OUTPUT"
+          echo "full=$full" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@stable
+        if: steps.scope.outputs.code == 'true'
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        if: steps.scope.outputs.code == 'true'
+        with:
+          key: ci-test-stable
+      # hand pins FULL Chrome (chrome-win64/chrome.exe launched with
+      # --headless), not chrome-headless-shell. The pin and its integrity root
+      # are crates/browser-engine/scripts/chromium-manifest.json; the cache is
+      # keyed on that file's hash and never deleted on failure. The provisioner
+      # re-verifies every file hash on reuse, so a restored tree cannot smuggle
+      # in a wrong browser.
+      - name: Restore pinned browser cache
+        if: steps.scope.outputs.browser == 'true' || steps.scope.outputs.full == 'true'
+        uses: actions/cache@v6
+        with:
+          path: ~\AppData\Local\gladius\chromium
+          key: chromium-win64-158.0.8127.36-${{ hashFiles('crates/browser-engine/scripts/chromium-manifest.json') }}
+      - name: Provision pinned browser
+        if: steps.scope.outputs.browser == 'true' || steps.scope.outputs.full == 'true'
+        shell: pwsh
+        run: powershell -ExecutionPolicy Bypass -File crates\browser-engine\scripts\fetch-chromium.ps1
+      - name: mjpeg-avi
+        if: steps.scope.outputs.full == 'true'
+        run: cargo test --locked -p mjpeg-avi
+      - name: browser-engine
+        if: steps.scope.outputs.browser == 'true' || steps.scope.outputs.full == 'true'
+        run: cargo test --locked -p browser-engine
+      - name: desktop-engine
+        if: steps.scope.outputs.desktop == 'true' || steps.scope.outputs.full == 'true'
+        run: cargo test --locked -p desktop-engine -- --skip live_
+      - name: discovery
+        if: steps.scope.outputs.full == 'true'
+        run: cargo test --locked -p hand --test discovery
+      - name: no_steal
+        if: steps.scope.outputs.full == 'true'
+        run: cargo test --locked -p hand --test no_steal
+      - name: browser_rows
+        if: steps.scope.outputs.full == 'true'
+        run: cargo test --locked -p hand --test browser_rows -- --test-threads=1
+      - name: desktop_matrix
+        if: steps.scope.outputs.full == 'true'
+        run: cargo test --locked -p hand --test desktop_matrix -- --test-threads=1
+      - name: baseline catalog
+        if: steps.scope.outputs.full == 'true'
+        shell: pwsh
+        run: |
+          $env:HAND_BASELINE_SKIP_LIVE = '1'
+          node --test baseline/test/*.test.mjs
+      - name: Scope
+        if: always()
+        shell: bash
+        run: |
+          echo "scope: ${{ steps.scope.outputs.full == 'true' && 'full suite ran' || (steps.scope.outputs.browser == 'true' && 'browser slice ran' || (steps.scope.outputs.desktop == 'true' && 'desktop slice ran' || 'docs-only - test skipped, check stays green')) }}"

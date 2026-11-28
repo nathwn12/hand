@@ -1,0 +1,734 @@
+[
+  {
+    "id": "dialog",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Open dialog"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "dialog open"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/dialog.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Open dialog"
+      }
+    ]
+  },
+  {
+    "id": "accordion",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Section 1"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#s",
+          "expected": {
+            "attribute": {
+              "name": "aria-expanded",
+              "value": "true"
+            }
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/accordion.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Section 1"
+      }
+    ]
+  },
+  {
+    "id": "tabs",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Second"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "second"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/tabs.html",
+    "expectSnapshot": [
+      {
+        "role": "tab",
+        "name": "Second"
+      }
+    ]
+  },
+  {
+    "id": "checkbox",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Accept terms"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "checked"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/checkbox.html",
+    "expectSnapshot": [
+      {
+        "role": "checkbox",
+        "name": "Accept terms"
+      }
+    ]
+  },
+  {
+    "id": "menu",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Actions"
+        }
+      },
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Rename"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "renamed"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/menu.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Actions"
+      }
+    ]
+  },
+  {
+    "id": "navbar",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Docs"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "docs"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/navbar.html",
+    "expectSnapshot": [
+      {
+        "role": "link",
+        "name": "Docs"
+      }
+    ]
+  },
+  {
+    "id": "breadcrumbs",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Home"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "home"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/breadcrumbs.html",
+    "expectSnapshot": [
+      {
+        "role": "link",
+        "name": "Home"
+      }
+    ]
+  },
+  {
+    "id": "card",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Add to cart"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "1"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/card.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Add to cart"
+      }
+    ]
+  },
+  {
+    "id": "carousel",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Next slide"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "2"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/carousel.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Next slide"
+      }
+    ]
+  },
+  {
+    "id": "context-menu",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Right click area",
+          "button": "right"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "context menu"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/context-menu.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Reset"
+      }
+    ]
+  },
+  {
+    "id": "dark-mode-toggle",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Toggle theme"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "dark"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/dark-mode-toggle.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Toggle theme"
+      }
+    ]
+  },
+  {
+    "id": "hovercard",
+    "act": [
+      {
+        "tool": "browser_hover",
+        "args": {
+          "element": "@ref:Hover me"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "shown"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/hovercard.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Hover me"
+      }
+    ]
+  },
+  {
+    "id": "navigation-drawer",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Open menu"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "open"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/navigation-drawer.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Open menu"
+      }
+    ]
+  },
+  {
+    "id": "persistent-toast-notifications",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Show toast"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "Shown"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/persistent-toast-notifications.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Show toast"
+      }
+    ]
+  },
+  {
+    "id": "progress",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Advance"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#p",
+          "expected": {
+            "attribute": {
+              "name": "aria-valuenow",
+              "value": "1"
+            }
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/progress.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Advance"
+      }
+    ]
+  },
+  {
+    "id": "progress-ring",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Spin"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#r",
+          "expected": {
+            "attribute": {
+              "name": "aria-valuenow",
+              "value": "50"
+            }
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/progress-ring.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Spin"
+      }
+    ]
+  },
+  {
+    "id": "spinner",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Load"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "loading"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/spinner.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Load"
+      }
+    ]
+  },
+  {
+    "id": "stack-drill-down",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Open details"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "drilled"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/stack-drill-down.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Open details"
+      }
+    ]
+  },
+  {
+    "id": "toolbar",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Bold"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#b",
+          "expected": {
+            "attribute": {
+              "name": "aria-pressed",
+              "value": "true"
+            }
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/toolbar.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Bold"
+      }
+    ]
+  },
+  {
+    "id": "app-menus",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:File menu"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "menu open"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/app-menus.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "File menu"
+      }
+    ]
+  },
+  {
+    "id": "persistent-app-tours",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Next tip"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "2"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/persistent-app-tours.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Next tip"
+      }
+    ]
+  },
+  {
+    "id": "scrollspy",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Section two"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "s2"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/scrollspy.html",
+    "expectSnapshot": [
+      {
+        "role": "link",
+        "name": "Section two"
+      }
+    ]
+  },
+  {
+    "id": "copy-button",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Copy"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "Copied"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/copy-button.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Copy"
+      }
+    ]
+  }
+]

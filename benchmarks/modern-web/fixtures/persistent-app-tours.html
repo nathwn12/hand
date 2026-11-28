@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>persistent-app-tours</title>
+<style>body{font:16px/1.4 system-ui,sans-serif;margin:16px}button{margin:4px}output{display:block;margin-top:12px}</style>
+</head><body>
+<button id="n">Next tip</button><div id="tip">Tip 1 of 3</div><output id="out">idle</output>
+<script>
+let n=1;document.getElementById('n').onclick=()=>{n++;document.getElementById('tip').textContent='Tip '+n+' of 3';document.getElementById('out').textContent=String(n);};
+</script>
+</body></html>

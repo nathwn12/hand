@@ -56,7 +56,6 @@ fn serial() -> std::sync::MutexGuard<'static, ()> {
     ONE_DESKTOP.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-
 #[link(name = "user32")]
 extern "system" {
     fn GetForegroundWindow() -> *mut c_void;
@@ -143,7 +142,6 @@ fn owner_desktop_windows_of_class(class: &str) -> Vec<i64> {
     scan.hits
 }
 
-
 /// Samples the OWNER's desktop while the act runs, from this process, so
 /// "nothing of ours ever appeared on the user's desktop" is measured
 /// independently of what the server reports about itself.
@@ -203,7 +201,6 @@ impl OwnerDeskWatch {
         )
     }
 }
-
 
 /// The controlled fixture program, compiled from
 /// `tests/desktop_fixture/fixture_app.rs` with `rustc` (no cargo, no crates)
@@ -345,7 +342,6 @@ fn rustc_path() -> PathBuf {
          tests/desktop_fixture/fixture_app.rs at test time and cannot exist without one"
     );
 }
-
 
 /// Locate a line by prefix (`key=...` / `key ...`) and return the index.
 fn find_line(lines: &[String], prefix: &str) -> Option<usize> {
@@ -690,7 +686,11 @@ fn hidden_desktop_uia_text_entry_reports_verified_effect() {
     let fg_before = foreground_now();
     let cursor_before = cursor_now();
     let input_before = input_tick();
-    let journal = app.dir.join("journal-text.txt").to_string_lossy().into_owned();
+    let journal = app
+        .dir
+        .join("journal-text.txt")
+        .to_string_lossy()
+        .into_owned();
 
     let response = s.call(
         "desktop_do",
@@ -761,7 +761,10 @@ fn hidden_desktop_uia_text_entry_reports_verified_effect() {
     let fg_after = foreground_now();
     if fg_after != fg_before {
         let ours = pid_of(fg_after).is_some_and(|p| p == std::process::id() || p == s.child.id());
-        assert!(!ours, "hand must not activate itself: {fg_before} -> {fg_after}");
+        assert!(
+            !ours,
+            "hand must not activate itself: {fg_before} -> {fg_after}"
+        );
     }
     let cursor_after = cursor_now();
     eprintln!(
@@ -854,7 +857,8 @@ fn uwp_target_lock_reports_appid_provenance() {
     };
     let out = d8_call("elements", json!({"target": {"appId": app_id.clone()}}));
     assert_eq!(
-        out["result"]["isError"], json!(false),
+        out["result"]["isError"],
+        json!(false),
         "appId lock failed: {}",
         text_of(&out)
     );
@@ -868,8 +872,12 @@ fn uwp_target_lock_reports_appid_provenance() {
     // Built hosted pair, named exactly like an ApplicationFrameHost frame and
     // its UWP core window. The selector names the frame; the lock must bind the
     // child app window and keep the frame as its host identity.
-    let host_class = "ApplicationFrameWindow\0".encode_utf16().collect::<Vec<_>>();
-    let child_class = "Windows.UI.Core.CoreWindow\0".encode_utf16().collect::<Vec<_>>();
+    let host_class = "ApplicationFrameWindow\0"
+        .encode_utf16()
+        .collect::<Vec<_>>();
+    let child_class = "Windows.UI.Core.CoreWindow\0"
+        .encode_utf16()
+        .collect::<Vec<_>>();
     for name in [&host_class, &child_class] {
         let mut wc: D8Class = unsafe { std::mem::zeroed() };
         wc.wnd_proc = Some(d8_proc);
@@ -911,9 +919,9 @@ fn uwp_target_lock_reports_appid_provenance() {
         );
         assert!(!child.is_null(), "hosted app child fixture created");
         ShowWindow(host, 4); // SW_SHOWNOACTIVATE
-        // pid narrows this to the fixture's own frame: the live Settings app
-        // also exposes an ApplicationFrameWindow and made the selector
-        // ambiguous on this host.
+                             // pid narrows this to the fixture's own frame: the live Settings app
+                             // also exposes an ApplicationFrameWindow and made the selector
+                             // ambiguous on this host.
         let bound = d8_call(
             "elements",
             json!({"target": {"className": "ApplicationFrameWindow", "pid": std::process::id()}}),
@@ -936,7 +944,12 @@ fn uwp_target_lock_reports_appid_provenance() {
     // already proved frame -> child resolution on this host; the early return
     // means there is no live id to test when none is unique.
     let bound = d8_call("elements", json!({"target": {"appId": app_id}}));
-    assert_eq!(bound["result"]["isError"], json!(false), "{}", text_of(&bound));
+    assert_eq!(
+        bound["result"]["isError"],
+        json!(false),
+        "{}",
+        text_of(&bound)
+    );
     assert_eq!(
         bound["result"]["structuredContent"]["appId"].as_str(),
         Some(app_id.as_str()),

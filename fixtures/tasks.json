@@ -297,15 +297,17 @@
     {
       "id": "t17-network-mock",
       "title": "Network mock",
-      "requires": [{ "tool": "browser_network", "field": "action", "value": "mock" }],
+      "requires": [{ "tool": "browser_network", "field": "action", "value": "mock" }, { "tool": "browser_wait_for" }],
       "calls": [
         { "tool": "browser_navigate", "args": { "url": "{{origin}}/tasks/main.html" } },
         { "tool": "browser_network", "args": { "action": "mock", "url": "*/tasks/network.json", "body": { "ok": true, "value": "mocked" } } },
         { "tool": "browser_click", "args": { "element": "#net-fetch" } },
+        { "tool": "browser_wait_for", "args": { "text": "value:mocked", "ms": 3000 } },
         { "tool": "browser_evaluate", "args": { "expression": "document.getElementById('net-out').textContent" } }
       ],
       "expect": { "all": [
-        { "call": 3, "path": "payload.value", "op": "eq", "value": "value:mocked" }
+        { "call": 3, "path": "payload.ok", "op": "eq", "value": true },
+        { "call": 4, "path": "payload.value", "op": "eq", "value": "value:mocked" }
       ] },
       "cleanup": [
         { "tool": "browser_network", "args": { "action": "restore" } }
@@ -314,17 +316,19 @@
     {
       "id": "t18-offline-restore",
       "title": "Offline mode and restore",
-      "requires": [{ "tool": "browser_network", "field": "action", "value": "offline" }],
+      "requires": [{ "tool": "browser_network", "field": "action", "value": "offline" }, { "tool": "browser_wait_for" }],
       "calls": [
         { "tool": "browser_navigate", "args": { "url": "{{origin}}/tasks/main.html" } },
         { "tool": "browser_network", "args": { "action": "offline" } },
         { "tool": "browser_click", "args": { "element": "#net-fetch" } },
+        { "tool": "browser_wait_for", "args": { "text": "error:TypeError", "ms": 3000 } },
         { "tool": "browser_evaluate", "args": { "expression": "document.getElementById('net-out').textContent" } },
         { "tool": "browser_network", "args": { "action": "restore" } }
       ],
       "expect": { "all": [
-        { "call": 3, "path": "payload.value", "op": "contains", "value": "error:" },
-        { "call": 4, "path": "isError", "op": "eq", "value": false }
+        { "call": 3, "path": "payload.ok", "op": "eq", "value": true },
+        { "call": 4, "path": "payload.value", "op": "contains", "value": "error:" },
+        { "call": 5, "path": "isError", "op": "eq", "value": false }
       ] },
       "cleanup": [
         { "tool": "browser_network", "args": { "action": "restore" } }
@@ -333,17 +337,19 @@
     {
       "id": "t19-failure-injection",
       "title": "Failure injection and restore",
-      "requires": [{ "tool": "browser_network", "field": "action", "value": "abort" }],
+      "requires": [{ "tool": "browser_network", "field": "action", "value": "abort" }, { "tool": "browser_wait_for" }],
       "calls": [
         { "tool": "browser_navigate", "args": { "url": "{{origin}}/tasks/main.html" } },
         { "tool": "browser_network", "args": { "action": "abort", "url": "*/tasks/network.json" } },
         { "tool": "browser_click", "args": { "element": "#net-fetch" } },
+        { "tool": "browser_wait_for", "args": { "text": "error:TypeError", "ms": 3000 } },
         { "tool": "browser_evaluate", "args": { "expression": "document.getElementById('net-out').textContent" } },
         { "tool": "browser_network", "args": { "action": "restore" } }
       ],
       "expect": { "all": [
-        { "call": 3, "path": "payload.value", "op": "contains", "value": "error:" },
-        { "call": 4, "path": "isError", "op": "eq", "value": false }
+        { "call": 3, "path": "payload.ok", "op": "eq", "value": true },
+        { "call": 4, "path": "payload.value", "op": "contains", "value": "error:" },
+        { "call": 5, "path": "isError", "op": "eq", "value": false }
       ] },
       "cleanup": [
         { "tool": "browser_network", "args": { "action": "restore" } }
@@ -506,7 +512,8 @@
       ],
       "expect": { "all": [
         { "call": 1, "path": "payload.viewports.length", "op": "eq", "value": 6 },
-        { "call": 1, "path": "payload.verdict", "op": "eq", "value": "pass" }
+        { "call": 1, "path": "payload.verdict", "op": "eq", "value": "fail" },
+        { "call": 1, "path": "payload.measured", "op": "eq", "value": "pass" }
       ] },
       "cleanup": []
     },

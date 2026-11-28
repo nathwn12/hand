@@ -10,7 +10,6 @@ use windows_sys::Win32::Graphics::Gdi::{
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::*;
 
-
 type Resolve = (
     Option<HWND>,
     Option<String>,
@@ -292,7 +291,6 @@ pub fn lock_legacy(hwnd: Option<i64>, title: Option<&str>) -> Result<TargetLock,
     crate::target::lock(&legacy_spec(hwnd, title)?)
 }
 
-
 pub struct Img {
     pub w: i32,
     pub h: i32,
@@ -475,7 +473,6 @@ pub fn bitblt_grab(l: i32, t: i32, w: i32, h: i32) -> Result<Img, String> {
     })
 }
 
-
 pub struct Verdict {
     pub rejected: bool,
     pub reason: Option<String>,
@@ -642,7 +639,6 @@ fn tag_of(m: &Map<String, Value>) -> String {
         .collect();
     format!("{{{}}}", body.join(","))
 }
-
 
 const PREC_BITS: i64 = 22;
 
@@ -991,7 +987,6 @@ pub fn encode_jpeg(img: &Img, q: u8) -> Result<Vec<u8>, String> {
     .map_err(|e| format!("{e}"))?;
     Ok(buf)
 }
-
 
 /// Decode PNG bytes to RGB pixels. RGB and RGBA (alpha dropped) plus
 /// 8-bit grayscale decode; anything else is a typed refusal, never a
@@ -1373,8 +1368,12 @@ mod tests {
 
     #[test]
     fn finalize_rejects_absurd_max_px() {
-        let err = finalize(tiny(), Some(1_000_000_000_000), "jpeg", Some(80), false).expect_err("absurd max_px must be rejected");
-        assert!(err.contains("too_large"), "absurd max_px must be typed too_large, got: {err}");
+        let err = finalize(tiny(), Some(1_000_000_000_000), "jpeg", Some(80), false)
+            .expect_err("absurd max_px must be rejected");
+        assert!(
+            err.contains("too_large"),
+            "absurd max_px must be typed too_large, got: {err}"
+        );
     }
 
     #[test]

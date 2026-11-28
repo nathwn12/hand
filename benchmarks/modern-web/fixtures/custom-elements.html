@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>custom-elements</title>
+<style>body{font:16px/1.4 system-ui,sans-serif;margin:16px}button{margin:4px}output{display:block;margin-top:12px}</style>
+</head><body>
+<my-counter id="mc"></my-counter><output id="out">idle</output>
+<script>
+let n=0;class Counter extends HTMLElement{connectedCallback(){const s=this.attachShadow({mode:'open'});s.innerHTML='<button id="b">Increment</button>';s.getElementById('b').onclick=()=>{n++;document.getElementById('out').textContent=String(n);};}}customElements.define('my-counter',Counter);
+</script>
+</body></html>

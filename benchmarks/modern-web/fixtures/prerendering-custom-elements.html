@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>prerendering-custom-elements</title>
+<style>body{font:16px/1.4 system-ui,sans-serif;margin:16px}button{margin:4px}output{display:block;margin-top:12px}</style>
+</head><body>
+<my-greet id="g">pending</my-greet><button id="u">Upgrade greeting</button><output id="out">idle</output>
+<script>
+document.getElementById('u').onclick=()=>{if(!customElements.get('my-greet')){customElements.define('my-greet',class extends HTMLElement{connectedCallback(){this.textContent='hello';}});const g=document.getElementById('g');g.textContent='hello';}document.getElementById('out').textContent='hello';};
+</script>
+</body></html>

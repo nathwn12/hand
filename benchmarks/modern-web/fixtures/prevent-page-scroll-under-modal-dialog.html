@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>prevent-page-scroll-under-modal-dialog</title>
+<style>body{font:16px/1.4 system-ui,sans-serif;margin:16px}button{margin:4px}output{display:block;margin-top:12px}</style>
+</head><body>
+<button id="o">Open modal</button><dialog id="d"><button id="c">Close modal</button></dialog><output id="out">idle</output>
+<script>
+document.getElementById('o').onclick=()=>{document.getElementById('d').showModal();document.body.style.overflow='hidden';document.getElementById('out').textContent='locked';};document.getElementById('c').onclick=()=>{document.getElementById('d').close();document.body.style.overflow='';document.getElementById('out').textContent='unlocked';};
+</script>
+</body></html>

@@ -395,7 +395,6 @@ unsafe fn capture_window_inner(hwnd: HWND, allow_crop_fallback: bool) -> Result<
     ))
 }
 
-
 fn role_of_class(cls: &str) -> &str {
     match cls {
         "Button" => "Button",
@@ -705,10 +704,22 @@ mod tests {
     #[test]
     fn occluded_unavailable_is_only_for_unreachable_content() {
         use crate::cap::Occlusion;
-        assert_eq!(capture_failure_code(Occlusion::Full), "occluded_unavailable");
-        assert_eq!(capture_failure_code(Occlusion::Partial), "capture_unavailable");
-        assert_eq!(capture_failure_code(Occlusion::Unoccluded), "capture_unavailable");
-        assert_eq!(capture_failure_code(Occlusion::Unknown), "capture_unavailable");
+        assert_eq!(
+            capture_failure_code(Occlusion::Full),
+            "occluded_unavailable"
+        );
+        assert_eq!(
+            capture_failure_code(Occlusion::Partial),
+            "capture_unavailable"
+        );
+        assert_eq!(
+            capture_failure_code(Occlusion::Unoccluded),
+            "capture_unavailable"
+        );
+        assert_eq!(
+            capture_failure_code(Occlusion::Unknown),
+            "capture_unavailable"
+        );
     }
 
     /// A full Win32-fallback-style entry, keyed exactly as

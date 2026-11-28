@@ -1,4 +1,3 @@
-
 /// Window class registered by the fixture app. The test asserts the engine
 /// resolved THIS window (not another window on the private desktop, such as a
 /// console) by class and by the app's own journal.

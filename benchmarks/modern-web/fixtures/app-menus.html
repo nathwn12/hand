@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>app-menus</title>
+<style>body{font:16px/1.4 system-ui,sans-serif;margin:16px}button{margin:4px}output{display:block;margin-top:12px}</style>
+</head><body>
+<button id="f">File menu</button><div id="mm" role="menu" hidden><button role="menuitem">New file</button></div><output id="out">idle</output>
+<script>
+document.getElementById('f').onclick=()=>{document.getElementById('mm').hidden=false;document.getElementById('out').textContent='menu open';};
+</script>
+</body></html>

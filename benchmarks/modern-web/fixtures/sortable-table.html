@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>sortable-table</title>
+<style>body{font:16px/1.4 system-ui,sans-serif;margin:16px}button{margin:4px}output{display:block;margin-top:12px}</style>
+</head><body>
+<table><thead><tr><th><button id="s">Sort by name</button></th></tr></thead><tbody id="tb"><tr><td>Zoe</td></tr><tr><td>Adam</td></tr></tbody></table><output id="out">idle</output>
+<script>
+document.getElementById('s').onclick=()=>{const tb=document.getElementById('tb');const rows=[...tb.rows].sort((a,b)=>a.cells[0].textContent.localeCompare(b.cells[0].textContent));rows.forEach(r=>tb.appendChild(r));document.getElementById('out').textContent=tb.rows[0].cells[0].textContent;};
+</script>
+</body></html>

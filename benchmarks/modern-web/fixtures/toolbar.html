@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>toolbar</title>
+<style>body{font:16px/1.4 system-ui,sans-serif;margin:16px}button{margin:4px}output{display:block;margin-top:12px}</style>
+</head><body>
+<div role="toolbar"><button id="b" aria-pressed="false">Bold</button></div><output id="out">idle</output>
+<script>
+document.getElementById('b').onclick=e=>{e.target.setAttribute('aria-pressed','true');document.getElementById('out').textContent='bold';};
+</script>
+</body></html>

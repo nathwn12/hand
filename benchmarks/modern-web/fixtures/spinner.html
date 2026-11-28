@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>spinner</title>
+<style>body{font:16px/1.4 system-ui,sans-serif;margin:16px}button{margin:4px}output{display:block;margin-top:12px}</style>
+</head><body>
+<button id="l">Load</button><div id="spin" role="status" hidden>Loading</div><output id="out">idle</output>
+<script>
+document.getElementById('l').onclick=()=>{document.getElementById('spin').hidden=false;document.getElementById('out').textContent='loading';};
+</script>
+</body></html>

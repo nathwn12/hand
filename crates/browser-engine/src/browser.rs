@@ -116,6 +116,23 @@ impl NetEntry {
     }
 }
 
+/// One `Page.screencastFrame` captured by the reader. `data` is the base64
+/// JPEG bytes CDP sent; `metadata_ts` is the frame's monotonic timestamp in
+/// seconds (None when CDP omitted it, so the consumer can fall back to a
+/// fixed frame rate). The reader ACKs every frame on the event's own session:
+/// a screencast left unacknowledged stalls after one frame.
+#[derive(Clone, Debug)]
+pub(crate) struct ScreencastFrame {
+    pub data: String,
+    pub metadata_ts: Option<f64>,
+    pub session_id: String,
+    pub received_ms: u64,
+}
+
+/// Ring cap for screencast frames. A 15 s recording at 60 fps is ~900 frames;
+/// the cap is a memory backstop, not a frame-rate rule.
+pub(crate) const SCREENCAST_CAP: usize = 1200;
+
 /// One navigation's worth of CDP observations, filled by the reader while a
 /// `Page.navigate` is in flight. `status`/redirect chain are real network
 /// facts; a client-side or non-HTTP navigation produces no Document response
@@ -235,6 +252,10 @@ struct Shared {
     /// `loadingFinished` / `loadingFailed` once the Network domain is
     /// enabled; drained by the `network` tool. Empty (and free) until then.
     net_log: AsyncMutex<VecDeque<NetEntry>>,
+    /// Screencast frames pushed by the reader on `Page.screencastFrame` and
+    /// drained by `Browser::screencast_drain` for one bounded recording. The
+    /// reader ACKs each frame immediately, so the ring never back-pressures CDP.
+    screencast_frames: AsyncMutex<VecDeque<ScreencastFrame>>,
     /// Armed around one `Page.navigate`; the reader stamps the main Document
     /// response, redirect chain and timings here for the `observed` result.
     nav_obs: AsyncMutex<NavObs>,
@@ -438,6 +459,7 @@ fn new_shared(sink: WsSink, excluded_contexts: Arc<Mutex<HashMap<String, String>
         net_enabled: AsyncMutex::new(HashSet::new()),
         viewport: AsyncMutex::new(None),
         net_log: AsyncMutex::new(VecDeque::new()),
+        screencast_frames: AsyncMutex::new(VecDeque::new()),
         nav_obs: AsyncMutex::new(NavObs::default()),
         downloads: AsyncMutex::new(HashMap::new()),
         download_notify: Arc::new(tokio::sync::Notify::new()),
@@ -583,9 +605,13 @@ pub(crate) struct DragInterceptGuard {
 impl DragInterceptGuard {
     pub(crate) async fn disable(mut self) -> Result<(), String> {
         self.done = true;
-        send_session(&self.shared, "Input.setInterceptDrags", json!({"enabled": false}))
-            .await
-            .map(|_| ())
+        send_session(
+            &self.shared,
+            "Input.setInterceptDrags",
+            json!({"enabled": false}),
+        )
+        .await
+        .map(|_| ())
     }
 }
 
@@ -596,8 +622,12 @@ impl Drop for DragInterceptGuard {
         }
         let shared = self.shared.clone();
         tokio::spawn(async move {
-            let _ =
-                send_session(&shared, "Input.setInterceptDrags", json!({"enabled": false})).await;
+            let _ = send_session(
+                &shared,
+                "Input.setInterceptDrags",
+                json!({"enabled": false}),
+            )
+            .await;
         });
     }
 }
@@ -903,9 +933,18 @@ impl Browser {
             })
             .map(|t| {
                 (
-                    t.get("targetId").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                    t.get("url").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                    t.get("title").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                    t.get("targetId")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    t.get("url")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    t.get("title")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
                 )
             })
             .filter(|(id, _, _)| !id.is_empty())
@@ -934,22 +973,16 @@ impl Browser {
             },
             None => match pages.as_slice() {
                 [] => {
-                    let present = send_raw(
-                        &shared,
-                        "Target.getBrowserContexts",
-                        json!({}),
-                        None,
-                    )
-                    .await
-                    .ok()
-                    .and_then(|v| {
-                        v.get("browserContextIds")
-                            .and_then(|x| x.as_array())
-                            .map(|ids| {
-                                ids.iter()
-                                    .any(|i| i.as_str() == Some(context_id.as_str()))
-                            })
-                    });
+                    let present = send_raw(&shared, "Target.getBrowserContexts", json!({}), None)
+                        .await
+                        .ok()
+                        .and_then(|v| {
+                            v.get("browserContextIds")
+                                .and_then(|x| x.as_array())
+                                .map(|ids| {
+                                    ids.iter().any(|i| i.as_str() == Some(context_id.as_str()))
+                                })
+                        });
                     let why = match present {
                         Some(false) => format!(
                             "context '{name}' is not present in this engine any more (it was \
@@ -965,7 +998,7 @@ impl Browser {
                         ToolCode::InvalidTarget,
                         ToolReason::NotFound,
                         &why,
-                    ))
+                    ));
                 }
                 [only] => (only.0.clone(), only.1.clone(), only.2.clone()),
                 many => {
@@ -1217,7 +1250,9 @@ impl Browser {
                          retry (the next call launches a fresh engine)",
                     ));
                 }
-                debug_eprintln!("[gladius] recovery: relaunching the owned engine (once per death)");
+                debug_eprintln!(
+                    "[gladius] recovery: relaunching the owned engine (once per death)"
+                );
                 let inner = match launch(self.excluded_contexts.clone()).await {
                     Ok(inner) => inner,
                     Err(e) => {
@@ -1552,7 +1587,11 @@ impl Browser {
         .await?;
         let mut sent = 2usize;
         for i in 0..steps {
-            let t = if steps <= 1 { 1.0 } else { i as f64 / (steps - 1) as f64 };
+            let t = if steps <= 1 {
+                1.0
+            } else {
+                i as f64 / (steps - 1) as f64
+            };
             let x = x0 + (x1 - x0) * t;
             let y = y0 + (y1 - y0) * t;
             self.command(
@@ -1581,7 +1620,12 @@ impl Browser {
         enabled: bool,
     ) -> Result<DragInterceptGuard, String> {
         let shared = self.shared().await?;
-        send_session(&shared, "Input.setInterceptDrags", json!({"enabled": enabled})).await?;
+        send_session(
+            &shared,
+            "Input.setInterceptDrags",
+            json!({"enabled": enabled}),
+        )
+        .await?;
         Ok(DragInterceptGuard {
             shared,
             done: false,
@@ -1666,8 +1710,7 @@ impl Browser {
     /// combos are G4b, never smuggled here). No OS input is involved: the
     /// whole sequence rides CDP.
     pub async fn mouse_click(&self, x: f64, y: f64, hover_first: bool) -> Result<(), String> {
-        self.mouse_click_button(x, y, "left", 1, hover_first)
-            .await
+        self.mouse_click_button(x, y, "left", 1, hover_first).await
     }
 
     /// Trusted text insertion into the focused editable: `Input.insertText`.
@@ -1697,19 +1740,10 @@ impl Browser {
             return None;
         };
         for (tid, sid) in self.extra_pairs().await {
-            if let Ok(tree) = send_raw(
-                &shared,
-                "Page.getFrameTree",
-                json!({}),
-                Some(sid.clone()),
-            )
-            .await
+            if let Ok(tree) =
+                send_raw(&shared, "Page.getFrameTree", json!({}), Some(sid.clone())).await
             {
-                if tree
-                    .pointer("/frameTree/frame/id")
-                    .and_then(|v| v.as_str())
-                    == Some(frame_id)
-                {
+                if tree.pointer("/frameTree/frame/id").and_then(|v| v.as_str()) == Some(frame_id) {
                     return Some((tid, sid));
                 }
             }
@@ -2502,8 +2536,14 @@ impl Browser {
                 let map = shared.downloads.lock().await;
                 for rec in map.values() {
                     seen = true;
-                    let received = rec.get("receivedBytes").and_then(|v| v.as_u64()).unwrap_or(0);
-                    let prev = latest.get("receivedBytes").and_then(|v| v.as_u64()).unwrap_or(0);
+                    let received = rec
+                        .get("receivedBytes")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0);
+                    let prev = latest
+                        .get("receivedBytes")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0);
                     if received >= prev {
                         latest = rec.clone();
                     }
@@ -2701,7 +2741,11 @@ impl Browser {
         }
         let mut seen: std::collections::HashSet<String> = frames
             .iter()
-            .filter_map(|f| f.get("frameId").and_then(|v| v.as_str()).map(str::to_string))
+            .filter_map(|f| {
+                f.get("frameId")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string)
+            })
             .collect();
         for (tid, sid) in self.extra_pairs().await {
             let Ok(tree) = send_raw(&shared, "Page.getFrameTree", json!({}), Some(sid)).await
@@ -2765,7 +2809,13 @@ impl Browser {
     ) -> Result<Value, String> {
         let shared = self.shared().await?;
         let sid = session.to_string();
-        let _ = send_raw(&shared, "Accessibility.enable", json!({}), Some(sid.clone())).await;
+        let _ = send_raw(
+            &shared,
+            "Accessibility.enable",
+            json!({}),
+            Some(sid.clone()),
+        )
+        .await;
         let mut params = json!({});
         if let Some(fid) = frame_id {
             params["frameId"] = json!(fid);
@@ -2808,7 +2858,13 @@ impl Browser {
             return self.command("Runtime.callFunctionOn", params, true).await;
         };
         let shared = self.shared().await?;
-        send_raw(&shared, "Runtime.callFunctionOn", params, Some(sid.to_string())).await
+        send_raw(
+            &shared,
+            "Runtime.callFunctionOn",
+            params,
+            Some(sid.to_string()),
+        )
+        .await
     }
 
     /// Make a PAGE target current by its `targetId`: activate + attach, then
@@ -3138,6 +3194,47 @@ impl Browser {
         let slice = &sel[total - take..];
         json!({"entries": slice.iter().map(|m| m.json()).collect::<Vec<_>>(),
                "count": take, "total": total, "cap": NET_CAP})
+    }
+
+    /// Arm a CDP screencast on the active page. The frame ring is cleared
+    /// first so a recording never includes frames from an earlier session;
+    /// the reader ACKs every frame it receives on that frame's session.
+    pub(crate) async fn screencast_start(&self) -> Result<(), String> {
+        let shared = self.shared().await?;
+        shared.screencast_frames.lock().await.clear();
+        send_session(&shared, "Page.enable", json!({})).await?;
+        self.command(
+            "Page.startScreencast",
+            json!({"format": "jpeg", "quality": 80, "everyNthFrame": 1}),
+            true,
+        )
+        .await?;
+        Ok(())
+    }
+
+    /// Stop the screencast. Always attempted at the end of a bounded
+    /// recording, even if frame decoding or encoding later fails.
+    pub(crate) async fn screencast_stop(&self) -> Result<(), String> {
+        self.command("Page.stopScreencast", json!({}), true)
+            .await
+            .map(|_| ())
+    }
+
+    /// Take all frames accumulated since `screencast_start`, in arrival
+    /// order. Atomic take-and-return: a frame arriving during the drain is
+    /// either returned or kept for the next drain, never lost.
+    pub(crate) async fn screencast_drain(&self) -> Vec<ScreencastFrame> {
+        let guard = self.state.lock().await;
+        match guard.as_ref() {
+            Some(inner) => inner
+                .shared
+                .screencast_frames
+                .lock()
+                .await
+                .drain(..)
+                .collect(),
+            None => Vec::new(),
+        }
     }
 
     /// Atomic take-and-return for `network drain`: the slice AND the removal
@@ -4131,6 +4228,59 @@ async fn reader_loop(mut stream: WsReader, shared: Arc<Shared>) {
             }
             continue;
         }
+        if v.get("method").and_then(|m| m.as_str()) == Some("Page.screencastFrame") {
+            let params = v.get("params").cloned().unwrap_or(Value::Null);
+            // Two DIFFERENT ids ride on this event: the top-level envelope
+            // `sessionId` is the CDP session, while `params.sessionId` is the
+            // frame's ack token (a NUMBER on current Chrome). The ACK must
+            // echo the token verbatim and go out on the envelope's session;
+            // coercing the token to a string silently stops the screencast.
+            let session_id = v
+                .get("sessionId")
+                .and_then(|s| s.as_str())
+                .unwrap_or("")
+                .to_string();
+            let frame_ack_token = params.get("sessionId").cloned().unwrap_or(Value::Null);
+            let data = params
+                .get("data")
+                .and_then(|d| d.as_str())
+                .unwrap_or("")
+                .to_string();
+            let metadata_ts = params
+                .get("metadata")
+                .and_then(|m| m.get("timestamp"))
+                .and_then(|t| t.as_f64());
+            if !data.is_empty() {
+                let mut q = shared.screencast_frames.lock().await;
+                if q.len() >= SCREENCAST_CAP {
+                    q.pop_front();
+                }
+                q.push_back(ScreencastFrame {
+                    data,
+                    metadata_ts,
+                    session_id: session_id.clone(),
+                    received_ms: now_ms(),
+                });
+            }
+            // CDP halts the screencast after one frame unless every frame
+            // is acknowledged on the same session that delivered it.
+            let ack_id = shared.next_id.fetch_add(1, Ordering::SeqCst);
+            let mut envelope = serde_json::Map::new();
+            envelope.insert("id".to_string(), json!(ack_id));
+            envelope.insert("method".to_string(), json!("Page.screencastFrameAck"));
+            envelope.insert("params".to_string(), json!({"sessionId": frame_ack_token}));
+            if !session_id.is_empty() {
+                envelope.insert("sessionId".to_string(), json!(session_id));
+            }
+            let text = Value::Object(envelope).to_string();
+            let (tx, _rx) = oneshot::channel();
+            shared.pending.lock().unwrap().insert(ack_id, tx);
+            let mut sink = shared.sink.lock().await;
+            if sink.send(Message::Text(text.into())).await.is_err() {
+                shared.pending.lock().unwrap().remove(&ack_id);
+            }
+            continue;
+        }
         if v.get("method").and_then(|m| m.as_str()) == Some("Fetch.requestPaused") {
             // Row B3: queue the whole envelope. The interception consumer
             // replies with fulfill/fail/continue on the SAME session; a paused
@@ -4216,11 +4366,13 @@ async fn reader_loop(mut stream: WsReader, shared: Arc<Shared>) {
             if let Some(p) = v.get("params") {
                 if let Some(guid) = p.get("guid").and_then(|g| g.as_str()) {
                     let mut map = shared.downloads.lock().await;
-                    let entry = map.entry(guid.to_string()).or_insert_with(|| json!({
-                        "guid": guid, "url": "", "filename": "", "mimeType": "",
-                        "contentDisposition": "", "totalBytes": 0,
-                        "state": "inProgress", "receivedBytes": 0, "filePath": ""
-                    }));
+                    let entry = map.entry(guid.to_string()).or_insert_with(|| {
+                        json!({
+                            "guid": guid, "url": "", "filename": "", "mimeType": "",
+                            "contentDisposition": "", "totalBytes": 0,
+                            "state": "inProgress", "receivedBytes": 0, "filePath": ""
+                        })
+                    });
                     if let Some(obj) = entry.as_object_mut() {
                         if let Some(s) = p.get("state").and_then(|s| s.as_str()) {
                             obj.insert("state".to_string(), json!(s));
@@ -5317,7 +5469,10 @@ fn kill_tree(pid: u32) {
     let mut child = match cmd.spawn() {
         Ok(c) => c,
         Err(e) => {
-            err_eprintln!("EKILL", "[gladius] kill_tree: spawn taskkill for pid {pid} failed: {e}");
+            err_eprintln!(
+                "EKILL",
+                "[gladius] kill_tree: spawn taskkill for pid {pid} failed: {e}"
+            );
             return;
         }
     };
@@ -5341,7 +5496,10 @@ fn kill_tree(pid: u32) {
                 std::thread::sleep(Duration::from_millis(50));
             }
             Err(e) => {
-                err_eprintln!("EKILL", "[gladius] kill_tree: try_wait for pid {pid} failed: {e}");
+                err_eprintln!(
+                    "EKILL",
+                    "[gladius] kill_tree: try_wait for pid {pid} failed: {e}"
+                );
                 return;
             }
         }
@@ -5363,7 +5521,10 @@ async fn kill_tree_bounded(pid: u32) {
     let mut child = match cmd.spawn() {
         Ok(c) => c,
         Err(e) => {
-            err_eprintln!("EKILL", "[gladius] kill_tree: spawn taskkill for pid {pid} failed: {e}");
+            err_eprintln!(
+                "EKILL",
+                "[gladius] kill_tree: spawn taskkill for pid {pid} failed: {e}"
+            );
             return;
         }
     };
@@ -5374,7 +5535,10 @@ async fn kill_tree_bounded(pid: u32) {
             }
         }
         Ok(Err(e)) => {
-            err_eprintln!("EKILL", "[gladius] kill_tree: wait for pid {pid} failed: {e}");
+            err_eprintln!(
+                "EKILL",
+                "[gladius] kill_tree: wait for pid {pid} failed: {e}"
+            );
         }
         Err(_) => {
             err_eprintln!("EKILL", 
@@ -5479,7 +5643,9 @@ mod job {
             );
             if ok == 0 {
                 CloseHandle(job);
-                debug_eprintln!("[gladius] job: SetInformationJobObject failed, no hard-kill cover");
+                debug_eprintln!(
+                    "[gladius] job: SetInformationJobObject failed, no hard-kill cover"
+                );
                 return None;
             }
             let proc = match child.raw_handle() {
@@ -5492,7 +5658,9 @@ mod job {
             };
             if AssignProcessToJobObject(job, proc) == 0 {
                 CloseHandle(job);
-                debug_eprintln!("[gladius] job: AssignProcessToJobObject failed, no hard-kill cover");
+                debug_eprintln!(
+                    "[gladius] job: AssignProcessToJobObject failed, no hard-kill cover"
+                );
                 return None;
             }
             debug_eprintln!("[gladius] job: browser armed with KILL_ON_JOB_CLOSE");
@@ -5777,10 +5945,22 @@ mod tests {
     /// u32 and a tag like `aa` is not a pid; neither may hide a real owner.
     #[test]
     fn profile_owner_pids_covers_owned_and_tagged_names() {
-        assert_eq!(profile_owner_pids("gladius-1234-1794985464252-0"), vec![1234]);
-        assert_eq!(profile_owner_pids("gladius-aa-12096-1794985464252"), vec![12096]);
-        assert_eq!(profile_owner_pids("gladius-ext-attach-14328-1794989418116"), vec![14328]);
-        assert_eq!(profile_owner_pids("gladius-fix-a-arg-match-10372"), vec![10372]);
+        assert_eq!(
+            profile_owner_pids("gladius-1234-1794985464252-0"),
+            vec![1234]
+        );
+        assert_eq!(
+            profile_owner_pids("gladius-aa-12096-1794985464252"),
+            vec![12096]
+        );
+        assert_eq!(
+            profile_owner_pids("gladius-ext-attach-14328-1794989418116"),
+            vec![14328]
+        );
+        assert_eq!(
+            profile_owner_pids("gladius-fix-a-arg-match-10372"),
+            vec![10372]
+        );
         assert!(profile_owner_pids("gladius-repro-0.8.0").is_empty());
         assert!(profile_owner_pids("not-gladius-12096").is_empty());
     }
@@ -6141,14 +6321,12 @@ mod tests {
                 let n = sid_ctr.fetch_add(1, Ordering::SeqCst);
                 json!({"sessionId": format!("S{n}")})
             }
-            "Runtime.evaluate" => {
-                escript
-                    .lock()
-                    .unwrap()
-                    .pop_front()
-                    .map(|v| json!({"result": {"type": "boolean", "value": v}}))
-                    .unwrap_or_else(|| json!({"result": {"type": "boolean", "value": false}}))
-            }
+            "Runtime.evaluate" => escript
+                .lock()
+                .unwrap()
+                .pop_front()
+                .map(|v| json!({"result": {"type": "boolean", "value": v}}))
+                .unwrap_or_else(|| json!({"result": {"type": "boolean", "value": false}})),
             _ => json!({}),
         };
         let _ = sink

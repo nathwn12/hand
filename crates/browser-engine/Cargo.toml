@@ -11,6 +11,7 @@ name = "browser_engine"
 path = "src/lib.rs"
 
 [dependencies]
+mjpeg-avi = { path = "../mjpeg-avi" }
 tokio = { version = "1", features = ["full"] }
 tokio-tungstenite = { version = "0.30", default-features = false, features = ["connect", "stream", "rustls-tls-native-roots"] }
 futures-util = "0.3"

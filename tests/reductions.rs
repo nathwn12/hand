@@ -57,7 +57,8 @@ function draw() {
 requestAnimationFrame(draw);
 </script></body></html>"#;
 
-const STILL: &str = r#"<!doctype html><html><head><title>Still</title></head><body><h1>still</h1></body></html>"#;
+const STILL: &str =
+    r#"<!doctype html><html><head><title>Still</title></head><body><h1>still</h1></body></html>"#;
 
 /// A form whose controls are hidden and disabled at load and become visible
 /// and enabled 150 ms later. One control stays hidden the whole time, so a
@@ -106,7 +107,11 @@ impl Fixture {
                 }
             }
         })];
-        Fixture { base, stop, handles }
+        Fixture {
+            base,
+            stop,
+            handles,
+        }
     }
 }
 
@@ -178,10 +183,15 @@ fn r3_failing_form_step_carries_evidence_bundle() {
     assert_eq!(steps[1]["status"], "error", "steps: {sc}");
 
     let ev = &steps[1]["evidence"];
-    assert!(ev.is_object(), "failing step must carry an evidence bundle: {steps:?}");
+    assert!(
+        ev.is_object(),
+        "failing step must carry an evidence bundle: {steps:?}"
+    );
     for kind in ["screenshot", "console", "network"] {
         let part = &ev[kind];
-        let path = part["path"].as_str().unwrap_or_else(|| panic!("{kind} path: {part}"));
+        let path = part["path"]
+            .as_str()
+            .unwrap_or_else(|| panic!("{kind} path: {part}"));
         let bytes = part["bytes"]
             .as_u64()
             .unwrap_or_else(|| panic!("{kind} bytes: {part}"));
@@ -215,9 +225,14 @@ fn r3_action_error_and_step_timeout_carry_evidence() {
         let steps = structured(resp)["steps"].as_array().expect("steps");
         assert_eq!(steps[0]["status"], "error", "steps: {steps:?}");
         let ev = &steps[0]["evidence"];
-        assert!(ev.is_object(), "failing step must carry evidence: {steps:?}");
+        assert!(
+            ev.is_object(),
+            "failing step must carry evidence: {steps:?}"
+        );
         for kind in ["screenshot", "console", "network"] {
-            let path = ev[kind]["path"].as_str().unwrap_or_else(|| panic!("{kind} path: {ev}"));
+            let path = ev[kind]["path"]
+                .as_str()
+                .unwrap_or_else(|| panic!("{kind} path: {ev}"));
             let bytes = ev[kind]["bytes"].as_u64().expect("bytes");
             assert!(bytes > 0, "{kind}: {ev}");
             assert_eq!(
@@ -241,16 +256,24 @@ fn r2_canvas_capture_reports_stability_verdict() {
     assert!(!is_error(&resp), "screenshot: {}", text_of(&resp));
     let sc = structured(&resp);
     let st = &sc["stability"];
-    assert!(st.is_object(), "screenshot must carry a stability verdict: {sc}");
+    assert!(
+        st.is_object(),
+        "screenshot must carry a stability verdict: {sc}"
+    );
     let verdict = st["verdict"].as_str().unwrap_or("");
     assert!(
         verdict == "frozen" || verdict == "unfrozen",
         "stability verdict must be typed: {st}"
     );
     assert_eq!(st["code"], verdict, "verdict must be typed: {st}");
-    assert!(st["attempts"].as_u64().unwrap_or(0) >= 1, "must compare frames: {st}");
+    assert!(
+        st["attempts"].as_u64().unwrap_or(0) >= 1,
+        "must compare frames: {st}"
+    );
     if verdict == "unfrozen" {
-        let sums = st["checksums"].as_array().expect("checksums for an unfrozen capture");
+        let sums = st["checksums"]
+            .as_array()
+            .expect("checksums for an unfrozen capture");
         assert!(sums.len() >= 2, "two differing frames named: {st}");
         assert_ne!(sums[0], sums[1], "unfrozen must be truthful: {st}");
     } else {
@@ -269,7 +292,10 @@ fn r2_static_capture_is_frozen() {
     let resp = s.call("browser_screenshot", json!({}));
     assert!(!is_error(&resp), "screenshot: {}", text_of(&resp));
     let st = &structured(&resp)["stability"];
-    assert_eq!(st["verdict"], "frozen", "static page must compare equal: {st}");
+    assert_eq!(
+        st["verdict"], "frozen",
+        "static page must compare equal: {st}"
+    );
     assert_eq!(st["frames"], 2, "static page compared two frames: {st}");
 }
 
@@ -312,7 +338,10 @@ fn r1_click_timeout_is_typed_with_delta() {
     assert!(is_error(&resp), "never-actionable target must fail typed");
     let sc = structured(&resp);
     assert_eq!(sc["code"], "timeout", "structured error: {sc}");
-    assert_eq!(sc["actionability"]["verdict"], "timeout", "structured error: {sc}");
+    assert_eq!(
+        sc["actionability"]["verdict"], "timeout",
+        "structured error: {sc}"
+    );
     assert!(
         sc["actionability"]["waitedMs"].as_u64().unwrap_or(0) >= 1500,
         "waited to the hard bound: {sc}"
@@ -328,13 +357,23 @@ fn r1_type_waits_for_actionable_input_and_readback() {
     assert!(!is_error(&nav), "nav: {}", text_of(&nav));
 
     let resp = s.call("browser_type", json!({"element": "#field", "text": "Ada"}));
-    assert!(!is_error(&resp), "late input must accept text after the wait: {}", text_of(&resp));
+    assert!(
+        !is_error(&resp),
+        "late input must accept text after the wait: {}",
+        text_of(&resp)
+    );
     let a = &structured(&resp)["actionability"];
     assert_eq!(a["verdict"], "settled", "type delta: {a}");
-    assert!(a["waitedMs"].as_u64().unwrap_or(0) >= 50, "type had to wait: {a}");
+    assert!(
+        a["waitedMs"].as_u64().unwrap_or(0) >= 50,
+        "type had to wait: {a}"
+    );
     assert_eq!(a["visible"], true, "type delta: {a}");
     assert_eq!(a["enabled"], true, "type delta: {a}");
-    assert_eq!(evaluate(&mut s, "document.getElementById('field').value"), json!("Ada"));
+    assert_eq!(
+        evaluate(&mut s, "document.getElementById('field').value"),
+        json!("Ada")
+    );
 }
 
 #[test]
@@ -345,12 +384,22 @@ fn r1_select_waits_for_actionable_control_and_readback() {
     let nav = navigate_with_retry(&mut s, &format!("{}/late-input", fx.base));
     assert!(!is_error(&nav), "nav: {}", text_of(&nav));
 
-    let resp = s.call("browser_select", json!({"element": "#choice", "value": "b"}));
-    assert!(!is_error(&resp), "late select must settle: {}", text_of(&resp));
+    let resp = s.call(
+        "browser_select",
+        json!({"element": "#choice", "value": "b"}),
+    );
+    assert!(
+        !is_error(&resp),
+        "late select must settle: {}",
+        text_of(&resp)
+    );
     let a = &structured(&resp)["actionability"];
     assert_eq!(a["verdict"], "settled", "select delta: {a}");
     assert_eq!(a["mode"], "probed", "select delta: {a}");
-    assert_eq!(evaluate(&mut s, "document.getElementById('choice').value"), json!("b"));
+    assert_eq!(
+        evaluate(&mut s, "document.getElementById('choice').value"),
+        json!("b")
+    );
 }
 
 #[test]
@@ -361,8 +410,14 @@ fn r1_type_on_hidden_input_is_typed_timeout_with_delta() {
     let nav = navigate_with_retry(&mut s, &format!("{}/late-input", fx.base));
     assert!(!is_error(&nav), "nav: {}", text_of(&nav));
 
-    let resp = s.call("browser_type", json!({"element": "#never-field", "text": "x"}));
-    assert!(is_error(&resp), "permanently hidden input must refuse typed");
+    let resp = s.call(
+        "browser_type",
+        json!({"element": "#never-field", "text": "x"}),
+    );
+    assert!(
+        is_error(&resp),
+        "permanently hidden input must refuse typed"
+    );
     let sc = structured(&resp);
     assert_eq!(sc["code"], "timeout", "typed code: {sc}");
     assert_eq!(sc["actionability"]["verdict"], "timeout", "delta: {sc}");
@@ -382,8 +437,17 @@ fn r1_unknown_ref_is_typed_stale_ref_and_lands_nothing() {
 
     let resp = s.call("browser_click", json!({"element": "@e999999"}));
     assert!(is_error(&resp), "an unminted ref must refuse typed");
-    assert_eq!(structured(&resp)["code"], "stale_ref", "typed code: {}", text_of(&resp));
-    assert_eq!(evaluate(&mut s, "window.clicked || 0"), json!(0), "nothing may fire");
+    assert_eq!(
+        structured(&resp)["code"],
+        "stale_ref",
+        "typed code: {}",
+        text_of(&resp)
+    );
+    assert_eq!(
+        evaluate(&mut s, "window.clicked || 0"),
+        json!(0),
+        "nothing may fire"
+    );
 }
 
 #[test]
@@ -400,9 +464,15 @@ fn r2_element_capture_reports_stability_verdict() {
     let st = &sc["stability"];
     assert!(st.is_object(), "element capture must carry stability: {sc}");
     let verdict = st["verdict"].as_str().unwrap_or("");
-    assert!(verdict == "frozen" || verdict == "unfrozen", "typed verdict: {st}");
+    assert!(
+        verdict == "frozen" || verdict == "unfrozen",
+        "typed verdict: {st}"
+    );
     assert_eq!(st["code"], verdict, "verdict code: {st}");
-    assert!(st["attempts"].as_u64().unwrap_or(0) >= 1, "compared frames: {st}");
+    assert!(
+        st["attempts"].as_u64().unwrap_or(0) >= 1,
+        "compared frames: {st}"
+    );
 }
 
 #[test]
@@ -413,14 +483,20 @@ fn r2_clip_capture_reports_stability_verdict() {
     let nav = navigate_with_retry(&mut s, &format!("{}/canvas", fx.base));
     assert!(!is_error(&nav), "nav: {}", text_of(&nav));
 
-    let resp = s.call("browser_screenshot", json!({
-        "clip": {"x": 0, "y": 0, "width": 100, "height": 50}
-    }));
+    let resp = s.call(
+        "browser_screenshot",
+        json!({
+            "clip": {"x": 0, "y": 0, "width": 100, "height": 50}
+        }),
+    );
     assert!(!is_error(&resp), "clip capture: {}", text_of(&resp));
     let st = &structured(&resp)["stability"];
     assert!(st.is_object(), "clip capture must carry stability: {st}");
     let verdict = st["verdict"].as_str().unwrap_or("");
-    assert!(verdict == "frozen" || verdict == "unfrozen", "typed verdict: {st}");
+    assert!(
+        verdict == "frozen" || verdict == "unfrozen",
+        "typed verdict: {st}"
+    );
     assert_eq!(st["code"], verdict, "verdict code: {st}");
 }
 
@@ -438,8 +514,7 @@ fn r2_screenshot_publishes_stability_in_output_schema() {
     for tool_name in ["browser_click", "browser_type", "browser_select"] {
         let t = common::tool(&tools, tool_name);
         assert_eq!(
-            t["outputSchema"]["properties"]["actionability"]["type"],
-            "object",
+            t["outputSchema"]["properties"]["actionability"]["type"], "object",
             "{tool_name} must publish actionability: {t:?}"
         );
     }
@@ -453,16 +528,28 @@ fn r3_form_bad_first_step_still_runs_later_steps() {
     let nav = navigate_with_retry(&mut s, &format!("{}/form", fx.base));
     assert!(!is_error(&nav), "nav: {}", text_of(&nav));
 
-    let resp = s.call("browser_form", json!({"fields": [
-        {"field": "#missing", "action": "bogus", "value": "x"},
-        {"field": "#name", "action": "type", "value": "Ada"}
-    ]}));
+    let resp = s.call(
+        "browser_form",
+        json!({"fields": [
+            {"field": "#missing", "action": "bogus", "value": "x"},
+            {"field": "#name", "action": "type", "value": "Ada"}
+        ]}),
+    );
     assert!(!is_error(&resp), "form: {}", text_of(&resp));
     let sc = structured(&resp);
     let steps = sc["steps"].as_array().expect("steps");
     assert_eq!(steps.len(), 2, "one step per field: {sc}");
     assert_eq!(steps[0]["status"], "error", "bad action first: {sc}");
-    assert_eq!(steps[1]["status"], "ok", "a bad first step must not abort the batch: {sc}");
-    assert_eq!(sc["verdict"], "fail", "one error makes the batch fail: {sc}");
-    assert_eq!(evaluate(&mut s, "document.getElementById('name').value"), json!("Ada"));
+    assert_eq!(
+        steps[1]["status"], "ok",
+        "a bad first step must not abort the batch: {sc}"
+    );
+    assert_eq!(
+        sc["verdict"], "fail",
+        "one error makes the batch fail: {sc}"
+    );
+    assert_eq!(
+        evaluate(&mut s, "document.getElementById('name').value"),
+        json!("Ada")
+    );
 }

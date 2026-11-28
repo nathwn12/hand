@@ -72,6 +72,11 @@ function printReport(report) {
   for (const entry of report.metadataDrift.slice(0, 10)) {
     console.log(`             ${entry.tool} ${entry.kind}`);
   }
+  console.log(`  rewrites   ${report.rewrites?.length ?? 0} property description rewrite(s) applied`);
+  for (const entry of report.rewrites ?? []) {
+    console.log(`             ${entry.tool} ${entry.schema}.${entry.path}`);
+  }
+  for (const issue of report.rewriteIssues ?? []) console.log(`  REWRITE-ISSUE ${issue}`);
   if (report.declaredMissing?.length) {
     for (const entry of report.declaredMissing) {
       console.log(`  MISSING-ADDITION ${entry.tool} ${entry.kind}: ${entry.paths.join(", ")} declared in baseline/declared-additions.json but absent from the candidate`);
@@ -102,7 +107,10 @@ function parseArgs(argv) {
       console.log("usage: compare-catalog.mjs (--serve <exe> [--serve-arg <a>] | --candidate <json>) [--baseline hand|gladius|puppet] [--pin <commit>] [--json] [--out <file>]");
       console.log("       metadata is strict by default in both profiles: any title difference fails, and a");
       console.log("       description difference fails unless the tool is declared as rewritten under");
-      console.log("       metadata.description in baseline/declared-additions.json.");
+      console.log("       metadata.description in baseline/declared-additions.json. A property-level");
+      console.log("       description change must be declared under metadata.rewrites as a");
+      console.log("       {tool, schema, path} descriptor; its published value must differ from the");
+      console.log("       pin, and the pin value is substituted before the equality check.");
       console.log("       --strict-metadata is still accepted and changes nothing: it is a no-op kept for");
       console.log("       CLI compatibility, not an extra failure mode.");
       process.exit(0);

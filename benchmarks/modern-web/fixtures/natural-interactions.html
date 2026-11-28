@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>natural-interactions</title>
+<style>body{font:16px/1.4 system-ui,sans-serif;margin:16px}button{margin:4px}output{display:block;margin-top:12px}
+</style>
+</head><body>
+<p id="t">Original text</p><button id="u">Undo</button><output id="out">idle</output>
+<script>
+document.getElementById('u').onclick=()=>{document.getElementById('t').textContent='Original text';document.getElementById('out').textContent='undone';};
+</script>
+</body></html>

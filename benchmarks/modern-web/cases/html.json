@@ -1,0 +1,234 @@
+[
+  {
+    "id": "html",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Begin"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "started"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/html.html",
+    "expectSnapshot": [
+      {
+        "role": "heading",
+        "name": "Welcome"
+      },
+      {
+        "role": "button",
+        "name": "Begin"
+      }
+    ]
+  },
+  {
+    "id": "custom-elements",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Increment"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "1"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/custom-elements.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Increment"
+      }
+    ]
+  },
+  {
+    "id": "shadow-dom",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Shadow button"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "shadow clicked"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/shadow-dom.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Shadow button"
+      }
+    ]
+  },
+  {
+    "id": "form-associated-custom-elements",
+    "act": [
+      {
+        "tool": "browser_type",
+        "args": {
+          "element": "@ref:Token",
+          "text": "abc"
+        }
+      },
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Submit form"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "abc"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/form-associated-custom-elements.html",
+    "expectSnapshot": [
+      {
+        "role": "textbox",
+        "name": "Token"
+      },
+      {
+        "role": "button",
+        "name": "Submit form"
+      }
+    ]
+  },
+  {
+    "id": "styling-web-components",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Style badge"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "accent"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/styling-web-components.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Style badge"
+      }
+    ]
+  },
+  {
+    "id": "accessible-web-components",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Accessible toggle"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "on"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/accessible-web-components.html",
+    "expectSnapshot": [
+      {
+        "role": "switch",
+        "name": "Accessible toggle"
+      }
+    ]
+  },
+  {
+    "id": "prerendering-custom-elements",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Upgrade greeting"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "hello"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/prerendering-custom-elements.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Upgrade greeting"
+      }
+    ]
+  }
+]

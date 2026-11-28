@@ -12,10 +12,12 @@
 //! This module keeps the raw booleans (`cursorUnchanged`,
 //! `foregroundUnchanged`) and adds the evidence needed to attribute a change:
 //!
-//! * `bannedImports` is the executable's own import table, read at runtime. An
-//!   empty list is the mechanism proof that this process cannot call
-//!   `SetCursorPos`, `SendInput`, `mouse_event`, `SetForegroundWindow` or the
-//!   other pointer/focus writers, whatever any other document says.
+//! * `bannedImports` is the executable's own import table, read at runtime,
+//!   MINUS the three opt-in writers. `optInImports` names those separately:
+//!   `SetCursorPos`, `SendInput` and `SetForegroundWindow` are linked for the
+//!   explicit `allow_cursor`/`allow_foreground` paths and the point guard.
+//!   Every OTHER pointer/focus writer is banned, and a capture still fails
+//!   closed if a banned one appears or the table is unreadable.
 //! * `inputTickBefore/After` come from `GetLastInputInfo`: a pointer delta with
 //!   real input in the window is the owner's input. A delta with no input is
 //!   not attributable to the owner, and the gate refuses it.
@@ -33,13 +35,15 @@ use windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos;
 /// APIs that can move the pointer or take the foreground. The capture and
 /// element paths must link none of them; `banned_imports()` reads the running
 /// executable's import table and reports any that appear.
+/// The three writers reachable only behind a top-level opt-in flag. They are
+/// reported, not hidden: an empty `bannedImports` no longer means the process
+/// has no pointer writer, it means every writer it has is an opt-in one.
+const OPT_IN: &[&str] = &["SendInput", "SetCursorPos", "SetForegroundWindow"];
+
 const BANNED: &[&str] = &[
-    "SendInput",
-    "SetCursorPos",
     "SetPhysicalCursorPos",
     "mouse_event",
     "keybd_event",
-    "SetForegroundWindow",
     "BringWindowToTop",
     "SetActiveWindow",
     "SwitchToThisWindow",
@@ -53,6 +57,8 @@ pub struct Audit {
     /// treated as a clean audit.
     pub ok: bool,
     pub banned: Vec<String>,
+    /// Pointer/focus writers that ARE linked, reachable only via opt-in.
+    pub opt_in: Vec<String>,
     pub error: Option<String>,
 }
 
@@ -64,34 +70,49 @@ pub fn banned_imports() -> &'static Audit {
         Ok(path) => match std::fs::read(&path) {
             Ok(bytes) => match pe_import_names(&bytes) {
                 Ok(names) => {
-                    let mut banned: Vec<String> = names
-                        .into_iter()
-                        .filter(|name| BANNED.iter().any(|b| b.eq_ignore_ascii_case(name)))
-                        .collect();
+                    let mut banned: Vec<String> = Vec::new();
+                    let mut opt_in: Vec<String> = Vec::new();
+                    for name in names {
+                        if OPT_IN.iter().any(|b| b.eq_ignore_ascii_case(&name)) {
+                            opt_in.push(name);
+                        } else if BANNED.iter().any(|b| b.eq_ignore_ascii_case(&name)) {
+                            banned.push(name);
+                        }
+                    }
                     banned.sort();
                     banned.dedup();
+                    opt_in.sort();
+                    opt_in.dedup();
                     Audit {
                         ok: true,
                         banned,
+                        opt_in,
                         error: None,
                     }
                 }
                 Err(e) => Audit {
                     ok: false,
                     banned: Vec::new(),
+                    opt_in: Vec::new(),
                     error: Some(format!("cannot parse the executable's import table: {e}")),
                 },
             },
             Err(e) => Audit {
                 ok: false,
                 banned: Vec::new(),
-                error: Some(format!("cannot read the executable for the import audit: {e}")),
+                opt_in: Vec::new(),
+                error: Some(format!(
+                    "cannot read the executable for the import audit: {e}"
+                )),
             },
         },
         Err(e) => Audit {
             ok: false,
             banned: Vec::new(),
-            error: Some(format!("cannot locate the executable for the import audit: {e}")),
+            opt_in: Vec::new(),
+            error: Some(format!(
+                "cannot locate the executable for the import audit: {e}"
+            )),
         },
     })
 }
@@ -172,6 +193,10 @@ impl Evidence {
             "bannedImports".to_string(),
             Value::from(audit.banned.clone()),
         );
+        ns.insert(
+            "optInImports".to_string(),
+            Value::from(audit.opt_in.clone()),
+        );
 
         let mut pointer = Map::new();
         pointer.insert("readable".to_string(), Value::from(readable));
@@ -199,7 +224,10 @@ impl Evidence {
                 Value::from(crate::exe_of_pid(after_pid))
             },
         );
-        foreground.insert("afterOwnedByThisProcess".to_string(), Value::from(after_owned));
+        foreground.insert(
+            "afterOwnedByThisProcess".to_string(),
+            Value::from(after_owned),
+        );
         foreground.insert("target".to_string(), Value::from(target));
         foreground.insert(
             "targetWasForeground".to_string(),
@@ -233,7 +261,6 @@ fn opt_u32(value: Option<u32>) -> Value {
         None => Value::Null,
     }
 }
-
 
 fn u16le(bytes: &[u8], at: usize) -> Result<u16, String> {
     let chunk = bytes
@@ -358,10 +385,11 @@ fn pe_import_names(bytes: &[u8]) -> Result<Vec<String>, String> {
 mod tests {
     use super::*;
 
-    /// The running test binary imports user32 through the same library as the
-    /// product. The banned writers must not be in its import table.
+    /// The running test binary imports user32 through the same library as
+    /// the product. Only the three opt-in writers may appear: everything
+    /// else that can move the pointer or steal focus must be absent.
     #[test]
-    fn the_running_binary_links_no_pointer_or_foreground_writer() {
+    fn the_running_binary_links_only_the_opt_in_pointer_writers() {
         let audit = banned_imports();
         assert!(
             audit.ok,
@@ -373,6 +401,21 @@ mod tests {
             "banned imports present: {:?}",
             audit.banned
         );
+        assert_eq!(
+            audit.opt_in,
+            vec![
+                "SendInput".to_string(),
+                "SetCursorPos".to_string(),
+                "SetForegroundWindow".to_string()
+            ],
+            "exactly the opt-in writers must be linked, and reported honestly"
+        );
+        for name in OPT_IN {
+            assert!(
+                !BANNED.contains(name),
+                "opt-in writer must not also be banned"
+            );
+        }
     }
 
     #[test]

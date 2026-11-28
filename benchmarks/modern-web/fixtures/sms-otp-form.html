@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>sms-otp-form</title>
+<style>body{font:16px/1.4 system-ui,sans-serif;margin:16px}button{margin:4px}output{display:block;margin-top:12px}</style>
+</head><body>
+<label for="otp">One-time code</label><input id="otp" inputmode="numeric" maxlength="6"><button id="verify" disabled>Verify code</button><output id="out">idle</output>
+<script>
+document.getElementById('otp').addEventListener('input',e=>{const ready=e.target.value.length===6;document.getElementById('verify').disabled=!ready;document.getElementById('out').textContent=ready?'ready':'waiting';});
+</script>
+</body></html>

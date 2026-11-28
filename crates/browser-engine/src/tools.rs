@@ -5,11 +5,41 @@ use crate::fetch::fetch_text;
 
 /// Browser tools a `run` batch may dispatch. `run` cannot spawn another batch
 /// and `close` cannot tear down the engine the batch is using.
-const RUN_TOOLS: &[&str] = &[
-    "navigate", "snapshot", "screenshot", "click", "type", "evaluate", "wait_for", "targets",
-    "dialog", "history", "network", "console", "storage", "tabs", "viewport", "select", "hover",
-    "key", "upload", "layout", "assert_layout", "visual", "cdp", "fetch_text", "context", "wheel",
-    "drag", "form", "download", "assert", "audit", "trace",
+pub(crate) const RUN_TOOLS: &[&str] = &[
+    "navigate",
+    "snapshot",
+    "screenshot",
+    "click",
+    "type",
+    "evaluate",
+    "wait_for",
+    "targets",
+    "dialog",
+    "history",
+    "network",
+    "console",
+    "storage",
+    "tabs",
+    "viewport",
+    "select",
+    "hover",
+    "key",
+    "upload",
+    "layout",
+    "assert_layout",
+    "visual",
+    "cdp",
+    "fetch_text",
+    "context",
+    "wheel",
+    "drag",
+    "form",
+    "download",
+    "assert",
+    "audit",
+    "trace",
+    "metrics",
+    "clipboard",
 ];
 
 pub fn list() -> Value {
@@ -421,13 +451,33 @@ pub fn list() -> Value {
              "required": ["ok", "moved", "scroll", "at"], "additionalProperties": false},
           "annotations": {"readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": false}}));
     }
-    listed["tools"].as_array_mut().expect("tools").push(crate::download::schema());
-    listed["tools"].as_array_mut().expect("tools").push(crate::assert::schema());
-    listed["tools"].as_array_mut().expect("tools").push(crate::audit::schema());
-    listed["tools"].as_array_mut().expect("tools").push(crate::trace::schema());
+    listed["tools"]
+        .as_array_mut()
+        .expect("tools")
+        .push(crate::download::schema());
+    listed["tools"]
+        .as_array_mut()
+        .expect("tools")
+        .push(crate::assert::schema());
+    listed["tools"]
+        .as_array_mut()
+        .expect("tools")
+        .push(crate::audit::schema());
+    listed["tools"]
+        .as_array_mut()
+        .expect("tools")
+        .push(crate::trace::schema());
+    listed["tools"]
+        .as_array_mut()
+        .expect("tools")
+        .push(crate::metrics::schema());
+    listed["tools"]
+        .as_array_mut()
+        .expect("tools")
+        .push(crate::clipboard::schema());
     listed["tools"].as_array_mut().expect("tools").push(json!({
         "name": "run", "title": "Run",
-        "description": "Ordered browser batch. steps[] runs in order, 1..64 steps of {tool, args?}; tool is one of the browser tools except run and close. continueOnError (default false) stops at the first failing step; true keeps going. timeoutMs (default 30000) bounds each step. A screenshot step with freeze:true is refused with typed invalid_args (a timeout would drop the future and leave the page frozen); call browser_screenshot directly to freeze. Every step reports {index, tool, status, ms, result?|error?} with the step's own structuredContent as evidence; aggregate ok, steps, failed and ms. No desktop tool is accepted.",
+        "description": "Ordered browser batch. steps[] runs in order, 1..64 steps of {tool, args?}; tool is one of the browser tools except run and close. continueOnError (default false) stops at the first failing step; true keeps going. timeoutMs (default 30000) bounds each step. A screenshot step with freeze:true is refused with typed invalid_args (a timeout would drop the future and leave the page frozen); call browser_screenshot directly to freeze. Every step reports {index, tool, status, ms, result?|error?} with the step's own structuredContent as evidence. An assert step whose verdict is false (dom/text/url/network) or the string \"fail\" (ax) is a FAILED step: it gets status:\"assert_failed\", keeps its full result, counts in failed and makes ok false - never a silent success; a hard error or timeout fails the batch too. Aggregate fields are ok, steps, failed, ms and assertions {passed, failed}: assertions counts only steps that carried an assertion verdict (passed or failed); non-assert steps are not counted there. No desktop tool is accepted.",
         "inputSchema": {"type": "object", "properties": {
             "steps": {"type": "array", "minItems": 1, "maxItems": 64, "items": {"type": "object",
                 "properties": {"tool": {"type": "string", "enum": json!(RUN_TOOLS)},
@@ -444,15 +494,26 @@ pub fn list() -> Value {
                 "result": {"type": "object"}, "error": {}},
                 "required": ["index", "tool", "status", "ms"], "additionalProperties": false}},
             "failed": {"type": "integer", "minimum": 0},
+            "assertions": {"type": "object", "properties": {
+                "passed": {"type": "integer", "minimum": 0},
+                "failed": {"type": "integer", "minimum": 0}},
+                "required": ["passed", "failed"], "additionalProperties": false},
             "ms": {"type": "integer", "minimum": 0}},
             "required": ["ok", "steps", "failed", "ms"], "additionalProperties": false},
         "annotations": {"readOnlyHint": false, "destructiveHint": true, "idempotentHint": false, "openWorldHint": true}
     }));
     for tool in listed["tools"].as_array_mut().expect("tools") {
-        let Some(name) = tool.get("name").and_then(|n| n.as_str()).map(str::to_string) else {
+        let Some(name) = tool
+            .get("name")
+            .and_then(|n| n.as_str())
+            .map(str::to_string)
+        else {
             continue;
         };
-        if !matches!(name.as_str(), "click" | "type" | "select" | "hover" | "upload" | "screenshot") {
+        if !matches!(
+            name.as_str(),
+            "click" | "type" | "select" | "hover" | "upload" | "screenshot"
+        ) {
             continue;
         }
         let Some(schema) = tool.get_mut("inputSchema").and_then(|s| s.as_object_mut()) else {
@@ -660,6 +721,10 @@ pub(crate) enum ToolCode {
     BaselineEnvironmentUnsettled,
     /// A requested http(s) page never loaded: the document stayed blank.
     BlankLoad,
+    /// Caller text is past the declared 1 MiB clipboard cap.
+    TooLarge,
+    /// The page's own clipboard API rejected the call or gave no text.
+    ClipboardUnavailable,
     /// The residue: a failure that genuinely knows nothing.
     Error,
 }
@@ -686,6 +751,8 @@ impl ToolCode {
             Self::BaselineEnvironmentUnknown => "baseline_environment_unknown",
             Self::BaselineEnvironmentUnsettled => "baseline_environment_unsettled",
             Self::BlankLoad => "blank_load",
+            Self::TooLarge => "too_large",
+            Self::ClipboardUnavailable => "clipboard_unavailable",
             Self::Error => "error",
         }
     }
@@ -717,6 +784,8 @@ impl ToolCode {
         Self::BaselineEnvironmentUnknown,
         Self::BaselineEnvironmentUnsettled,
         Self::BlankLoad,
+        Self::TooLarge,
+        Self::ClipboardUnavailable,
         Self::Error,
     ];
 
@@ -989,6 +1058,89 @@ pub(crate) fn optional_string_arg(
     }
 }
 
+/// Click's dispatcher, lifted out of the giant `call` match so a nested
+/// caller (form's submit step) does not put a second full dispatcher poll
+/// frame on the same debug stack. `#[inline(never)]` keeps that boundary at
+/// every optimisation level. Behaviour is identical to the old `"click"`
+/// arm: errors return as `Err` and `call` turns them into the same envelope.
+#[inline(never)]
+async fn dispatch_click(browser: &Browser, args: &Value) -> Result<Value, ToolErr> {
+    if let Err(e) = check_unknown(
+        "click",
+        args,
+        &[
+            "element",
+            "selector",
+            "frame",
+            "hoverFirst",
+            "button",
+            "clickCount",
+        ],
+    ) {
+        return Err(e);
+    }
+    let el = match alias_target("click", args) {
+        Ok(Some(target)) => target,
+        Ok(None) => {
+            return Err(missing_target(
+                "click",
+                args,
+                "click: missing required arg 'element'",
+            ))
+        }
+        Err(e) => return Err(e),
+    };
+    let frame = args
+        .get("frame")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let hover_first = args
+        .get("hoverFirst")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let button = match args.get("button").and_then(|v| v.as_str()) {
+        None | Some("left") => "left",
+        Some("right") => "right",
+        Some("middle") => "middle",
+        Some(other) => {
+            return Err(ToolErr::typed(
+                format!("click: unknown 'button' '{other}' (left, right, middle)"),
+                json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "click", "arg": "button"}),
+            ))
+        }
+    };
+    let click_count = match args.get("clickCount") {
+        None => 1i64,
+        Some(v) => match v.as_i64() {
+            Some(n) if (1..=3).contains(&n) => n,
+            _ => {
+                return Err(ToolErr::typed(
+                    "click: 'clickCount' must be 1, 2 (double click) or 3".to_string(),
+                    json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "click", "arg": "clickCount"}),
+                ))
+            }
+        },
+    };
+    let act = Box::pin(actionability_wait(browser, &el, frame.as_deref())).await;
+    if act["verdict"] == "timeout" {
+        return Err(ToolErr::typed(
+            format!("click: target not actionable within {ACTIONABILITY_BOUND_MS}ms"),
+            json!({"code": ToolCode::Timeout.as_str(), "reason": ToolReason::BudgetExceeded.as_str(),
+                   "tool": "click", "actionability": act}),
+        ));
+    }
+    tool_click(
+        browser,
+        &el,
+        frame.as_deref(),
+        hover_first,
+        button,
+        click_count,
+    )
+    .await
+    .map(|v| with_actionability(v, &act))
+}
+
 pub async fn call(name: &str, args: &Value, browser: &Browser) -> Value {
     let r: Result<Value, ToolErr> = match name {
         "navigate" => {
@@ -1201,75 +1353,8 @@ pub async fn call(name: &str, args: &Value, browser: &Browser) -> Value {
         }
         "layout" => Box::pin(tool_layout(browser, args)).await,
         "visual" => Box::pin(tool_visual(browser, args)).await,
-        "click" => {
-            if let Err(e) = check_unknown(
-                "click",
-                args,
-                &["element", "selector", "frame", "hoverFirst", "button", "clickCount"],
-            ) {
-                return e.envelope();
-            }
-            let el = match alias_target("click", args) {
-                Ok(Some(target)) => target,
-                Ok(None) => {
-                    return missing_target("click", args, "click: missing required arg 'element'")
-                        .envelope()
-                }
-                Err(e) => return e.envelope(),
-            };
-            let frame = args
-                .get("frame")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            let hover_first = args
-                .get("hoverFirst")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
-            let button = match args.get("button").and_then(|v| v.as_str()) {
-                None | Some("left") => "left",
-                Some("right") => "right",
-                Some("middle") => "middle",
-                Some(other) => {
-                    return ToolErr::typed(
-                        format!("click: unknown 'button' '{other}' (left, right, middle)"),
-                        json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "click", "arg": "button"}),
-                    )
-                    .envelope()
-                }
-            };
-            let click_count = match args.get("clickCount") {
-                None => 1i64,
-                Some(v) => match v.as_i64() {
-                    Some(n) if (1..=3).contains(&n) => n,
-                    _ => {
-                        return ToolErr::typed(
-                            "click: 'clickCount' must be 1, 2 (double click) or 3".to_string(),
-                            json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::BadValue.as_str(), "tool": "click", "arg": "clickCount"}),
-                        )
-                        .envelope()
-                    }
-                },
-            };
-            let act = Box::pin(actionability_wait(browser, &el, frame.as_deref())).await;
-            if act["verdict"] == "timeout" {
-                return ToolErr::typed(
-                    format!("click: target not actionable within {ACTIONABILITY_BOUND_MS}ms"),
-                    json!({"code": ToolCode::Timeout.as_str(), "reason": ToolReason::BudgetExceeded.as_str(),
-                           "tool": "click", "actionability": act}),
-                )
-                .envelope();
-            }
-            tool_click(
-                browser,
-                &el,
-                frame.as_deref(),
-                hover_first,
-                button,
-                click_count,
-            )
-            .await
-            .map(|v| with_actionability(v, &act))
-        }
+        "click" => dispatch_click(browser, args).await,
+
         "wheel" => {
             if let Err(e) = check_unknown("wheel", args, &["deltaY", "deltaX", "x", "y"]) {
                 return e.envelope();
@@ -1794,6 +1879,8 @@ pub async fn call(name: &str, args: &Value, browser: &Browser) -> Value {
         "assert" => crate::assert::handle(browser, args).await,
         "audit" => crate::audit::handle(browser, args).await,
         "trace" => crate::trace::handle(browser, args).await,
+        "metrics" => crate::metrics::handle(browser, args).await,
+        "clipboard" => crate::clipboard::handle(browser, args).await,
         "download" => crate::download::handle(browser, args).await,
         other => {
             return ToolErr::typed(
@@ -1832,7 +1919,10 @@ async fn tool_navigate(browser: &Browser, url: &str) -> Result<Value, ToolErr> {
     if let Some(err) = nav.get("errorText").and_then(|v| v.as_str()) {
         if !err.is_empty() {
             if requested_page {
-                return Err(blank_load_err(url, &format!("net error loading {url}: {err}")));
+                return Err(blank_load_err(
+                    url,
+                    &format!("net error loading {url}: {err}"),
+                ));
             }
             return Err(ToolErr::fallback(format!("navigate: {err}")));
         }
@@ -3147,10 +3237,7 @@ async fn emit_paged_snapshot(
             obj.insert("target".to_string(), json!(tgt));
         }
     }
-    Ok(ok_snapshot(
-        full,
-        structured,
-    ))
+    Ok(ok_snapshot(full, structured))
 }
 
 /// AX snapshot result: the human text block stays FIRST and byte-identical
@@ -3531,6 +3618,122 @@ mod tests {
 
     use super::{list, unreadable_value};
 
+    /// Unit-level `browser_run` harness: canned tool replies go through the
+    /// same stop decision and accounting fold a live batch uses, so these
+    /// checks need no browser.
+    fn assert_step(verdict: serde_json::Value) -> super::RunStep {
+        let evidence = json!({"kind": "text", "expected": {"contains": "X"},
+                              "observed": "actual", "verdict": verdict,
+                              "evidence": {}, "elapsedMs": 1});
+        super::RunStep {
+            tool: "assert".to_string(),
+            ms: 0,
+            reply: super::ok_text(evidence.to_string()),
+            timed_out: false,
+        }
+    }
+
+    #[test]
+    fn run_assert_false_verdict_is_a_failed_batch() {
+        let ran = super::collect_steps(&[assert_step(json!(false))], false);
+        let reply = super::run_account(&ran, 1, 0);
+        assert_eq!(reply["ok"], false, "{reply}");
+        assert_eq!(reply["failed"], 1, "{reply}");
+        assert_eq!(reply["steps"][0]["status"], "assert_failed", "{reply}");
+        assert_eq!(
+            reply["steps"][0]["result"]["verdict"], false,
+            "full result kept: {reply}"
+        );
+        assert_eq!(
+            reply["assertions"],
+            json!({"passed": 0, "failed": 1}),
+            "{reply}"
+        );
+    }
+
+    #[test]
+    fn run_assert_true_verdict_keeps_ok_true() {
+        let ran = super::collect_steps(&[assert_step(json!(true))], false);
+        let reply = super::run_account(&ran, 1, 0);
+        assert_eq!(reply["ok"], true, "{reply}");
+        assert_eq!(reply["failed"], 0, "{reply}");
+        assert_eq!(reply["steps"][0]["status"], "ok", "{reply}");
+        assert_eq!(
+            reply["assertions"],
+            json!({"passed": 1, "failed": 0}),
+            "{reply}"
+        );
+    }
+
+    #[test]
+    fn run_ax_fail_string_counts_as_failed() {
+        let ran = super::collect_steps(&[assert_step(json!("fail"))], false);
+        let reply = super::run_account(&ran, 1, 0);
+        assert_eq!(reply["ok"], false, "{reply}");
+        assert_eq!(reply["failed"], 1, "{reply}");
+        assert_eq!(reply["steps"][0]["status"], "assert_failed", "{reply}");
+        assert_eq!(
+            reply["assertions"],
+            json!({"passed": 0, "failed": 1}),
+            "{reply}"
+        );
+        // The ax pass string is the mirror case: a successful assertion.
+        let passed = super::run_account(
+            &super::collect_steps(&[assert_step(json!("pass"))], false),
+            1,
+            0,
+        );
+        assert_eq!(
+            passed["assertions"],
+            json!({"passed": 1, "failed": 0}),
+            "{passed}"
+        );
+    }
+
+    #[test]
+    fn run_assert_failure_with_continue_on_error_runs_later_steps() {
+        let fail = assert_step(json!(false));
+        let navigate = super::RunStep {
+            tool: "navigate".to_string(),
+            ms: 0,
+            reply: super::ok_text(json!({"url": "http://x/", "title": "X"}).to_string()),
+            timed_out: false,
+        };
+        let pass = assert_step(json!(true));
+        let canned = [fail, navigate, pass];
+
+        let ran = super::collect_steps(&canned, true);
+        assert_eq!(ran.len(), 3, "continueOnError runs every step");
+        let reply = super::run_account(&ran, canned.len(), 0);
+        assert_eq!(reply["ok"], false, "{reply}");
+        assert_eq!(reply["failed"], 1, "{reply}");
+        assert_eq!(
+            reply["steps"].as_array().map(|a| a.len()),
+            Some(3),
+            "{reply}"
+        );
+        assert_eq!(reply["steps"][0]["status"], "assert_failed", "{reply}");
+        assert_eq!(reply["steps"][1]["status"], "ok", "{reply}");
+        assert_eq!(reply["steps"][2]["status"], "ok", "{reply}");
+        assert_eq!(
+            reply["assertions"],
+            json!({"passed": 1, "failed": 1}),
+            "{reply}"
+        );
+
+        // The same input without continueOnError stops before the next step.
+        let stopped = super::collect_steps(&canned, false);
+        assert_eq!(stopped.len(), 1, "default stops at the failed assertion");
+        let stopped_reply = super::run_account(&stopped, canned.len(), 0);
+        assert_eq!(stopped_reply["ok"], false, "{stopped_reply}");
+        assert_eq!(stopped_reply["failed"], 1, "{stopped_reply}");
+        assert_eq!(
+            stopped_reply["assertions"],
+            json!({"passed": 0, "failed": 1}),
+            "{stopped_reply}"
+        );
+    }
+
     /// The `selector` alias makes element one of two alternatives. JSON Schema
     /// ANDs `required` with `anyOf`, so leaving `element` in `required` makes a
     /// selector-only call invalid for a validating client even though the
@@ -3565,7 +3768,10 @@ mod tests {
                 "{name} must not require element: {schema}"
             );
             for key in other_required {
-                assert!(required.contains(&key), "{name} must still require {key}: {schema}");
+                assert!(
+                    required.contains(&key),
+                    "{name} must still require {key}: {schema}"
+                );
             }
             assert_eq!(
                 schema["anyOf"],
@@ -3574,12 +3780,18 @@ mod tests {
             );
         }
         let shot = by_name("screenshot");
-        assert!(shot.get("anyOf").is_none(), "screenshot must have no anyOf: {shot}");
+        assert!(
+            shot.get("anyOf").is_none(),
+            "screenshot must have no anyOf: {shot}"
+        );
         assert!(
             shot.get("required").is_none(),
             "screenshot must have no required target: {shot}"
         );
-        assert!(shot["properties"]["selector"].is_object(), "screenshot keeps selector");
+        assert!(
+            shot["properties"]["selector"].is_object(),
+            "screenshot keeps selector"
+        );
     }
 
     /// The unreadable fallback is the ONE branch where the value comes from
@@ -3613,19 +3825,32 @@ mod tests {
 
         let browser = Browser::new();
         let restored = super::call("network", &json!({"action": "restore"}), &browser).await;
-        assert_eq!(restored["structuredContent"]["ok"].as_bool(), Some(true), "{restored}");
-        assert_eq!(restored["structuredContent"]["action"], "restore", "{restored}");
+        assert_eq!(
+            restored["structuredContent"]["ok"].as_bool(),
+            Some(true),
+            "{restored}"
+        );
+        assert_eq!(
+            restored["structuredContent"]["action"], "restore",
+            "{restored}"
+        );
         assert_eq!(restored["structuredContent"]["removed"], 0, "{restored}");
         assert!(restored.get("isError").is_none(), "{restored}");
 
         for (action, args) in [
             ("route", json!({"action": "route", "pattern": "*/x.json"})),
-            ("mock", json!({"action": "mock", "url": "*/x.json", "body": {"value": "mocked"}})),
+            (
+                "mock",
+                json!({"action": "mock", "url": "*/x.json", "body": {"value": "mocked"}}),
+            ),
             ("abort", json!({"action": "abort", "url": "*/x.json"})),
             ("offline", json!({"action": "offline"})),
         ] {
             let env = super::call("network", &args, &browser).await;
-            assert_eq!(env["structuredContent"]["tool"], "network", "{action}: {env}");
+            assert_eq!(
+                env["structuredContent"]["tool"], "network",
+                "{action}: {env}"
+            );
             assert_eq!(env["isError"], true, "{action}: {env}");
             let text = env["content"][0]["text"].as_str().unwrap_or("");
             assert!(text.contains("no live engine"), "{action}: {text}");
@@ -3634,6 +3859,44 @@ mod tests {
 
         let unknown = super::call("network", &json!({"action": "bogus"}), &browser).await;
         assert_eq!(unknown["structuredContent"]["reason"], "unknown_action");
+    }
+
+    /// Regression for the debug-build stack overflow in the submit step of
+    /// form. This drives the real dispatcher on a real page: if the nested
+    /// submit click is polled inline again, the test binary dies with
+    /// STATUS_STACK_OVERFLOW before these assertions can ever run.
+    #[test]
+    fn form_submit_click_survives_debug_stack() {
+        // A bounded worker stack makes the debug-build overflow deterministic
+        // in-process. 1.8 MB is below tokio's 2 MB default: the old nested
+        // dispatcher poll dies here, the extracted one fits. The stdio server
+        // needs the full 2 MB because its engine task adds a few more frames,
+        // which is why the shipped debug binary dies at the exact same call.
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .thread_stack_size(1850 * 1024)
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            let browser = crate::metrics::launch_and_navigate(
+                "data:text/html,<input id=name><button id=form-submit type=submit>Send</button>",
+            )
+            .await;
+            let worker = tokio::spawn(async move {
+                let args = json!({
+                    "fields": [{"field": "#name", "action": "type", "value": "Ada"}],
+                    "submit": "#name"
+                });
+                let env = super::call("form", &args, &browser).await;
+                let _ = browser.close().await;
+                env
+            });
+            let env = worker.await.expect("form worker must not die");
+            assert!(env.get("isError").is_none(), "form errored: {env}");
+            assert_eq!(env["structuredContent"]["submitted"], true, "{env}");
+            assert_eq!(env["structuredContent"]["verdict"], "pass", "{env}");
+        });
     }
 }
 
@@ -3796,7 +4059,8 @@ async fn tool_snapshot_ax(
         }));
         object_ids.push(oid);
     }
-    let enrich_vals: Vec<Value> = enrich_objects_in(browser, frame_session.as_deref(), &object_ids).await;
+    let enrich_vals: Vec<Value> =
+        enrich_objects_in(browser, frame_session.as_deref(), &object_ids).await;
     let enrich_map: serde_json::Map<String, Value> = items
         .iter()
         .zip(enrich_vals.into_iter())
@@ -4195,7 +4459,9 @@ async fn push_backend_node(
         .unwrap_or(0);
     if nid == 0 {
         return Err(ToolErr::typed(
-            format!("{tool}: node no longer resolves (stale element; take a fresh snapshot): {element}"),
+            format!(
+                "{tool}: node no longer resolves (stale element; take a fresh snapshot): {element}"
+            ),
             json!({"code": ToolCode::StaleRef.as_str(), "reason": ToolReason::NodeGone.as_str(), "tool": tool, "element": element}),
         ));
     }
@@ -4523,7 +4789,11 @@ async fn tool_assert_layout(browser: &Browser, args: &Value) -> Result<Value, To
 
 /// `layout` body.
 async fn tool_layout(browser: &Browser, args: &Value) -> Result<Value, ToolErr> {
-    check_unknown("layout", args, &["ref", "selector", "includeOverlaps", "frame"])?;
+    check_unknown(
+        "layout",
+        args,
+        &["ref", "selector", "includeOverlaps", "frame"],
+    )?;
     let fid = frame_id_ok("layout", args.get("frame").and_then(|v| v.as_str()))?;
     let specs = layout_specs(browser, "layout", args).await?;
     let overlaps = args
@@ -4556,7 +4826,10 @@ async fn visual_frame_clip(
         .frame_chain_points(fid, x, y)
         .await
         .map_err(ToolErr::from)?;
-    let (mx, my) = levels.last().map(|(_, px, py)| (*px, *py)).unwrap_or((x, y));
+    let (mx, my) = levels
+        .last()
+        .map(|(_, px, py)| (*px, *py))
+        .unwrap_or((x, y));
     let scroll = browser
         .eval("[window.scrollX, window.scrollY]")
         .await
@@ -4911,7 +5184,10 @@ async fn actionability_wait(browser: &Browser, element: &str, frame: Option<&str
             .eval(&expr)
             .await
             .ok()
-            .and_then(|v| v.as_str().and_then(|s| serde_json::from_str::<Value>(s).ok()))
+            .and_then(|v| {
+                v.as_str()
+                    .and_then(|s| serde_json::from_str::<Value>(s).ok())
+            })
             .unwrap_or_else(|| json!({"found":false}));
         let found = state["found"].as_bool().unwrap_or(false);
         let visible = state["visible"].as_bool().unwrap_or(false);
@@ -5032,21 +5308,22 @@ async fn tool_click(
 
     if let Some(sel) = ax_sel_parse("click", element)? {
         let hit = ax_resolve(browser, "click", &sel, element, fid.as_deref()).await?;
-        return ax_click(browser, element, &hit, fid.as_deref(), hover_first, button, click_count).await;
+        return ax_click(
+            browser,
+            element,
+            &hit,
+            fid.as_deref(),
+            hover_first,
+            button,
+            click_count,
+        )
+        .await;
     }
     if let Some(f) = fid.as_deref() {
         if let Some(id) = parse_ref(element) {
             if browser.ref_frame(&id).await.as_deref() == Some(f) {
-                return ref_click_frame(
-                    browser,
-                    element,
-                    &id,
-                    f,
-                    hover_first,
-                    button,
-                    click_count,
-                )
-                .await;
+                return ref_click_frame(browser, element, &id, f, hover_first, button, click_count)
+                    .await;
             }
             return Err(ref_in_frame("click", element, f));
         }
@@ -5080,7 +5357,9 @@ async fn tool_click(
                     .and_then(|n| n.as_str())
                     .unwrap_or("")
                     .to_string();
-                let st = click_dispatch(browser, x, y, &h0, hover_first, button, click_count, false).await?;
+                let st =
+                    click_dispatch(browser, x, y, &h0, hover_first, button, click_count, false)
+                        .await?;
                 click_settle(browser, &st).await;
                 Ok(click_ok(browser).await)
             }
@@ -5137,7 +5416,8 @@ async fn tool_click(
                 .and_then(|n| n.as_str())
                 .unwrap_or("")
                 .to_string();
-            let st = click_dispatch(browser, x, y, &h0, hover_first, button, click_count, false).await?;
+            let st =
+                click_dispatch(browser, x, y, &h0, hover_first, button, click_count, false).await?;
             click_settle(browser, &st).await;
             Ok(click_ok(browser).await)
         }
@@ -5182,7 +5462,14 @@ async fn ax_click(
     click_count: i64,
 ) -> Result<Value, ToolErr> {
     let oid = ax_object(browser, "click", element, hit).await?;
-    let v = call_on_object_in(browser, hit.session.as_deref(), &oid, click_preflight_fn(), vec![]).await?;
+    let v = call_on_object_in(
+        browser,
+        hit.session.as_deref(),
+        &oid,
+        click_preflight_fn(),
+        vec![],
+    )
+    .await?;
     let (x, y, h0) = match v.as_str() {
         Some(s) if s.starts_with("GLADIUS_FALLBACK:") => {
             click_settle(browser, &s["GLADIUS_FALLBACK:".len()..]).await;
@@ -5251,7 +5538,14 @@ async fn ax_hover(
     fid: Option<&str>,
 ) -> Result<Value, ToolErr> {
     let oid = ax_object(browser, "hover", element, hit).await?;
-    let v = call_on_object_in(browser, hit.session.as_deref(), &oid, hover_preflight_fn(), vec![]).await?;
+    let v = call_on_object_in(
+        browser,
+        hit.session.as_deref(),
+        &oid,
+        hover_preflight_fn(),
+        vec![],
+    )
+    .await?;
     let point = v
         .as_str()
         .filter(|s| s.starts_with('{'))
@@ -5291,7 +5585,14 @@ async fn ax_type(
     submit: bool,
 ) -> Result<Value, ToolErr> {
     let oid = ax_object(browser, "type", element, hit).await?;
-    let v = call_on_object_in(browser, hit.session.as_deref(), &oid, type_preflight_fn(), vec![]).await?;
+    let v = call_on_object_in(
+        browser,
+        hit.session.as_deref(),
+        &oid,
+        type_preflight_fn(),
+        vec![],
+    )
+    .await?;
     if v.as_str() != Some("GLADIUS_READY") {
         return Err(ax_status_err("type", element, hit, v.as_str()).unwrap_or_else(|| {
             ToolErr::typed(
@@ -5463,8 +5764,17 @@ async fn tool_click_frame(
                 .unwrap_or_default();
             let (mx, my) = frame_owner_hit_ok(browser, "click", element, fid, lx, ly).await?;
             let cross = browser.oop_session_for_frame(fid).await.is_some();
-            let st = click_dispatch(browser, mx, my, &h0, hover_first, button, click_count, cross)
-                .await?;
+            let st = click_dispatch(
+                browser,
+                mx,
+                my,
+                &h0,
+                hover_first,
+                button,
+                click_count,
+                cross,
+            )
+            .await?;
             click_settle(browser, &st).await;
             Ok(click_ok(browser).await)
         }
@@ -5561,7 +5871,14 @@ async fn drag_point(
     if let Some(sel) = ax_sel_parse(tool, element)? {
         let hit = ax_resolve(browser, tool, &sel, element, fid).await?;
         let oid = ax_object(browser, tool, element, &hit).await?;
-        let v = call_on_object_in(browser, hit.session.as_deref(), &oid, drag_preflight_fn(), vec![]).await?;
+        let v = call_on_object_in(
+            browser,
+            hit.session.as_deref(),
+            &oid,
+            drag_preflight_fn(),
+            vec![],
+        )
+        .await?;
         let (lx, ly) = preflight_point(&v, tool, element)?;
         return match fid {
             Some(f) => frame_owner_hit_ok(browser, tool, element, f, lx, ly).await,
@@ -5581,7 +5898,16 @@ async fn drag_point(
         let _at = guard_ref(browser, tool, element, &id).await?;
         let session = browser.ref_session(&id).await;
         let v = match resolve_ref_object(browser, tool, &id).await? {
-            Some(oid) => call_on_object_in(browser, session.as_deref(), &oid, drag_preflight_fn(), vec![]).await?,
+            Some(oid) => {
+                call_on_object_in(
+                    browser,
+                    session.as_deref(),
+                    &oid,
+                    drag_preflight_fn(),
+                    vec![],
+                )
+                .await?
+            }
             None => {
                 let (expr, _) = click_preflight_ref(&id);
                 browser.eval(&expr).await?
@@ -5616,7 +5942,10 @@ async fn point_in_viewport(
 
 /// Read the document scroll offsets (the effect a wheel is supposed to have).
 async fn scroll_offsets(browser: &Browser) -> Option<(f64, f64)> {
-    let v = browser.eval("[window.scrollX, window.scrollY]").await.ok()?;
+    let v = browser
+        .eval("[window.scrollX, window.scrollY]")
+        .await
+        .ok()?;
     Some((
         v.get(0).and_then(|x| x.as_f64()).unwrap_or(0.0),
         v.get(1).and_then(|x| x.as_f64()).unwrap_or(0.0),
@@ -5719,7 +6048,11 @@ async fn step_evidence(browser: &Browser, field: &str) -> Value {
         .map(|c| c.bytes)
         .unwrap_or_default();
     let console = browser.console_get(100).await.to_string().into_bytes();
-    let network = browser.network_get(None, 100).await.to_string().into_bytes();
+    let network = browser
+        .network_get(None, 100)
+        .await
+        .to_string()
+        .into_bytes();
     json!({
         "screenshot": write_evidence(&dir, &format!("{stamp}-shot.png"), &shot),
         "console": write_evidence(&dir, &format!("{stamp}-console.log"), &console),
@@ -5731,6 +6064,128 @@ async fn step_evidence(browser: &Browser, field: &str) -> Value {
 /// the same `call` a standalone tool uses, so gating, envelopes and typed
 /// errors are shared rather than reimplemented here. The boxed future breaks
 /// the `call -> tool_run -> call` async recursion.
+/// One dispatched step, kept as data so the batch accounting is testable
+/// with canned replies and no live browser. `reply` is the full tool envelope,
+/// or Null when the step timed out.
+#[derive(Clone)]
+struct RunStep {
+    tool: String,
+    ms: i64,
+    reply: Value,
+    timed_out: bool,
+}
+
+/// The assertion signal a successful step can carry. Only the `assert` tool
+/// emits one: dom/text/url/network answer a boolean verdict, ax answers the
+/// string "pass"/"fail". A false verdict or "fail" is a failed assertion.
+#[derive(Debug, PartialEq, Eq)]
+enum StepAssertion {
+    NotAssertion,
+    Passed,
+    Failed,
+}
+
+fn assertion_outcome(tool: &str, evidence: &Value) -> StepAssertion {
+    if tool != "assert" {
+        return StepAssertion::NotAssertion;
+    }
+    match evidence.get("verdict") {
+        Some(Value::Bool(true)) => StepAssertion::Passed,
+        Some(Value::Bool(false)) => StepAssertion::Failed,
+        Some(Value::String(s)) if s == "pass" => StepAssertion::Passed,
+        Some(Value::String(s)) if s == "fail" => StepAssertion::Failed,
+        _ => StepAssertion::NotAssertion,
+    }
+}
+
+/// A step that fails the batch: a transport timeout, a typed tool error, or a
+/// failed assertion. Shared by the live dispatcher and the test-only step
+/// runner so the `continueOnError` stop rule cannot drift between them.
+fn step_failed(reply: &Value, timed_out: bool, tool: &str) -> bool {
+    if timed_out {
+        return true;
+    }
+    if reply
+        .get("isError")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+    {
+        return true;
+    }
+    match reply.get("structuredContent") {
+        Some(evidence) => assertion_outcome(tool, evidence) == StepAssertion::Failed,
+        None => false,
+    }
+}
+
+/// Fold dispatched steps into the `run` reply. This is the whole accounting
+/// rule: hard errors and failed assertions count in `failed` and make `ok`
+/// false; only steps carrying an assertion verdict count in `assertions`.
+fn run_account(ran: &[RunStep], requested: usize, total_ms: i64) -> Value {
+    let mut results = Vec::with_capacity(ran.len());
+    let mut failed = 0usize;
+    let mut passed = 0usize;
+    let mut assertion_failed = 0usize;
+    for (i, s) in ran.iter().enumerate() {
+        let entry = if s.timed_out {
+            failed += 1;
+            json!({"index": i + 1, "tool": s.tool, "status": "error", "ms": s.ms,
+                   "error": {"code": ToolCode::Timeout.as_str(),
+                             "reason": ToolReason::BudgetExceeded.as_str(), "tool": s.tool}})
+        } else {
+            let is_error = s
+                .reply
+                .get("isError")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let evidence = s
+                .reply
+                .get("structuredContent")
+                .cloned()
+                .unwrap_or(Value::Null);
+            if is_error {
+                failed += 1;
+                json!({"index": i + 1, "tool": s.tool, "status": "error", "ms": s.ms, "error": evidence})
+            } else {
+                match assertion_outcome(&s.tool, &evidence) {
+                    StepAssertion::Failed => {
+                        failed += 1;
+                        assertion_failed += 1;
+                        json!({"index": i + 1, "tool": s.tool, "status": "assert_failed", "ms": s.ms, "result": evidence})
+                    }
+                    StepAssertion::Passed => {
+                        passed += 1;
+                        json!({"index": i + 1, "tool": s.tool, "status": "ok", "ms": s.ms, "result": evidence})
+                    }
+                    StepAssertion::NotAssertion => {
+                        json!({"index": i + 1, "tool": s.tool, "status": "ok", "ms": s.ms, "result": evidence})
+                    }
+                }
+            }
+        };
+        results.push(entry);
+    }
+    let ok = failed == 0 && results.len() == requested;
+    json!({"ok": ok, "steps": results, "failed": failed,
+           "assertions": {"passed": passed, "failed": assertion_failed},
+           "ms": total_ms})
+}
+
+/// Unit-level harness for the step runner: replay canned step replies with the
+/// same stop decision `tool_run` applies, and report the steps that ran.
+#[cfg(test)]
+fn collect_steps(canned: &[RunStep], continue_on_error: bool) -> Vec<RunStep> {
+    let mut ran = Vec::with_capacity(canned.len());
+    for s in canned {
+        let stop = step_failed(&s.reply, s.timed_out, &s.tool) && !continue_on_error;
+        ran.push(s.clone());
+        if stop {
+            break;
+        }
+    }
+    ran
+}
+
 async fn tool_run(browser: &Browser, args: &Value) -> Result<Value, ToolErr> {
     check_unknown("run", args, &["steps", "continueOnError", "timeoutMs"])?;
     let steps = match args.get("steps").and_then(|v| v.as_array()) {
@@ -5759,13 +6214,15 @@ async fn tool_run(browser: &Browser, args: &Value) -> Result<Value, ToolErr> {
         },
     };
     let started = std::time::Instant::now();
-    let mut results = Vec::with_capacity(steps.len());
-    let mut failed = 0usize;
+    let mut ran = Vec::with_capacity(steps.len());
     for (i, step) in steps.iter().enumerate() {
         let tool = step.get("tool").and_then(|v| v.as_str()).unwrap_or("");
         if !RUN_TOOLS.contains(&tool) {
             return Err(ToolErr::typed(
-                format!("run: step {} names a tool this batch cannot dispatch: '{tool}'", i + 1),
+                format!(
+                    "run: step {} names a tool this batch cannot dispatch: '{tool}'",
+                    i + 1
+                ),
                 json!({"code": ToolCode::InvalidArgs.as_str(), "reason": ToolReason::UnknownTool.as_str(), "tool": "run", "step": i + 1, "arg": "tool"}),
             ));
         }
@@ -5782,7 +6239,10 @@ async fn tool_run(browser: &Browser, args: &Value) -> Result<Value, ToolErr> {
         // A per-step timeout drops the future, so a freeze applied inside a
         // batch could never be restored; refuse it before the step starts.
         if tool == "screenshot"
-            && step_args.get("freeze").and_then(|v| v.as_bool()).unwrap_or(false)
+            && step_args
+                .get("freeze")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
         {
             return Err(ToolErr::typed(
                 "run: 'freeze' is refused in a screenshot step (a timeout would leave the page frozen); call browser_screenshot directly"
@@ -5797,34 +6257,23 @@ async fn tool_run(browser: &Browser, args: &Value) -> Result<Value, ToolErr> {
         )
         .await;
         let ms = begun.elapsed().as_millis() as i64;
-        let entry = match reply {
-            Ok(env) => {
-                let is_error = env.get("isError").and_then(|v| v.as_bool()).unwrap_or(false);
-                let evidence = env.get("structuredContent").cloned().unwrap_or(Value::Null);
-                if is_error {
-                    failed += 1;
-                    json!({"index": i + 1, "tool": tool, "status": "error", "ms": ms, "error": evidence})
-                } else {
-                    json!({"index": i + 1, "tool": tool, "status": "ok", "ms": ms, "result": evidence})
-                }
-            }
-            Err(_) => {
-                failed += 1;
-                json!({"index": i + 1, "tool": tool, "status": "error", "ms": ms,
-                       "error": {"code": ToolCode::Timeout.as_str(), "reason": ToolReason::BudgetExceeded.as_str(), "tool": tool}})
-            }
+        let (reply_value, timed_out) = match reply {
+            Ok(env) => (env, false),
+            Err(_) => (Value::Null, true),
         };
-        let stopped = entry["status"] == "error" && !continue_on_error;
-        results.push(entry);
-        if stopped {
+        let stop = step_failed(&reply_value, timed_out, tool) && !continue_on_error;
+        ran.push(RunStep {
+            tool: tool.to_string(),
+            ms,
+            reply: reply_value,
+            timed_out,
+        });
+        if stop {
             break;
         }
     }
-    let ok = failed == 0 && results.len() == steps.len();
     Ok(ok_text(
-        json!({"ok": ok, "steps": results, "failed": failed,
-               "ms": started.elapsed().as_millis() as i64})
-            .to_string(),
+        run_account(&ran, steps.len(), started.elapsed().as_millis() as i64).to_string(),
     ))
 }
 
@@ -5847,9 +6296,21 @@ async fn tool_form(browser: &Browser, args: &Value) -> Result<Value, ToolErr> {
     let mut steps: Vec<Value> = Vec::new();
     let mut all_ok = true;
     for f in fields {
-        let label = f.get("field").and_then(|v| v.as_str()).unwrap_or("").to_string();
-        let action = f.get("action").and_then(|v| v.as_str()).unwrap_or("").to_string();
-        let value = f.get("value").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let label = f
+            .get("field")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let action = f
+            .get("action")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let value = f
+            .get("value")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
         let (tool_name, call_args) = match action.as_str() {
             "type" => ("type", json!({"element": label, "text": value})),
             "select" => ("select", json!({"element": label, "value": value})),
@@ -5898,7 +6359,11 @@ async fn tool_form(browser: &Browser, args: &Value) -> Result<Value, ToolErr> {
 
     let mut submitted = false;
     if let Some(sel) = args.get("submit").and_then(|v| v.as_str()) {
-        let resp = Box::pin(call("click", &json!({"element": sel}), browser)).await;
+        // Never re-enter the giant dispatcher here: in a debug build
+        // its poll frame nested under tool_form overflows the worker stack.
+        let resp = Box::pin(dispatch_click(browser, &json!({"element": sel})))
+            .await
+            .unwrap_or_else(|e| e.envelope());
         submitted = resp.get("isError").and_then(|v| v.as_bool()) != Some(true);
     }
     let verdict = if all_ok && (args.get("submit").is_none() || submitted) {
@@ -6019,7 +6484,14 @@ async fn ref_click_frame(
     let session = browser.ref_session(id).await;
     let v = match resolve_ref_object(browser, "click", id).await? {
         Some(oid) => {
-            call_on_object_in(browser, session.as_deref(), &oid, click_preflight_fn(), vec![]).await?
+            call_on_object_in(
+                browser,
+                session.as_deref(),
+                &oid,
+                click_preflight_fn(),
+                vec![],
+            )
+            .await?
         }
         None => {
             let (expr, _) = click_preflight_ref(id);
@@ -6502,9 +6974,7 @@ async fn tool_console(
     let lim = limit.unwrap_or(100).clamp(1, 200) as usize;
     match action {
         "get" => Ok(ok_text(browser.console_get(lim).await.to_string())),
-        "drain" => {
-            Ok(ok_text(browser.console_drain(lim).await.to_string()))
-        }
+        "drain" => Ok(ok_text(browser.console_drain(lim).await.to_string())),
         "clear" => {
             let n = browser.console_clear().await;
             Ok(ok_text(
@@ -8852,7 +9322,6 @@ mod screenshot_file_tests {
         assert!(r.is_err(), "relative path must fail closed");
     }
 }
-
 
 /// hand integration shim: mint the engine's own typed error envelope for a
 /// failure decided outside the tool table (per-call budget, client

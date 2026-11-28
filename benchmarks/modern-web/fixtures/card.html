@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>card</title>
+<style>body{font:16px/1.4 system-ui,sans-serif;margin:16px}button{margin:4px}output{display:block;margin-top:12px}</style>
+</head><body>
+<article><h3>Widget</h3><button id="a">Add to cart</button></article><output id="out">0</output>
+<script>
+let n=0;document.getElementById('a').onclick=()=>{n++;document.getElementById('out').textContent=String(n);};
+</script>
+</body></html>

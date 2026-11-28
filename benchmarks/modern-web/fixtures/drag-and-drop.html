@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>drag-and-drop</title>
+<style>body{font:16px/1.4 system-ui,sans-serif;margin:16px}button{margin:4px}output{display:block;margin-top:12px}</style>
+</head><body>
+<button id="r">Reset drag</button><div id="item" draggable="true">Move me</div><div id="target">Drop here</div><output id="out">idle</output>
+<script>
+const it=document.getElementById('item'),tg=document.getElementById('target');it.addEventListener('dragstart',e=>{e.dataTransfer.setData('text/plain','item');});tg.addEventListener('dragover',e=>e.preventDefault());tg.addEventListener('drop',e=>{e.preventDefault();document.getElementById('out').textContent='dropped';});document.getElementById('r').onclick=()=>{document.getElementById('out').textContent='idle';};
+</script>
+</body></html>

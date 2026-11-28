@@ -1,13 +1,13 @@
 {
   "name": "hand-mcp",
-  "version": "0.3.4",
+  "version": "0.4.0",
   "description": "The MCP server that sees and touches both the browser and Windows desktop.",
   "keywords": ["mcp", "mcp-server", "model-context-protocol", "browser-automation", "computer-use", "rust", "windows", "cdp", "tooling", "agent", "server", "browser"],
   "type": "module",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/nathwn12/hand"
+    "url": "git+https://github.com/nathwn12/hand.git"
   },
   "homepage": "https://github.com/nathwn12/hand",
   "engines": {
@@ -20,17 +20,16 @@
     "x64"
   ],
   "bin": {
-    "hand-mcp": "./bin/hand-mcp.js"
+    "hand-mcp": "bin/hand-mcp.js"
   },
   "scripts": {
     "prepack": "node ./stage.mjs",
-    "preinstall": "node -e \"if(process.env.npm_config_global==='true'){console.error('hand-mcp: global install refused — use npx hand-mcp@0.3.4');process.exit(1)}\""
+    "preinstall": "node -e \"if(process.env.npm_config_global==='true'){console.error('hand-mcp: global install refused — use npx hand-mcp@0.4.0');process.exit(1)}\""
   },
   "files": [
     "bin/",
     "hand.exe",
     "LICENSE",
-    "README.md",
-    "signature-glyph.svg"
+    "README.md"
   ]
 }

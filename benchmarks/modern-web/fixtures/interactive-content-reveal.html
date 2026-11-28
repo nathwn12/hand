@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>interactive-content-reveal</title>
+<style>body{font:16px/1.4 system-ui,sans-serif;margin:16px}button{margin:4px}output{display:block;margin-top:12px}</style>
+</head><body>
+<button id="rv">Reveal content</button><div id="c" hidden>Secret text</div><output id="out">idle</output>
+<script>
+document.getElementById('rv').onclick=()=>{document.getElementById('c').hidden=false;document.getElementById('out').textContent='revealed';};
+</script>
+</body></html>

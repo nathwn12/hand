@@ -1,0 +1,474 @@
+[
+  {
+    "id": "forms",
+    "act": [
+      {
+        "tool": "browser_type",
+        "args": {
+          "element": "@ref:Name",
+          "text": "Ada"
+        }
+      },
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Submit form"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "hello Ada"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/forms.html",
+    "expectSnapshot": [
+      {
+        "role": "textbox",
+        "name": "Name"
+      },
+      {
+        "role": "button",
+        "name": "Submit form"
+      }
+    ]
+  },
+  {
+    "id": "required-field-feedback",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Submit form"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "Email is required"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/required-field-feedback.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Submit form"
+      }
+    ]
+  },
+  {
+    "id": "validate-input-after-interaction",
+    "act": [
+      {
+        "tool": "browser_type",
+        "args": {
+          "element": "@ref:Code",
+          "text": "abc"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#c",
+          "expected": {
+            "attribute": {
+              "name": "aria-invalid",
+              "value": "true"
+            }
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/validate-input-after-interaction.html",
+    "expectSnapshot": [
+      {
+        "role": "textbox",
+        "name": "Code"
+      }
+    ]
+  },
+  {
+    "id": "ime-safe-enter-submit",
+    "act": [
+      {
+        "tool": "browser_type",
+        "args": {
+          "element": "@ref:Query",
+          "text": "hats"
+        }
+      },
+      {
+        "tool": "browser_key",
+        "args": {
+          "key": "Enter"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "searched hats"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/ime-safe-enter-submit.html",
+    "expectSnapshot": [
+      {
+        "role": "textbox",
+        "name": "Query"
+      }
+    ]
+  },
+  {
+    "id": "switch",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Notifications"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#s",
+          "expected": {
+            "attribute": {
+              "name": "aria-checked",
+              "value": "true"
+            }
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/switch.html",
+    "expectSnapshot": [
+      {
+        "role": "switch",
+        "name": "Notifications"
+      }
+    ]
+  },
+  {
+    "id": "slider",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Volume"
+        }
+      },
+      {
+        "tool": "browser_key",
+        "args": {
+          "key": "ArrowRight"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_evaluate",
+        "args": {
+          "expression": "document.getElementById('v').value"
+        },
+        "expected": "6"
+      }
+    ],
+    "url": "/fixtures/slider.html",
+    "expectSnapshot": [
+      {
+        "role": "slider",
+        "name": "Volume"
+      }
+    ]
+  },
+  {
+    "id": "select-menu-interaction",
+    "act": [
+      {
+        "tool": "browser_select",
+        "args": {
+          "element": "@ref:Country",
+          "value": "ca"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "ca"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/select-menu-interaction.html",
+    "expectSnapshot": [
+      {
+        "role": "combobox",
+        "name": "Country"
+      }
+    ]
+  },
+  {
+    "id": "animated-select-picker",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Choose color"
+        }
+      },
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Red"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "red"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/animated-select-picker.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Choose color"
+      }
+    ]
+  },
+  {
+    "id": "autofill-highlight-inputs",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Autofilled"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "highlighted"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/autofill-highlight-inputs.html",
+    "expectSnapshot": [
+      {
+        "role": "textbox",
+        "name": "Autofilled"
+      }
+    ]
+  },
+  {
+    "id": "sms-otp-form",
+    "act": [
+      {
+        "tool": "browser_type",
+        "args": {
+          "element": "@ref:One-time code",
+          "text": "123456"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "ready"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/sms-otp-form.html",
+    "expectSnapshot": [
+      {
+        "role": "textbox",
+        "name": "One-time code"
+      }
+    ]
+  },
+  {
+    "id": "brand-consistent-forms",
+    "act": [
+      {
+        "tool": "browser_type",
+        "args": {
+          "element": "@ref:Username",
+          "text": "ada"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "length 3"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/brand-consistent-forms.html",
+    "expectSnapshot": [
+      {
+        "role": "textbox",
+        "name": "Username"
+      }
+    ]
+  },
+  {
+    "id": "form-fields-automatically-fit-contents",
+    "act": [
+      {
+        "tool": "browser_type",
+        "args": {
+          "element": "@ref:Title",
+          "text": "Hello world"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "11ch"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/form-fields-automatically-fit-contents.html",
+    "expectSnapshot": [
+      {
+        "role": "textbox",
+        "name": "Title"
+      }
+    ]
+  },
+  {
+    "id": "rich-media-picker",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Attach file"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "picker opened"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/rich-media-picker.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Attach file"
+      }
+    ]
+  },
+  {
+    "id": "branded-select-styling",
+    "act": [
+      {
+        "tool": "browser_select",
+        "args": {
+          "element": "@ref:Flavor",
+          "value": "Chocolate"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "Chocolate"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/branded-select-styling.html",
+    "expectSnapshot": [
+      {
+        "role": "combobox",
+        "name": "Flavor"
+      }
+    ]
+  }
+]

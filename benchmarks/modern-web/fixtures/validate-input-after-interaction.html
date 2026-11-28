@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>validate-input-after-interaction</title>
+<style>body{font:16px/1.4 system-ui,sans-serif;margin:16px}button{margin:4px}output{display:block;margin-top:12px}</style>
+</head><body>
+<label for="c">Code</label><input id="c" pattern="[A-Z]{3}"><output id="out">idle</output>
+<script>
+document.getElementById('c').addEventListener('input',e=>{const bad=e.target.value==='abc';e.target.setAttribute('aria-invalid',bad?'true':'false');document.getElementById('out').textContent=bad?'invalid':'valid';});
+</script>
+</body></html>

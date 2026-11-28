@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>move-dom-element-without-losing-state</title>
+<style>body{font:16px/1.4 system-ui,sans-serif;margin:16px}button{margin:4px}output{display:block;margin-top:12px}</style>
+</head><body>
+<div id="a"><input id="val" value="keep"></div><div id="b"></div><button id="mv">Move field</button><output id="out">idle</output>
+<script>
+document.getElementById('mv').onclick=()=>{const v=document.getElementById('val');document.getElementById('b').appendChild(v);document.getElementById('out').textContent=v.value;};
+</script>
+</body></html>

@@ -1,0 +1,157 @@
+[
+  {
+    "id": "content-first-noise-reduction",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Dismiss banner"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "dismissed"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/content-first-noise-reduction.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Dismiss banner"
+      }
+    ]
+  },
+  {
+    "id": "form-factor-adaptation",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Compact mode"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "compact"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/form-factor-adaptation.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Compact mode"
+      }
+    ]
+  },
+  {
+    "id": "natural-interactions",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Undo"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "undone"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/natural-interactions.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Undo"
+      }
+    ]
+  },
+  {
+    "id": "position-aware-tooltips",
+    "act": [
+      {
+        "tool": "browser_hover",
+        "args": {
+          "element": "@ref:Hover tip"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "tip shown"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/position-aware-tooltips.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Hover tip"
+      }
+    ]
+  },
+  {
+    "id": "scroll-progress-indicator",
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Update progress"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "25"
+          },
+          "timeoutMs": 1500
+        }
+      }
+    ],
+    "url": "/fixtures/scroll-progress-indicator.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Update progress"
+      }
+    ]
+  }
+]

@@ -388,7 +388,6 @@ fn meta_version(v: &Value) -> Option<Value> {
         .cloned()
 }
 
-
 struct BrowserCall {
     tool: String,
     /// The request's protocol version, so a cancellation answered later still
@@ -662,7 +661,8 @@ impl State {
             }
         }
         if unsettled > 0 {
-            err_eprintln!("EABORT", 
+            err_eprintln!(
+                "EABORT",
                 "[hand] shutdown ({}): {unsettled} aborted wrapper(s) did not settle within \
                  {ABORT_SETTLE:?}; closing anyway (their cleanup is UNVERIFIED)",
                 kind.label()
@@ -670,7 +670,6 @@ impl State {
         }
     }
 }
-
 
 enum FrameRead {
     Frame(String),
@@ -721,7 +720,6 @@ async fn writer_loop(mut rx: mpsc::UnboundedReceiver<Value>) {
     }
 }
 
-
 /// Panic payloads can echo user content (a tool argument, page text quoted by
 /// an `unwrap`). The default hook prints the payload verbatim, so serving
 /// installs a fixed line instead: the location survives, the payload does not.
@@ -731,7 +729,10 @@ fn install_payload_free_panic_hook() {
             .location()
             .map(|l| format!("{}:{}", l.file(), l.line()))
             .unwrap_or_else(|| "unknown location".to_string());
-        err_eprintln!("EPANIC", "[hand] panic at {at} (payload suppressed: it can contain user content)");
+        err_eprintln!(
+            "EPANIC",
+            "[hand] panic at {at} (payload suppressed: it can contain user content)"
+        );
     }));
 }
 
@@ -814,7 +815,8 @@ async fn shutdown(state: &Arc<State>) {
         .await
         .is_err()
     {
-        err_eprintln!("ECLOSE", 
+        err_eprintln!(
+            "ECLOSE",
             "[hand] shutdown ({}): {} did not finish within {BROWSER_CLOSE_GRACE:?}; continuing",
             kind.label(),
             if kind == EngineKind::Attached {
@@ -1026,7 +1028,8 @@ async fn dispatch_call(
                 let body = match outcome {
                     Ok(Ok(value)) => Some(value),
                     Ok(Err(join)) => {
-                        err_eprintln!("EENGINE", 
+                        err_eprintln!(
+                            "EENGINE",
                             "[hand] browser call '{legacy}': engine task failed ({})",
                             if join.is_panic() { "panic" } else { "aborted" }
                         );
@@ -1066,7 +1069,8 @@ async fn dispatch_call(
                 {
                     worker.abort();
                     let _ = (&mut worker.0).await;
-                    err_eprintln!("ECLEANUP", 
+                    err_eprintln!(
+                        "ECLEANUP",
                         "[hand] browser call '{legacy}': engine cleanup did not finish \
                          within {ENGINE_CLEANUP_GRACE:?} after the budget answer; aborted \
                          (its started restore is UNVERIFIED)"
@@ -1205,8 +1209,15 @@ mod tests {
             text.contains("browser_click:[element|selector,"),
             "the aliased target must render as one token: {text}"
         );
-        assert!(text.len() <= 4096, "instructions grew to {} bytes", text.len());
-        for name in catalog::BROWSER_TOOLS.iter().chain(catalog::DESKTOP_TOOLS.iter()) {
+        assert!(
+            text.len() <= 4096,
+            "instructions grew to {} bytes",
+            text.len()
+        );
+        for name in catalog::BROWSER_TOOLS
+            .iter()
+            .chain(catalog::DESKTOP_TOOLS.iter())
+        {
             assert!(text.contains(*name), "instructions omit {name:?}: {text}");
         }
         for needle in [
@@ -1219,7 +1230,10 @@ mod tests {
             "Verification is separate from delivery",
             "No telemetry or upload",
         ] {
-            assert!(text.contains(needle), "instructions lost {needle:?}: {text}");
+            assert!(
+                text.contains(needle),
+                "instructions lost {needle:?}: {text}"
+            );
         }
     }
 
@@ -1229,7 +1243,10 @@ mod tests {
         let info = server_info();
         let browser = browser_engine::provenance();
         let desktop = desktop_engine::provenance();
-        for (key, value) in browser.as_object().expect("browser provenance is an object") {
+        for (key, value) in browser
+            .as_object()
+            .expect("browser provenance is an object")
+        {
             assert_eq!(
                 &info["engines"]["browser"][key.as_str()],
                 value,

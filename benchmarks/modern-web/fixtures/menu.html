@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>menu</title>
+<style>body{font:16px/1.4 system-ui,sans-serif;margin:16px}button{margin:4px}output{display:block;margin-top:12px}</style>
+</head><body>
+<button id="m" aria-haspopup="menu" aria-expanded="false">Actions</button><ul id="menu" role="menu" hidden><li role="none"><button role="menuitem" id="r">Rename</button></li></ul><output id="out">idle</output>
+<script>
+document.getElementById('m').onclick=()=>{document.getElementById('menu').hidden=false;document.getElementById('m').setAttribute('aria-expanded','true');};document.getElementById('r').onclick=()=>{document.getElementById('out').textContent='renamed';};
+</script>
+</body></html>

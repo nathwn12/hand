@@ -1,0 +1,7 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>negative dialog never opens</title></head><body>
+<button id="o">Open dialog</button><dialog id="d">Never shown</dialog><output id="out">idle</output>
+<script>
+document.getElementById('o').onclick=()=>{document.getElementById('out').textContent='clicked';};
+</script>
+</body></html>

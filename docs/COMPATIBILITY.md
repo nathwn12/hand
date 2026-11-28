@@ -24,38 +24,67 @@ node baseline/scripts/compare-catalog.mjs --serve <path-to-hand.exe> --baseline 
 Observed on a release build of this tree, quoted verbatim:
 
 ```text
-PASS hand baseline: 32 baseline tools vs 35 candidate tools
+PASS hand baseline: 32 baseline tools vs 44 candidate tools
   compared   32 tools
-  extra      3: browser_drag, browser_wheel, browser_context
+  extra      12: browser_drag, browser_wheel, browser_download, browser_assert, browser_audit, browser_trace, browser_metrics, browser_clipboard, browser_run, browser_form, browser_context, desktop_record
   metadata   0 title/description difference(s) (strict: on)
-  declared   17 addition group(s) allowed by baseline/declared-additions.json:
+  rewrites   1 property description rewrite(s) applied
+             desktop_do inputSchema.properties.allow_clipboard.description
+  declared   42 addition group(s) allowed by baseline/declared-additions.json:
+             browser_navigate outputSchema += properties.observed, properties.viewport
+             browser_snapshot inputSchema += properties.context, properties.page
+             browser_snapshot outputSchema += properties.viewport, properties.context, properties.target
              browser_snapshot metadata.description += description
-             browser_screenshot inputSchema += properties.clip, properties.element, properties.format, properties.quality
-             browser_screenshot outputSchema += properties.clip, properties.element, properties.format
+             browser_screenshot inputSchema += properties.clip, properties.element, properties.format, properties.quality, properties.selector, properties.freeze, properties.waitForStable, properties.force, properties.scale
+             browser_screenshot outputSchema += properties.clip, properties.element, properties.format, properties.stability, properties.motion, properties.paused
              browser_screenshot metadata.description += description
-             browser_click inputSchema += properties.button, properties.clickCount
-             browser_click outputSchema += properties.resolved
+             browser_click inputSchema += properties.button, properties.clickCount, properties.selector, anyOf
+             browser_click outputSchema += properties.actionability, properties.resolved
              browser_click metadata.description += description
-             browser_type outputSchema += properties.resolved
+             browser_type inputSchema += properties.selector, anyOf
+             browser_type outputSchema += properties.actionability, properties.resolved
              browser_type metadata.description += description
+             browser_evaluate outputSchema += properties.void
+             browser_upload inputSchema += properties.selector, anyOf
              browser_upload outputSchema += properties.resolved
              browser_upload metadata.description += description
+             browser_hover inputSchema += properties.selector, anyOf
              browser_hover outputSchema += properties.resolved
              browser_hover metadata.description += description
-             browser_select outputSchema += properties.resolved
+             browser_select inputSchema += properties.selector, anyOf
+             browser_select outputSchema += properties.actionability, properties.resolved
              browser_select metadata.description += description
-             desktop_screenshot outputSchema += properties.noSteal
-             desktop_screenshot outputSchema += properties.clipboardUnchanged, properties.masks
+             browser_assert_layout inputSchema += properties.frame
+             browser_assert_layout metadata.description += description
+             browser_layout inputSchema += properties.frame
+             browser_layout metadata.description += description
+             browser_visual inputSchema += properties.frame
+             browser_visual outputSchema += properties.frame, properties.clip
+             browser_visual metadata.description += description
              desktop_screenshot inputSchema += properties.privacyMasks
+             desktop_screenshot outputSchema += properties.noSteal, properties.clipboardUnchanged, properties.masks
+             desktop_screenshot metadata.description += description
+             desktop_diff metadata.description += description
+             desktop_window inputSchema += properties.allow_foreground.description
+             desktop_window outputSchema += properties.foregroundAfter, properties.foregroundBefore, properties.foregroundChanged
+             desktop_window metadata.description += description
+             desktop_do inputSchema += properties.allow_cursor.description, properties.allow_foreground.description, properties.cursor_restore, properties.restore_clipboard
+             desktop_do outputSchema += properties.clipboard, properties.cursorMoved, properties.cursorRestored, properties.foregroundRestored
+             desktop_do metadata.description += description
              desktop_elements outputSchema += properties.noSteal
+             desktop_elements metadata.description += description
 ```
 
 The 32-name floor is served **with exactly the allowances declared in
-`baseline/declared-additions.json` and no other difference**: two input schemas
-and nine output-schema groups carry the properties listed there, thirteen tool
-descriptions are rewritten there, and every other property, `required` list,
-annotation, `title`, description and name is the pin's. The three extras above
-are hand's own tools, not legacy bodies. The file is not a relaxed mode: an
+`baseline/declared-additions.json` and no other difference**: thirteen
+`inputSchema` groups and fourteen `outputSchema` groups carry the properties
+listed there, fifteen tool descriptions are rewritten there and one existing
+property description is rewritten in place; every other property, `required`
+list, annotation, `title`, description and name is the pin's. The twelve extras
+above are hand's own tools, not legacy bodies. The live catalog is 44 tools
+(36 `browser_*`, 8 `desktop_*`) against the same 32-name floor: 25 Gladius
+browser bodies plus 11 hand browser tools, and 7 Puppet desktop bodies plus
+`desktop_record`. The file is not a relaxed mode: an
 undeclared description or any title difference fails, and so does a declared
 description that still matches the pin, because the declaration says that one
 was rewritten.
@@ -66,10 +95,17 @@ The only catalog change is the prefix. A client migrates one-to-one:
 
 - Gladius `navigate` → `browser_navigate` … `fetch_text` → `browser_fetch_text`
 - Puppet `screenshot` → `desktop_screenshot` … `elements` → `desktop_elements`
-- hand adds three browser tools with no legacy counterpart: `browser_context`
-  (isolated named contexts), `browser_wheel` and `browser_drag` (trusted pointer
-  primitives). Their bodies are new; a migration stays one-to-one for every
-  legacy name.
+- hand adds eleven browser tools and one desktop tool with no legacy counterpart:
+  `browser_context` (isolated named contexts), `browser_wheel` and `browser_drag`
+  (trusted pointer primitives), `browser_form`, `browser_download`,
+  `browser_assert`, `browser_audit`, `browser_trace`, `browser_metrics`
+  (measured page timings and Web Vitals), `browser_run`, `browser_clipboard`
+  (page clipboard read/write through the page's `navigator.clipboard`, which in
+  Chromium is the Windows system clipboard; a write replaces the owner's
+  clipboard text and requires `allow_clipboard:true`; hand calls no Windows
+  clipboard API itself) and `desktop_record`
+  (targeted-window MJPEG AVI recording). Their bodies are new; a migration
+  stays one-to-one for every legacy name.
 
 `tests/discovery.rs::tool_bodies_are_engine_bodies_under_the_prefix` parses the
 committed floor (`baseline/hand-catalog.json`) and `baseline/declared-additions.json`,
@@ -120,15 +156,15 @@ modified or retired; no drop-in compatibility is claimed.
 {
   "name": "hand",
   "title": "hand",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "platform": "windows-x64",
   "engines": {
     "browser": {"engine": "gladius", "sourcePin": "59c6d77", "version": "0.8.0",
-                 "backend": "chromium", "caps": "render", "cdpUrl": null, "toolCount": 27},
+                 "backend": "chromium", "caps": "render", "cdpUrl": null, "toolCount": 35},
     "desktop": {"engine": "puppet", "sourcePin": "0f790be", "version": "8.0.0",
-                 "available": true, "backend": "uia+win32", "toolCount": 7}
+                 "available": true, "backend": "uia+win32", "toolCount": 8}
   },
-  "count": 38,
+  "count": 44,
   "isolatedContexts": {"tool": "browser_context", "available": true, "…": "…"}
 }
 ```
@@ -136,10 +172,10 @@ modified or retired; no drop-in compatibility is claimed.
 `browser.backend`/`caps`/`cdpUrl` are the browser engine's own `backend_info()`,
 so an attached or capability-restricted engine is described as it really is.
 `engines.browser.toolCount` is the engine's own `list()` (25 pinned plus
-`wheel` and `drag`). `browser_context` is published from the engine's context
-module beside that list. With `browser_form`, `browser_download` and
-`browser_assert` added, the wire carries 31 `browser_*` bodies and 38 tools in
-total.
+`wheel`, `drag`, `form`, `download`, `assert`, `audit`, `trace`, `metrics`,
+`run` and `clipboard`). `browser_context` is published from the engine's
+context module beside that list, so the wire carries 36 `browser_*` bodies and
+44 tools in total.
 
 ## Preserved behavior
 
@@ -155,8 +191,9 @@ total.
 - Desktop production admission: calls run through Puppet's `run_tool_job` +
   `production_execute` wrapper (admission guard, mutating-input lock,
   cancellation token, panic containment), not a direct call to `tools_call`.
-- Engine unit tests remain compiled: 69 browser tests, 228 desktop tests (25
-  live-desktop tests are not run by default).
+- Engine unit tests remain compiled and were re-run on this tree: 136 browser
+  tests pass, 255 desktop tests pass with `--skip live_` (29 live tests
+  filtered out, 1 ignored).
 
 ## Intentional differences
 
@@ -178,8 +215,9 @@ total.
 
 3. **One initialize.** The old servers each described themselves; hand answers
    once with both engines under `engines`. Tool bodies and descriptions are the
-   pinned ones, except the schema additions and the thirteen description rewrites
-   declared in `baseline/declared-additions.json`.
+   pinned ones, except the schema additions, the fifteen description rewrites
+   and the one property-description rewrite declared in
+   `baseline/declared-additions.json`.
 
 4. **Budget environment.** `_budgetMs` is the browser contract. The default also
    reads `HAND_TOOL_BUDGET_MS` first, then `GLADIUS_TOOL_BUDGET_MS` for
@@ -218,75 +256,59 @@ total.
    (version 1) is the only place a legacy tool may differ, and
    `baseline/scripts/lib/catalog.mjs` is its only reader. Schema paths are dotted
    and relative to the schema object, so a top-level property is
-   `properties.<name>`; a metadata entry is a bare tool name.
-    - `desktop_screenshot` adds `properties.clipboardUnchanged`, the third
-      global a capture must not touch, and `properties.masks`, the regions
-      blanked before encode; both are reported on success and on typed
-      failures. Its `inputSchema` adds `properties.privacyMasks`, the mask
-      input. Legacy fields stay unchanged.
-   - `outputSchema`: `click`, `type`, `hover`, `select` and `upload` add
-     `properties.resolved` — `{selector, ref, role, name}` when the element
-     argument used one of the accessibility forms, so the caller can see which
-     element answered. `browser_screenshot` adds `properties.format`,
-     `properties.element` and `properties.clip`, which state how the pixels were
-     encoded and what box they cover. `desktop_screenshot` and
-     `desktop_elements` add `properties.noSteal`: attribution beside the raw
-     before/after booleans that says whether a pointer or foreground change was
-     the owner's input or this process's. The legacy fields stay unchanged.
-     `browser_evaluate` adds `properties.void`: a valueless JavaScript result
-     is a success with `value: null` and `void: true`, while an explicit
-     `null` keeps `value: null` with no flag. The engine's internal eval
-     helpers stay strict; only the public tool boundary reads the
-     `undefined_result` marker. `browser_navigate` and `browser_snapshot` add
-     `properties.viewport`, the live `{width, height}` read-back from the active
-     page; `browser_screenshot` already published `viewport` in the pin and now
-     fills it on a plain capture too. An owned Chromium launch pins the window
-     to 1440x900, and the owned session replays a 1440x900 device-metrics
-     override so the page viewport matches; an attached engine has no override
-     and keeps its owner's viewport. `browser_screenshot` also adds input
-     `properties.freeze`, `properties.waitForStable` and `properties.force`,
-     plus output `properties.motion` and `properties.paused`. `freeze` pauses
-     the page's running animations and videos, injects a pause style, and
-     restores them; `motion` names what is still moving after that, `paused`
-     names what was acted on. `waitForStable` polls checksums and refuses an
-     unsettled page unless `force` accepts the last frame with an `unfrozen`
-     stability verdict. `properties.scale` (0.1..1) scales the CDP clip, so a
-     half-scale capture reports half-size `size`. `size` is now read from the
-     encoded bytes for jpeg (SOF) and webp (RIFF chunks) as well as png (IHDR);
-     the field was already in the pinned output schema. No option changes the
-     historic default capture.
-   - `inputSchema`: `browser_click` adds `properties.button` and
-     `properties.clickCount` (right/middle button, double click) and
-     `browser_screenshot` adds `properties.clip`, `properties.element`,
-     `properties.format` and `properties.quality` (region or element capture,
-     jpeg/webp encoding and its quality). A call that passes none of them is the
-     historic call. `browser_click`, `browser_type`, `browser_select`,
-     `browser_hover`, `browser_upload` and `browser_screenshot` also add
-     `properties.selector`: `selector` is an alias for the canonical `element`
-     target, so a client that prunes undeclared keys can still name a target.
-     `element` stays in each schema. The five action tools add an `anyOf`
-     naming `element` and `selector` and drop `element` from `required`, so a
-     selector-only call is valid for a validating client while an old `element`
-     call stays valid; `browser_type` still requires `text` and `browser_upload`
-     still requires `paths`. `browser_screenshot` never required a target and
-     has no `anyOf`. The dispatcher refuses a call that passes both keys with a
-     typed `invalid_args`/`ambiguous_target` error. `browser_snapshot` adds
-     `properties.context` and `properties.page`: they address a page of a named
-     isolated browser context explicitly (the context's own page session), and
-     a call that passes neither is the historic legacy-page snapshot. Its
-     output adds `properties.context` and `properties.target`, naming the
-     context and page target that answered. `browser_assert` is a hand
-     addition, so its `context`/`page` inputs and its `context`/`target`
-     evidence are not a floor comparison.
-   - `metadata.description`: `browser_click`, `browser_type`, `browser_upload`,
-     `browser_hover`, `browser_select`, `browser_snapshot` and
-     `browser_screenshot` have a rewritten description, because each one now
-     names the parameters or the result field this tree added to it; the six
-     presentation trims in item 10 are declared here too. A
-     description is a failing comparison by default, exactly like a schema: the
-     file is the only place one may differ, and a listed tool whose description
-     still equals the pin fails as a stale declaration. `title` has no declared
-     exceptions at all, and no section may name a tool outside the floor.
+   `properties.<name>`; a `metadata.description` entry is a bare tool name and
+   a `metadata.rewrites` entry is a `{tool, schema, path}` descriptor (item 18).
+   The declared set is, by group: 13 `inputSchema` groups, 14 `outputSchema`
+   groups, 15 `metadata.description` names and 1 `metadata.rewrites` descriptor.
+    - `inputSchema`: `browser_assert_layout` `properties.frame`; `browser_click`
+      `properties.button`, `properties.clickCount`, `properties.selector`,
+      `anyOf`; `browser_hover` `properties.selector`, `anyOf`; `browser_layout`
+      `properties.frame`; `browser_screenshot` `properties.clip`,
+      `properties.element`, `properties.format`, `properties.quality`,
+      `properties.selector`, `properties.freeze`, `properties.waitForStable`,
+      `properties.force`, `properties.scale`; `browser_select`
+      `properties.selector`, `anyOf`; `browser_snapshot` `properties.context`,
+      `properties.page`; `browser_type` `properties.selector`, `anyOf`;
+      `browser_upload` `properties.selector`, `anyOf`; `browser_visual`
+      `properties.frame`; `desktop_screenshot` `properties.privacyMasks`;
+      `desktop_do` `properties.allow_cursor.description`,
+      `properties.allow_foreground.description`, `properties.cursor_restore`,
+      `properties.restore_clipboard`; `desktop_window`
+      `properties.allow_foreground.description`.
+    - `outputSchema`: `browser_evaluate` `properties.void`; `browser_click`
+      `properties.actionability`, `properties.resolved`; `browser_hover`
+      `properties.resolved`; `browser_navigate` `properties.observed`,
+      `properties.viewport`; `browser_snapshot` `properties.viewport`,
+      `properties.context`, `properties.target`; `browser_screenshot`
+      `properties.clip`, `properties.element`, `properties.format`,
+      `properties.stability`, `properties.motion`, `properties.paused`;
+      `browser_select` `properties.actionability`, `properties.resolved`;
+      `browser_type` `properties.actionability`, `properties.resolved`;
+      `browser_upload` `properties.resolved`; `browser_visual`
+      `properties.frame`, `properties.clip`; `desktop_elements`
+      `properties.noSteal`; `desktop_screenshot` `properties.noSteal`,
+      `properties.clipboardUnchanged`, `properties.masks`; `desktop_do`
+      `properties.clipboard`, `properties.cursorMoved`,
+      `properties.cursorRestored`, `properties.foregroundRestored`;
+      `desktop_window` `properties.foregroundAfter`,
+      `properties.foregroundBefore`, `properties.foregroundChanged`.
+    - `metadata.description`: `browser_assert_layout`, `browser_click`,
+      `browser_hover`, `browser_layout`, `browser_screenshot`, `browser_select`,
+      `browser_snapshot`, `browser_type`, `browser_upload`, `browser_visual`,
+      `desktop_diff`, `desktop_do`, `desktop_elements`, `desktop_screenshot`,
+      `desktop_window` — fifteen bare tool names, each of which MUST DIFFER
+      from the pin (the six presentation trims in item 10 are among them). A
+      description is a failing comparison by default, exactly like a schema: the
+      file is the only place one may differ, and a listed tool whose description
+      still equals the pin fails as a stale declaration. `title` has no declared
+      exceptions at all, and no section may name a tool outside the floor.
+    - `metadata.rewrites`: one descriptor, `{tool:"desktop_do",
+      schema:"inputSchema", path:"properties.allow_clipboard.description"}`
+      (item 18). The meaning of the schema groups is recorded in items 10–18:
+      presentation trims (10), the network action extension in the extended
+      catalog rather than in the floor (11), actionability (12), capture
+      stability (13), form failure evidence (14), metrics (15), trace video (16),
+      desktop opt-ins (17) and the in-place `allow_clipboard` rewrite (18).
 
    For every listed path the gate checks presence first — a listed addition that
    is missing or renamed fails — then removes exactly those paths, and requires
@@ -358,10 +380,101 @@ total.
     32-tool floor, so this step-level output needs no `declared-additions.json`
     entry; its published `outputSchema` records the optional property.
 
+15. **`browser_metrics` is a hand tool outside the floor.** It reads measured
+    page timings (TTFB, DOMContentLoaded, load) and Web Vitals (FCP, LCP, CLS,
+    INP proxy) through read-only page evaluation. Every number is measured: an
+    entry with no data is `null` with a `reason` and a per-field
+    `<field>Reason`, never a fabricated zero. `context:` reads a page of a named
+    isolated context. It has no pinned legacy body, so it needs no
+    `declared-additions.json` entry; `tests/discovery.rs` covers its name and
+    catalog count, `crates/browser-engine/src/metrics.rs` covers the schema and
+    the null-with-reason rule (`metrics_schema_is_read_only_and_null_is_documented`,
+    `metrics_reports_measured_values_and_reasons_for_nulls`,
+    `metrics_null_lcp_start_time_is_null_with_reason`), and the live wire check
+    is the `browser_metrics` step in `scripts/acceptance/live.mjs`.
+
+16. **Trace video is MJPEG AVI, written without an external encoder.**
+    `browser_trace {video:true}` records a CDP screencast into the caller's
+    absolute directory for `videoDurationMs` 250–15000 (an out-of-range value
+    is clamped and reported). The manifest names `container: "mjpeg-avi"`;
+    cancellation removes only the files the call wrote. `video` defaults off,
+    so the HAR plus step-screenshot bundle is byte-for-byte the same for callers
+    that do not ask for video. Tested by
+    `crates/browser-engine/tests/video_trace.rs` (`video_trace_writes_playable_avi_and_cancel_deletes_it`,
+    `video_duration_above_cap_is_clamped_and_reported`) and the `browser_trace`
+    step in `scripts/acceptance/live.mjs`.
+
+17. **`desktop_do` schema additions are opt-ins, not new defaults.** The
+    published `inputSchema` gains `allow_clipboard`, `restore_clipboard`,
+    `allow_cursor` and `allow_foreground` beside the existing `focus_guard`; all
+    default to false. The `do` handler also accepts `cursor_restore` (true by
+    default), which restores the entry pointer after an opt-in burst.
+    `clipboard_set` writes real `CF_UNICODETEXT` only with
+    `allow_clipboard:true` and is refused `no_clipboard_policy` before
+    `OpenClipboard` without it; `restore_clipboard:true` restores the prior
+    text after the last action, including a partial or failed burst (empty or
+    non-text content is cleared). `clipboard_get` needs no flag and reports a
+    distinct `no_text_format` when the clipboard holds no `CF_UNICODETEXT`;
+    that check runs before `OpenClipboard`, so it never claims an attempt that
+    did not happen. A failed open/lock/set after the bounded retry (30 attempts,
+    2 ms backoff, 60 ms cap) is `clipboard_unavailable` and names the stage,
+    Win32 code and attempts. `allow_cursor:true` unlocks a real pointer
+    move for `move` and coordinate verbs with a locked target; a point not on
+    the target or its descendants is refused `point_not_target`.
+    `allow_foreground:true` unlocks `focus_window`; `focus_guard:true` restores
+    the entry foreground when it can. The default path still never moves the
+    pointer, steals focus or writes the clipboard. These are additive properties
+    on a floor tool; their allowance belongs in `baseline/declared-additions.json`,
+    not in the 32 pinned bodies. Tested by
+    `tests/no_steal.rs` (`every_acting_tool_declares_target_and_the_gate_flags`,
+    `clipboard_write_is_refused_over_the_wire`,
+    `focus_is_refused_with_or_without_the_flag`,
+    `gated_burst_refuses_with_typed_codes_and_zero_events`),
+    `crates/desktop-engine/src/serve.rs::do_schema_declares_clipboard_opt_in_and_restore`,
+    and the `desktop_do_focus_guard` and `desktop_clipboard_roundtrip` steps in
+    `scripts/acceptance/live.mjs`.
+
+18. **One `desktop_do` property description is a rewrite; the other new
+    descriptions are additions.** The floor pins
+    `allow_clipboard.description` to a string saying the flag "buys nothing".
+    That claim is false now: with `allow_clipboard:true`, `clipboard_set`
+    performs a real `CF_UNICODETEXT` write. The published description was
+    therefore rewritten in place. The floor has only `type`/`default` for
+    `allow_cursor` and `allow_foreground`, so their new descriptions are
+    additions, not rewrites, and are declared as additions. The real
+    comparison (`node baseline/scripts/compare-catalog.mjs --serve
+    target\release\hand.exe --json`) named every difference; all of them are
+    intended and declared:
+    - `metadata.rewrites`:
+      `{tool:"desktop_do", schema:"inputSchema",
+      path:"properties.allow_clipboard.description"}`.
+    - `inputSchema.desktop_do` adds `properties.allow_cursor.description`,
+      `properties.allow_foreground.description`, `properties.cursor_restore`
+      and `properties.restore_clipboard`.
+    - `outputSchema.desktop_do` adds `properties.clipboard`,
+      `properties.cursorMoved`, `properties.cursorRestored` and
+      `properties.foregroundRestored`. `cursorMoved` is in the published diff
+      and is declared too: it is the honest read-back of real pointer input.
+    For a rewrite the published value at `<schema>.<path>` MUST differ from
+    the pin value (an identical value is a stale declaration), and the pin
+    value is substituted before the equality check, so no other change can
+    hide behind it. A path absent from the floor or from the published body
+    fails with a message naming the tool, schema and path. The rule is
+    implemented once in
+    `baseline/scripts/lib/catalog.mjs::applyDeclaredRewrites`, consumed by
+    `baseline/scripts/compare-catalog.mjs`, and mirrored in
+    `tests/discovery.rs::tool_bodies_are_engine_bodies_under_the_prefix`.
+    `tests/discovery.rs` accepts only `description` and `rewrites` under
+    `metadata` and rejects any other key.
+    `baseline/test/declared-additions.test.mjs` proves the stale and
+    missing-path directions red through the real comparator and CLI, and is
+    green on the declared set; `baseline/test/catalog.test.mjs` carries the
+    same allowance in its synthetic candidate.
+
 ## External CDP engines
 
 `GLADIUS_CDP_URL` attaches the browser domain to any CDP endpoint instead of the
-owned `chrome-headless-shell`; `initialize` then reports `backend: "external-cdp"`
+owned Chrome-for-Testing browser; `initialize` then reports `backend: "external-cdp"`
 with that URL. The engine is not bundled, not installed and not owned: `hand`
 sends commands and does not reap the process.
 
@@ -405,9 +518,8 @@ Known limits on that engine, measured, not inferred:
 
 Vendor performance claims for that engine (about 30 MB resident against 200+ MB,
 85 ms page load against about 500 ms, instant against about 2 s startup) were
-**not** measured here and are repeated as claims, not as receipts. The owned
-`chrome-headless-shell` remains the default backend; this route is an option,
-not a replacement. The artifact's signature was not verified.
+**not** measured here and are repeated as claims, not as receipts. The owned full Chrome for Testing `chrome.exe` remains the default backend;
+this route is an option, not a replacement. The artifact's signature was not verified.
 
 ## Not preserved / not claimed
 

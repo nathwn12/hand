@@ -1,0 +1,13 @@
+[package]
+name = "mjpeg-avi"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Dependency-free RIFF MJPEG AVI writer shared by hand's browser and desktop engines"
+rust-version = "1.88"
+
+[lib]
+name = "mjpeg_avi"
+path = "src/lib.rs"
+
+[dependencies]

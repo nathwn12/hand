@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>branded-select-styling</title>
+<style>body{font:16px/1.4 system-ui,sans-serif;margin:16px}button{margin:4px}output{display:block;margin-top:12px}</style>
+</head><body>
+<label for="b">Flavor</label><select id="b"><option>Vanilla</option><option>Chocolate</option></select><output id="out">idle</output>
+<script>
+document.getElementById('b').addEventListener('change',e=>{document.getElementById('out').textContent=e.target.value;});
+</script>
+</body></html>

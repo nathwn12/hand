@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>switch</title>
+<style>body{font:16px/1.4 system-ui,sans-serif;margin:16px}button{margin:4px}output{display:block;margin-top:12px}</style>
+</head><body>
+<button id="s" role="switch" aria-checked="false">Notifications</button><output id="out">idle</output>
+<script>
+document.getElementById('s').onclick=e=>{const on=e.target.getAttribute('aria-checked')!=='true';e.target.setAttribute('aria-checked',String(on));document.getElementById('out').textContent=on?'on':'off';};
+</script>
+</body></html>

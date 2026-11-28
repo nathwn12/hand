@@ -17,7 +17,7 @@ pub const DESKTOP_PREFIX: &str = "desktop_";
 /// `assert` (B2: bounded DOM, AX, text and URL assertions),
 /// `audit` (B7: measured viewport audit) and
 /// `trace` (B6: opt-in HAR/screenshot bundle with counted redaction).
-pub const BROWSER_TOOLS: [&str; 34] = [
+pub const BROWSER_TOOLS: [&str; 36] = [
     "navigate",
     "snapshot",
     "screenshot",
@@ -51,11 +51,13 @@ pub const BROWSER_TOOLS: [&str; 34] = [
     "assert",
     "audit",
     "trace",
+    "metrics",
     "run",
+    "clipboard",
 ];
 
-/// The 7 Puppet tools, in catalog order.
-pub const DESKTOP_TOOLS: [&str; 7] = [
+/// The 7 Puppet tools plus hand's recording tool, in catalog order.
+pub const DESKTOP_TOOLS: [&str; 8] = [
     "screenshot",
     "diff",
     "list_windows",
@@ -63,6 +65,7 @@ pub const DESKTOP_TOOLS: [&str; 7] = [
     "do",
     "cursor",
     "elements",
+    "record",
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

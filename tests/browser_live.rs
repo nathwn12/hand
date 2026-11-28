@@ -222,11 +222,18 @@ fn browser_inspect_act_verify_and_stale_ref_refusal() {
         text_of(&by_selector)
     );
     assert_eq!(structured(&by_selector)["ok"].as_bool(), Some(true));
-    let both = s.call("browser_click", json!({"selector": "#go", "element": "#go"}));
+    let both = s.call(
+        "browser_click",
+        json!({"selector": "#go", "element": "#go"}),
+    );
     assert!(is_error(&both), "both target keys must be refused: {both}");
     let both_sc = structured(&both);
     assert_eq!(both_sc["code"].as_str(), Some("invalid_args"), "{both_sc}");
-    assert_eq!(both_sc["reason"].as_str(), Some("ambiguous_target"), "{both_sc}");
+    assert_eq!(
+        both_sc["reason"].as_str(),
+        Some("ambiguous_target"),
+        "{both_sc}"
+    );
 
     let typed = s.call(
         "browser_type",
@@ -309,10 +316,18 @@ fn browser_inspect_act_verify_and_stale_ref_refusal() {
     );
 
     let moving = navigate_with_retry(&mut s, &format!("{}/motion", fixture.base));
-    assert!(!is_error(&moving), "motion fixture failed: {}", text_of(&moving));
+    assert!(
+        !is_error(&moving),
+        "motion fixture failed: {}",
+        text_of(&moving)
+    );
 
     let plain = s.call("browser_screenshot", json!({}));
-    assert!(!is_error(&plain), "plain capture failed: {}", text_of(&plain));
+    assert!(
+        !is_error(&plain),
+        "plain capture failed: {}",
+        text_of(&plain)
+    );
     let motion = structured(&plain)["motion"]
         .as_array()
         .expect("motion sources on a plain capture")
@@ -322,7 +337,11 @@ fn browser_inspect_act_verify_and_stale_ref_refusal() {
     assert!(motion, "a running CSS animation must be named: {plain}");
 
     let frozen = s.call("browser_screenshot", json!({"freeze": true}));
-    assert!(!is_error(&frozen), "frozen capture failed: {}", text_of(&frozen));
+    assert!(
+        !is_error(&frozen),
+        "frozen capture failed: {}",
+        text_of(&frozen)
+    );
     let frozen_sc = structured(&frozen);
     assert_eq!(frozen_sc["motion"], json!([]), "{frozen_sc}");
     let paused_named = frozen_sc["paused"]
@@ -331,30 +350,69 @@ fn browser_inspect_act_verify_and_stale_ref_refusal() {
         .iter()
         .filter_map(|v| v.as_str())
         .any(|p| p.contains("spin"));
-    assert!(paused_named, "freeze must name the animation it paused: {frozen_sc}");
-    assert_eq!(frozen_sc["stability"]["verdict"], json!("frozen"), "{frozen_sc}");
+    assert!(
+        paused_named,
+        "freeze must name the animation it paused: {frozen_sc}"
+    );
+    assert_eq!(
+        frozen_sc["stability"]["verdict"],
+        json!("frozen"),
+        "{frozen_sc}"
+    );
 
     let unstable = s.call("browser_screenshot", json!({"waitForStable": 200}));
-    assert!(is_error(&unstable), "an unfrozen page must not pass waitForStable: {unstable}");
-    assert_eq!(structured(&unstable)["reason"], json!("unsettled"), "{unstable}");
+    assert!(
+        is_error(&unstable),
+        "an unfrozen page must not pass waitForStable: {unstable}"
+    );
+    assert_eq!(
+        structured(&unstable)["reason"],
+        json!("unsettled"),
+        "{unstable}"
+    );
 
-    let forced = s.call("browser_screenshot", json!({"waitForStable": 200, "force": true}));
-    assert!(!is_error(&forced), "force accepts the last frame: {}", text_of(&forced));
-    assert_eq!(structured(&forced)["stability"]["verdict"], json!("unfrozen"));
+    let forced = s.call(
+        "browser_screenshot",
+        json!({"waitForStable": 200, "force": true}),
+    );
+    assert!(
+        !is_error(&forced),
+        "force accepts the last frame: {}",
+        text_of(&forced)
+    );
+    assert_eq!(
+        structured(&forced)["stability"]["verdict"],
+        json!("unfrozen")
+    );
 
     let noisy = navigate_with_retry(&mut s, &format!("{}/noise", fixture.base));
-    assert!(!is_error(&noisy), "noise fixture failed: {}", text_of(&noisy));
+    assert!(
+        !is_error(&noisy),
+        "noise fixture failed: {}",
+        text_of(&noisy)
+    );
     let png = s.call("browser_screenshot", json!({"element": "#noise"}));
     assert!(!is_error(&png), "png capture failed: {}", text_of(&png));
     let png_sc = structured(&png);
-    assert_eq!(png_sc["size"], json!({"width": 320, "height": 200}), "{png_sc}");
+    assert_eq!(
+        png_sc["size"],
+        json!({"width": 320, "height": 200}),
+        "{png_sc}"
+    );
 
-    let jpeg = s.call("browser_screenshot", json!({
-        "element": "#noise", "format": "jpeg", "quality": 80
-    }));
+    let jpeg = s.call(
+        "browser_screenshot",
+        json!({
+            "element": "#noise", "format": "jpeg", "quality": 80
+        }),
+    );
     assert!(!is_error(&jpeg), "jpeg capture failed: {}", text_of(&jpeg));
     let jpeg_sc = structured(&jpeg);
-    assert_eq!(jpeg_sc["size"], json!({"width": 320, "height": 200}), "{jpeg_sc}");
+    assert_eq!(
+        jpeg_sc["size"],
+        json!({"width": 320, "height": 200}),
+        "{jpeg_sc}"
+    );
     let png_bytes = png_sc["bytes"].as_u64().unwrap_or(0);
     let jpeg_bytes = jpeg_sc["bytes"].as_u64().unwrap_or(0);
     assert!(
@@ -363,21 +421,31 @@ fn browser_inspect_act_verify_and_stale_ref_refusal() {
     );
     eprintln!("HAND_JPEG_BYTES={jpeg_bytes} HAND_PNG_BYTES={png_bytes}");
 
-    let scaled = s.call("browser_screenshot", json!({
-        "element": "#noise", "scale": 0.5
-    }));
-    assert!(!is_error(&scaled), "scaled capture failed: {}", text_of(&scaled));
+    let scaled = s.call(
+        "browser_screenshot",
+        json!({
+            "element": "#noise", "scale": 0.5
+        }),
+    );
+    assert!(
+        !is_error(&scaled),
+        "scaled capture failed: {}",
+        text_of(&scaled)
+    );
     assert_eq!(
         structured(&scaled)["size"],
         json!({"width": 160, "height": 100}),
         "scale 0.5 halves the captured box: {scaled}"
     );
 
-    let batch = s.call("browser_run", json!({"steps": [
-        {"tool": "navigate", "args": {"url": format!("{}/", fixture.base)}},
-        {"tool": "screenshot"},
-        {"tool": "evaluate", "args": {"expression": "document.title"}}
-    ]}));
+    let batch = s.call(
+        "browser_run",
+        json!({"steps": [
+            {"tool": "navigate", "args": {"url": format!("{}/", fixture.base)}},
+            {"tool": "screenshot"},
+            {"tool": "evaluate", "args": {"expression": "document.title"}}
+        ]}),
+    );
     assert!(!is_error(&batch), "batch failed: {}", text_of(&batch));
     let batch_sc = structured(&batch);
     assert_eq!(batch_sc["ok"], json!(true), "{batch_sc}");
@@ -387,29 +455,58 @@ fn browser_inspect_act_verify_and_stale_ref_refusal() {
     assert_eq!(verdicts[0]["tool"].as_str(), Some("navigate"));
     assert_eq!(verdicts[1]["tool"].as_str(), Some("screenshot"));
     assert_eq!(verdicts[2]["tool"].as_str(), Some("evaluate"));
-    assert!(verdicts.iter().all(|v| v["status"] == json!("ok")), "{batch_sc}");
+    assert!(
+        verdicts.iter().all(|v| v["status"] == json!("ok")),
+        "{batch_sc}"
+    );
 
-    let failing = |cont: bool| json!({
-        "continueOnError": cont,
-        "steps": [
-            {"tool": "evaluate", "args": {"expression": "throw new Error('batch-stop')"}},
-            {"tool": "evaluate", "args": {"expression": "1 + 1"}}
-        ]
-    });
+    let failing = |cont: bool| {
+        json!({
+            "continueOnError": cont,
+            "steps": [
+                {"tool": "evaluate", "args": {"expression": "throw new Error('batch-stop')"}},
+                {"tool": "evaluate", "args": {"expression": "1 + 1"}}
+            ]
+        })
+    };
     let stopped = s.call("browser_run", failing(false));
-    assert!(!is_error(&stopped), "batch envelope failed: {}", text_of(&stopped));
+    assert!(
+        !is_error(&stopped),
+        "batch envelope failed: {}",
+        text_of(&stopped)
+    );
     let stopped_sc = structured(&stopped);
     assert_eq!(stopped_sc["ok"], json!(false), "{stopped_sc}");
     assert_eq!(stopped_sc["failed"], json!(1), "{stopped_sc}");
-    assert_eq!(stopped_sc["steps"].as_array().map(Vec::len), Some(1), "{stopped_sc}");
-    assert_eq!(stopped_sc["steps"][0]["status"], json!("error"), "{stopped_sc}");
+    assert_eq!(
+        stopped_sc["steps"].as_array().map(Vec::len),
+        Some(1),
+        "{stopped_sc}"
+    );
+    assert_eq!(
+        stopped_sc["steps"][0]["status"],
+        json!("error"),
+        "{stopped_sc}"
+    );
 
     let continued = s.call("browser_run", failing(true));
-    assert!(!is_error(&continued), "batch envelope failed: {}", text_of(&continued));
+    assert!(
+        !is_error(&continued),
+        "batch envelope failed: {}",
+        text_of(&continued)
+    );
     let continued_sc = structured(&continued);
     assert_eq!(continued_sc["failed"], json!(1), "{continued_sc}");
-    assert_eq!(continued_sc["steps"].as_array().map(Vec::len), Some(2), "{continued_sc}");
-    assert_eq!(continued_sc["steps"][1]["status"], json!("ok"), "{continued_sc}");
+    assert_eq!(
+        continued_sc["steps"].as_array().map(Vec::len),
+        Some(2),
+        "{continued_sc}"
+    );
+    assert_eq!(
+        continued_sc["steps"][1]["status"],
+        json!("ok"),
+        "{continued_sc}"
+    );
 }
 
 /// A freeze applied before element resolution must be undone on the error
@@ -420,13 +517,21 @@ fn freeze_with_missing_element_restores_motion() {
     let mut s = Session::spawn();
     let fixture = Fixture::start();
     let moved = navigate_with_retry(&mut s, &format!("{}/motion", fixture.base));
-    assert!(!is_error(&moved), "motion fixture failed: {}", text_of(&moved));
+    assert!(
+        !is_error(&moved),
+        "motion fixture failed: {}",
+        text_of(&moved)
+    );
 
     let bad = s.call(
         "browser_screenshot",
         json!({"freeze": true, "element": "#does-not-exist"}),
     );
-    assert!(is_error(&bad), "missing element must be a typed error: {}", text_of(&bad));
+    assert!(
+        is_error(&bad),
+        "missing element must be a typed error: {}",
+        text_of(&bad)
+    );
     let sc = structured(&bad);
     assert_eq!(sc["code"], json!("invalid_target"), "{sc}");
     assert_eq!(sc["reason"], json!("not_found"), "{sc}");
@@ -442,7 +547,11 @@ fn freeze_with_missing_element_restores_motion() {
     assert!(!is_error(&probe), "state probe failed: {}", text_of(&probe));
     let v = structured(&probe)["value"].clone();
     assert_eq!(v["style"], json!(false), "freeze style must be gone: {v}");
-    assert_eq!(v["registry"], json!(true), "freeze registry must be cleared: {v}");
+    assert_eq!(
+        v["registry"],
+        json!(true),
+        "freeze registry must be cleared: {v}"
+    );
     assert!(
         v["running"].as_u64().unwrap_or(0) >= 1,
         "the animation must still be running: {v}"
@@ -458,7 +567,11 @@ fn run_refuses_a_freezing_screenshot_step() {
         "browser_run",
         json!({"steps": [{"tool": "screenshot", "args": {"freeze": true}}]}),
     );
-    assert!(is_error(&out), "freeze in run must be refused: {}", text_of(&out));
+    assert!(
+        is_error(&out),
+        "freeze in run must be refused: {}",
+        text_of(&out)
+    );
     let sc = structured(&out);
     assert_eq!(sc["code"], json!("invalid_args"), "{sc}");
     assert_eq!(sc["arg"], json!("freeze"), "{sc}");
@@ -486,7 +599,10 @@ fn element_tools_publish_selector_alias_in_their_schema() {
             schema["properties"]["element"].is_object(),
             "{name} must keep element canonical: {schema}"
         );
-        let required = schema["required"].as_array().map(Vec::as_slice).unwrap_or(&[]);
+        let required = schema["required"]
+            .as_array()
+            .map(Vec::as_slice)
+            .unwrap_or(&[]);
         assert!(
             !required.iter().any(|k| k == "element"),
             "{name} must not require element (anyAnd with anyOf would reject selector-only): {schema}"
@@ -503,16 +619,31 @@ fn element_tools_publish_selector_alias_in_their_schema() {
     // Screenshot's element target was always optional; it keeps both property
     // names but has no anyOf and no required target.
     let shot = &tool(&tools, "browser_screenshot")["inputSchema"];
-    assert!(shot["properties"]["selector"].is_object(), "screenshot selector");
-    assert!(shot["properties"]["element"].is_object(), "screenshot element");
-    assert!(shot.get("anyOf").is_none(), "screenshot has no anyOf: {shot}");
-    assert!(shot.get("required").is_none(), "screenshot has no required target: {shot}");
+    assert!(
+        shot["properties"]["selector"].is_object(),
+        "screenshot selector"
+    );
+    assert!(
+        shot["properties"]["element"].is_object(),
+        "screenshot element"
+    );
+    assert!(
+        shot.get("anyOf").is_none(),
+        "screenshot has no anyOf: {shot}"
+    );
+    assert!(
+        shot.get("required").is_none(),
+        "screenshot has no required target: {shot}"
+    );
 }
 
 #[test]
 fn unknown_arg_reports_the_bogus_key_and_sorted_received_keys() {
     let mut s = Session::spawn();
-    let resp = s.call("browser_click", json!({"element": "#a", "bogus": 1, "aaa": 2}));
+    let resp = s.call(
+        "browser_click",
+        json!({"element": "#a", "bogus": 1, "aaa": 2}),
+    );
     assert_eq!(resp["result"]["isError"], json!(true));
     let sc = &resp["result"]["structuredContent"];
     assert_eq!(sc["code"].as_str(), Some("invalid_args"));
@@ -524,7 +655,10 @@ fn unknown_arg_reports_the_bogus_key_and_sorted_received_keys() {
         .filter_map(|v| v.as_str())
         .collect();
     assert_eq!(received, vec!["aaa", "bogus", "element"], "sorted keys");
-    assert!(text_of(&resp).contains("bogus"), "prose names the bogus key");
+    assert!(
+        text_of(&resp).contains("bogus"),
+        "prose names the bogus key"
+    );
 }
 
 #[test]

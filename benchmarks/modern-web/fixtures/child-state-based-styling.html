@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>child-state-based-styling</title>
+<style>body{font:16px/1.4 system-ui,sans-serif;margin:16px}button{margin:4px}output{display:block;margin-top:12px}
+#widget{--state:idle}#widget:has(#t:checked){--state:active}</style>
+</head><body>
+<div id="widget"><input type="checkbox" id="t"><button id="go">Check state</button></div><output id="out">idle</output>
+<script>
+document.getElementById('go').onclick=()=>{document.getElementById('t').checked=true;document.getElementById('out').textContent=getComputedStyle(document.getElementById('widget')).getPropertyValue('--state').trim();};
+</script>
+</body></html>

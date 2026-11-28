@@ -64,6 +64,7 @@ version = "0.3.0"
 dependencies = [
  "base64",
  "futures-util",
+ "mjpeg-avi",
  "reqwest",
  "serde_json",
  "tempfile",
@@ -198,6 +199,7 @@ version = "0.3.0"
 dependencies = [
  "base64",
  "jpeg-encoder",
+ "mjpeg-avi",
  "png",
  "serde_json",
  "windows",
@@ -382,7 +384,7 @@ dependencies = [
 
 [[package]]
 name = "hand"
-version = "0.3.4"
+version = "0.4.0"
 dependencies = [
  "browser-engine",
  "desktop-engine",
@@ -779,6 +781,10 @@ dependencies = [
  "wasi",
  "windows-sys 0.61.2",
 ]
+
+[[package]]
+name = "mjpeg-avi"
+version = "0.1.0"
 
 [[package]]
 name = "once_cell"

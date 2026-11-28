@@ -1,9 +1,13 @@
 //! `do` burst tool: queued input actions in one round-trip.
 //!
 //! Wire- and behavior-parity with `puppet.py:do` (2614-3418). Real-input
-//! paths (SendInput, focus changes, pixel-click fallback) are implemented
-//! for live use and marked `unconfirmed: real-input test needs owner
-//! permission` - never exercised by the headless parity harness.
+//! The default path is posted/UIA to a locked target only. Two top-level
+//! flags buy real input, never implicitly: `allow_cursor:true` unlocks the
+//! guarded pointer path (SetCursorPos/SendInput, point_not_target when the
+//! point is not on the locked window or its descendants, cursor restore
+//! after the burst) and `allow_foreground:true` unlocks a single explicit
+//! `focus_window` SetForegroundWindow. The live tests need an interactive
+//! desktop and are `#[ignore]`gated; the headless harness proves the policy.
 
 use crate::cap::{bitblt_grab, resolve_selector};
 use crate::shot::element_model;
@@ -13,15 +17,17 @@ use crate::{
 use base64::Engine as _;
 use serde_json::{Map, Value};
 use std::time::{Duration, Instant};
-use windows_sys::Win32::Foundation::{HWND, LPARAM, POINT, RECT};
+use windows_sys::Win32::Foundation::{GetLastError, GlobalFree, HWND, LPARAM, POINT, RECT};
 use windows_sys::Win32::Graphics::Gdi::ScreenToClient;
 use windows_sys::Win32::System::DataExchange::{
-    CloseClipboard, GetClipboardData, IsClipboardFormatAvailable, OpenClipboard,
+    CloseClipboard, CountClipboardFormats, EmptyClipboard, GetClipboardData,
+    IsClipboardFormatAvailable, OpenClipboard, SetClipboardData,
 };
-use windows_sys::Win32::System::Memory::{GlobalLock, GlobalSize, GlobalUnlock};
+use windows_sys::Win32::System::Memory::{
+    GlobalAlloc, GlobalLock, GlobalSize, GlobalUnlock, GMEM_MOVEABLE,
+};
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::*;
 use windows_sys::Win32::UI::WindowsAndMessaging::*;
-
 
 const M_WHEEL: u32 = 0x0800;
 const M_HWHEEL: u32 = 0x1000;
@@ -152,7 +158,6 @@ fn bg_non_postable(typ: &str) -> Option<&'static str> {
         _ => None,
     }
 }
-
 
 fn py_type_name(v: &Value) -> &'static str {
     match v {
@@ -305,7 +310,6 @@ fn sleep_cancellable(ms: u64) -> bool {
     crate::cancel::cancelled()
 }
 
-
 fn scroll_wheel(axis: &str, amt: i64) -> Result<(u32, u32), String> {
     let flag = match axis {
         "v" => M_WHEEL,
@@ -323,7 +327,6 @@ fn scroll_wheel(axis: &str, amt: i64) -> Result<(u32, u32), String> {
 fn utf16_units(s: &str) -> Vec<u16> {
     s.encode_utf16().collect()
 }
-
 
 /// Resolved key: a virtual-key code (plus whether Shift must be held for the
 /// layout's high byte) or a Unicode fallback when VkKeyScanW has no
@@ -405,7 +408,6 @@ fn monitor_for_point(mons: &[[i32; 4]], x: i64, y: i64) -> Option<[i32; 4]> {
         .copied()
 }
 
-
 /// Clipboard text budget: 1 MiB of characters. Reads truncate, writes
 /// fail typed ÔÇö never silently, never unbounded.
 pub(crate) const MAX_CLIP_CHARS: usize = 1_048_576;
@@ -421,10 +423,110 @@ fn check_clip_len(n_chars: usize) -> Result<(), String> {
     Ok(())
 }
 
+/// A typed clipboard failure: stage, Win32 last-error code and the number of
+/// `OpenClipboard` attempts made. Callers emit one `clipboard_unavailable`
+/// wire error from this, never a bare string and never a panic.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ClipboardError {
+    stage: &'static str,
+    code: u32,
+    attempts: u32,
+}
+
+impl ClipboardError {
+    fn new(stage: &'static str, code: u32, attempts: u32) -> Self {
+        ClipboardError {
+            stage,
+            code,
+            attempts,
+        }
+    }
+
+    /// Canonical wire text: the Win32 code and attempt count are always named.
+    fn text(&self) -> String {
+        format!(
+            "clipboard_unavailable: stage={} win32_error={} attempts={}",
+            self.stage, self.code, self.attempts
+        )
+    }
+}
+
+impl std::fmt::Display for ClipboardError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.text())
+    }
+}
+
+/// A clipboard_get failure has two kinds. NoTextFormat is a normal
+/// clipboard state (empty, or holding a non-text format), not a failed
+/// read: it never reports an attempt count because no OpenClipboard was
+/// needed. Unavailable is a failed OpenClipboard/GlobalLock/SetClipboardData
+/// after the bounded retry and is the only kind emitted as
+/// clipboard_unavailable.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum ClipboardGetError {
+    NoTextFormat,
+    Unavailable(ClipboardError),
+}
+
+impl From<ClipboardError> for ClipboardGetError {
+    fn from(e: ClipboardError) -> Self {
+        ClipboardGetError::Unavailable(e)
+    }
+}
+
+impl ClipboardGetError {
+    /// (wire code, wire error prose) for the action result.
+    fn wire(&self) -> (&'static str, String) {
+        match self {
+            ClipboardGetError::NoTextFormat => (
+                "no_text_format",
+                "no_text_format: the clipboard holds no CF_UNICODETEXT (it may be empty or hold another format)".to_string(),
+            ),
+            ClipboardGetError::Unavailable(e) => ("clipboard_unavailable", e.text()),
+        }
+    }
+}
+
+/// Read GetLastError immediately after the Win32 call that failed, before
+/// any other Win32 call (including CloseClipboard) can overwrite it.
+unsafe fn clip_last_error(stage: &'static str, attempts: u32) -> ClipboardError {
+    ClipboardError::new(stage, GetLastError(), attempts)
+}
+
+/// `OpenClipboard` takes an exclusive global lock. A few milliseconds of
+/// contention are normal, so retry with a 2 ms backoff; 30 attempts and a
+/// 60 ms total cap keep the worst case far below the 300 ms burst budget.
+const CLIP_OPEN_MAX_ATTEMPTS: u32 = 30;
+const CLIP_OPEN_BACKOFF: Duration = Duration::from_millis(2);
+const CLIP_OPEN_WAIT_CAP: Duration = Duration::from_millis(60);
+
+/// Open the clipboard, returning the number of attempts used on success.
+fn clipboard_open() -> Result<u32, ClipboardError> {
+    let start = Instant::now();
+    let mut attempts = 0u32;
+    loop {
+        attempts += 1;
+        if unsafe { OpenClipboard(std::ptr::null_mut()) } != 0 {
+            return Ok(attempts);
+        }
+        let code = unsafe { GetLastError() };
+        let elapsed = start.elapsed();
+        if attempts >= CLIP_OPEN_MAX_ATTEMPTS || elapsed >= CLIP_OPEN_WAIT_CAP {
+            return Err(ClipboardError::new("OpenClipboard", code, attempts));
+        }
+        std::thread::sleep(CLIP_OPEN_BACKOFF.min(CLIP_OPEN_WAIT_CAP - elapsed));
+    }
+}
+
 /// Bounded NUL-terminated UTF-16 read: scans at most `max_units` for the
 /// terminator (the GlobalSize bound), then decodes lossily. A missing NUL
 /// is an error, never an over-read.
-unsafe fn clip_read_u16(ptr: *const u16, max_units: usize) -> Result<String, String> {
+unsafe fn clip_read_u16(
+    ptr: *const u16,
+    max_units: usize,
+    attempts: u32,
+) -> Result<String, ClipboardError> {
     let mut len = 0usize;
     while len < max_units {
         if *ptr.add(len) == 0 {
@@ -433,52 +535,284 @@ unsafe fn clip_read_u16(ptr: *const u16, max_units: usize) -> Result<String, Str
         len += 1;
     }
     if len == max_units {
-        return Err("clipboard text is not NUL-terminated within its GlobalSize".to_string());
+        return Err(ClipboardError::new("clip_read_u16", 0, attempts));
     }
     let slice = std::slice::from_raw_parts(ptr, len);
     Ok(String::from_utf16_lossy(slice))
 }
 
-fn clipboard_get() -> Result<String, String> {
+/// Read at most MAX_CLIP_CHARS, and report the ORIGINAL length plus whether
+/// truncation happened. The 1 MiB cap stays; the claim in claims.rs is now
+/// observable on the action result instead of being a promise without a field.
+fn clipboard_get() -> Result<(String, usize, bool, u32), ClipboardGetError> {
+    // IsClipboardFormatAvailable needs no open handle. An empty clipboard,
+    // or one holding only non-text formats, is a normal state: return the
+    // distinct no_text_format BEFORE any OpenClipboard attempt, so the wire
+    // result never reports attempts as if a retry happened.
+    if unsafe { IsClipboardFormatAvailable(CF_UNICODETEXT) } == 0 {
+        return Err(ClipboardGetError::NoTextFormat);
+    }
     unsafe {
-        let mut opened = false;
-        let r = (|| -> Result<String, String> {
-            if OpenClipboard(std::ptr::null_mut()) == 0 {
-                return Err("OpenClipboard failed".to_string());
+        let attempts = clipboard_open()?;
+        let r = (|| -> Result<(String, usize, bool), ClipboardGetError> {
+            // Recheck under the handle: the format can change between the
+            // pre-check above and OpenClipboard. Still no_text_format: the
+            // clipboard is readable, it simply holds no text right now.
+            if IsClipboardFormatAvailable(CF_UNICODETEXT) == 0 {
+                return Err(ClipboardGetError::NoTextFormat);
             }
-            opened = true;
-            if IsClipboardFormatAvailable(13) == 0 {
-                return Err("no CF_UNICODETEXT on clipboard".to_string());
-            }
-            let h = GetClipboardData(13);
+            let h = GetClipboardData(CF_UNICODETEXT);
             if h.is_null() {
-                return Err("GetClipboardData failed".to_string());
+                return Err(clip_last_error("GetClipboardData", attempts).into());
             }
             let bytes = GlobalSize(h) as usize;
             if bytes < 2 {
-                return Err("clipboard text is empty or unreadable (GlobalSize)".to_string());
+                return Err(ClipboardError::new("GlobalSize", 0, attempts).into());
             }
             let max_units = bytes / 2;
             let p = GlobalLock(h);
             if p.is_null() {
-                return Err("GlobalLock failed".to_string());
+                return Err(clip_last_error("GlobalLock", attempts).into());
             }
-            let s = clip_read_u16(p as *const u16, max_units);
+            let s = clip_read_u16(p as *const u16, max_units, attempts)?;
             GlobalUnlock(h);
-            let s = s?;
-            if s.chars().count() > MAX_CLIP_CHARS {
-                Ok(s.chars().take(MAX_CLIP_CHARS).collect())
+            let chars = s.chars().count();
+            if chars > MAX_CLIP_CHARS {
+                Ok((s.chars().take(MAX_CLIP_CHARS).collect(), chars, true))
             } else {
-                Ok(s)
+                Ok((s, chars, false))
             }
         })();
-        if opened {
-            CloseClipboard();
+        let close_ok = CloseClipboard() != 0;
+        let close_code = if close_ok { 0 } else { GetLastError() };
+        let (text, chars, truncated) = r?;
+        if !close_ok {
+            return Err(ClipboardError::new("CloseClipboard", close_code, attempts).into());
         }
-        r
+        Ok((text, chars, truncated, attempts))
     }
 }
 
+/// CF_UNICODETEXT, the one text format the reader and writer use.
+const CF_UNICODETEXT: u32 = 13;
+
+/// The owner's clipboard before the first write of a burst. `non_text`
+/// means another format was present: those bytes cannot be copied back, so
+/// a restore clears the clipboard instead of inventing content.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum ClipboardPrevious {
+    Empty,
+    Text(String),
+    NonText,
+}
+
+impl ClipboardPrevious {
+    fn label(&self) -> &'static str {
+        match self {
+            ClipboardPrevious::Empty => "empty",
+            ClipboardPrevious::Text(_) => "text",
+            ClipboardPrevious::NonText => "non_text",
+        }
+    }
+}
+
+/// Read the current clipboard state while the handle is already open.
+/// Shared by the snapshot and the reader; every failure is typed.
+unsafe fn clipboard_snapshot_open(attempts: u32) -> Result<ClipboardPrevious, ClipboardError> {
+    if IsClipboardFormatAvailable(CF_UNICODETEXT) != 0 {
+        let h = GetClipboardData(CF_UNICODETEXT);
+        if h.is_null() {
+            return Err(clip_last_error("GetClipboardData", attempts));
+        }
+        let bytes = GlobalSize(h) as usize;
+        if bytes < 2 {
+            return Ok(ClipboardPrevious::Empty);
+        }
+        let p = GlobalLock(h);
+        if p.is_null() {
+            return Err(clip_last_error("GlobalLock", attempts));
+        }
+        let s = clip_read_u16(p as *const u16, bytes / 2, attempts);
+        GlobalUnlock(h);
+        let s = s?;
+        let s = if s.chars().count() > MAX_CLIP_CHARS {
+            s.chars().take(MAX_CLIP_CHARS).collect()
+        } else {
+            s
+        };
+        return Ok(ClipboardPrevious::Text(s));
+    }
+    if CountClipboardFormats() == 0 {
+        Ok(ClipboardPrevious::Empty)
+    } else {
+        Ok(ClipboardPrevious::NonText)
+    }
+}
+
+/// Snapshot the clipboard before the first write. A failed snapshot refuses
+/// the write: never destroy contents that could not be read first.
+fn clipboard_snapshot() -> Result<ClipboardPrevious, ClipboardError> {
+    unsafe {
+        let attempts = clipboard_open()?;
+        let r = clipboard_snapshot_open(attempts);
+        let close_ok = CloseClipboard() != 0;
+        let close_code = if close_ok { 0 } else { GetLastError() };
+        let previous = r?;
+        if !close_ok {
+            return Err(ClipboardError::new("CloseClipboard", close_code, attempts));
+        }
+        Ok(previous)
+    }
+}
+
+/// Write UTF-16 text as CF_UNICODETEXT through the Win32 clipboard chain:
+/// GlobalAlloc(GMEM_MOVEABLE) -> GlobalLock -> copy -> GlobalUnlock ->
+/// OpenClipboard -> EmptyClipboard -> SetClipboardData -> CloseClipboard.
+/// The 1 MiB cap is checked before the clipboard is opened, so a rejected
+/// write touches nothing. Every failure is a typed error, never a panic;
+/// the allocation is freed unless SetClipboardData took ownership of it.
+fn clipboard_set_text(text: &str) -> Result<(usize, u32), ClipboardError> {
+    // Cap stays before any Win32 interaction; the action layer already
+    // returns the distinct too_large code before reaching this defence.
+    check_clip_len(text.chars().count()).map_err(|_| ClipboardError::new("clip_len", 0, 0))?;
+    let units: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
+    let bytes = units.len() * std::mem::size_of::<u16>();
+    unsafe {
+        let h = GlobalAlloc(GMEM_MOVEABLE, bytes);
+        if h.is_null() {
+            return Err(clip_last_error("GlobalAlloc", 0));
+        }
+        let p = GlobalLock(h);
+        if p.is_null() {
+            let e = clip_last_error("GlobalLock", 0);
+            GlobalFree(h);
+            return Err(e);
+        }
+        std::ptr::copy_nonoverlapping(units.as_ptr(), p as *mut u16, units.len());
+        GlobalUnlock(h);
+        let attempts = match clipboard_open() {
+            Ok(n) => n,
+            Err(e) => {
+                GlobalFree(h);
+                return Err(e);
+            }
+        };
+        let mut handed_off = false;
+        let r = (|| -> Result<(), ClipboardError> {
+            if EmptyClipboard() == 0 {
+                return Err(clip_last_error("EmptyClipboard", attempts));
+            }
+            if SetClipboardData(CF_UNICODETEXT, h).is_null() {
+                return Err(clip_last_error("SetClipboardData", attempts));
+            }
+            handed_off = true; // the system owns h from here on
+            Ok(())
+        })();
+        let close_ok = CloseClipboard() != 0;
+        let close_code = if close_ok { 0 } else { GetLastError() };
+        let outcome = match r {
+            Err(e) => Err(e),
+            Ok(()) if !close_ok => Err(ClipboardError::new("CloseClipboard", close_code, attempts)),
+            Ok(()) => Ok(()),
+        };
+        if !handed_off {
+            GlobalFree(h);
+        }
+        outcome.map(|_| (bytes, attempts))
+    }
+}
+
+/// Clear the clipboard when the previous state was `empty` or `non_text`.
+fn clipboard_clear() -> Result<u32, ClipboardError> {
+    unsafe {
+        let attempts = clipboard_open()?;
+        let empty_ok = EmptyClipboard() != 0;
+        let empty_code = if empty_ok { 0 } else { GetLastError() };
+        let close_ok = CloseClipboard() != 0;
+        let close_code = if close_ok { 0 } else { GetLastError() };
+        if !empty_ok {
+            Err(ClipboardError::new("EmptyClipboard", empty_code, attempts))
+        } else if !close_ok {
+            Err(ClipboardError::new("CloseClipboard", close_code, attempts))
+        } else {
+            Ok(attempts)
+        }
+    }
+}
+
+/// Per-burst clipboard ledger: one snapshot before the first write, one
+/// restore after the last action, with typed failures reported and never
+/// panicking. No clipboard handle is held between actions, so the owner is
+/// never blocked from using their own clipboard for the length of a burst.
+struct ClipboardLedger {
+    restore: bool,
+    previous: Option<ClipboardPrevious>,
+    writes: i64,
+    restores: i64,
+    bytes: i64,
+    error: Option<ClipboardError>,
+}
+
+impl ClipboardLedger {
+    fn new(restore: bool) -> Self {
+        ClipboardLedger {
+            restore,
+            previous: None,
+            writes: 0,
+            restores: 0,
+            bytes: 0,
+            error: None,
+        }
+    }
+
+    /// Snapshot before a write. A failed snapshot refuses the write rather
+    /// than overwriting what we could not read.
+    fn before_write(&mut self) -> Result<(), ClipboardError> {
+        if self.previous.is_none() {
+            self.previous = Some(clipboard_snapshot()?);
+        }
+        Ok(())
+    }
+
+    fn wrote(&mut self, bytes: usize) {
+        self.writes += 1;
+        self.bytes += bytes as i64;
+    }
+
+    /// Run after the last action, including a partial or failed burst. The
+    /// snapshot stays in place so the report keeps saying what was found.
+    fn finish(&mut self) {
+        if !self.restore || self.writes == 0 {
+            return;
+        }
+        let Some(previous) = self.previous.clone() else {
+            return;
+        };
+        let r = match previous {
+            ClipboardPrevious::Text(ref s) => clipboard_set_text(s).map(|_| ()),
+            ClipboardPrevious::Empty | ClipboardPrevious::NonText => clipboard_clear().map(|_| ()),
+        };
+        match r {
+            Ok(()) => self.restores += 1,
+            Err(e) => self.error = Some(e),
+        }
+    }
+
+    fn to_map(&self) -> Map<String, Value> {
+        let mut m = Map::new();
+        m.insert("writes".to_string(), Value::from(self.writes));
+        m.insert("restores".to_string(), Value::from(self.restores));
+        m.insert(
+            "previous".to_string(),
+            Value::from(self.previous.as_ref().map(|p| p.label()).unwrap_or("empty")),
+        );
+        m.insert("bytes".to_string(), Value::from(self.bytes));
+        if let Some(e) = &self.error {
+            m.insert("error".to_string(), Value::from(e.text()));
+        }
+        m
+    }
+}
 
 /// Signed 16-bit range a window message can carry in one lParam half.
 const MSG_COORD_MIN: i64 = -32768;
@@ -1141,7 +1475,6 @@ fn bg_execute(
     )
 }
 
-
 /// Pure element-wait decision: given whether a matching control was found
 /// and (when found) whether it is enabled, decide per `state`. Unit-tested;
 /// the polling loop only feeds it live observations.
@@ -1684,7 +2017,6 @@ fn wait_for(a: &Map<String, Value>, t0: &Instant) -> Map<String, Value> {
     )
 }
 
-
 fn cursor_now() -> (i64, i64) {
     unsafe {
         let mut pt = POINT { x: 0, y: 0 };
@@ -1754,7 +2086,6 @@ fn target_failure(
     d.insert("via".to_string(), Value::from("none"));
     d
 }
-
 
 fn entry_str(e: &Map<String, Value>, key: &str) -> String {
     match e.get(key) {
@@ -1905,7 +2236,6 @@ fn element_pub_full(entry: &Map<String, Value>) -> Map<String, Value> {
     m
 }
 
-
 /// Why an element rect cannot become an injection point.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum RectRefusal {
@@ -2027,7 +2357,6 @@ fn check_expect_fp(
     })
 }
 
-
 /// BM_CLICK a Win32 button child. No mouse, no focus change (puppet.py:1442-1462).
 fn win32_activate(entry: &Map<String, Value>) -> (bool, String, Option<String>) {
     let inv = entry
@@ -2098,7 +2427,6 @@ fn win32_activate(entry: &Map<String, Value>) -> (bool, String, Option<String>) 
     (true, "win32-click".to_string(), None)
 }
 
-
 /// Pure refusal text (gap 2): the typed, actionable error naming the
 /// elevated target. Separated from the live reader below for testability;
 /// essentials are pinned by `uipi_refusal_text_names_target_and_recovery`.
@@ -2135,6 +2463,187 @@ fn window_at(x: i64, y: i64) -> Option<i64> {
             Some(h as i64)
         }
     }
+}
+
+/// The screen point's real input recipient, with the facts the point guard
+/// needs. Kept as data so the guard decision is unit-testable with a stub
+/// instead of a desktop: nothing here is trusted from the action's own text.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct PointOwner {
+    /// Window `WindowFromPoint` found at the point.
+    hit: i64,
+    /// Its root owner (`GA_ROOTOWNER`), which is where a click lands.
+    root: i64,
+    /// Whether the point is inside the locked target's screen rect.
+    inside_target_rect: bool,
+    /// Whether `hit` is a descendant of the locked target.
+    descendant: bool,
+    /// One-line identity of the window actually under the point.
+    actual: String,
+}
+
+/// Pure point guard. Real pointer input is delivered only when the point is
+/// inside the locked target's rect AND the window under it is the target, a
+/// descendant, or has the target as its root owner. Every other point names
+/// the window that WOULD have received the input and delivers nothing.
+fn point_guard(
+    target: i64,
+    verb: &str,
+    x: i64,
+    y: i64,
+    owner: &PointOwner,
+) -> Result<(), crate::gate::GateError> {
+    let on_target =
+        target != 0 && (owner.hit == target || owner.descendant || owner.root == target);
+    if on_target && owner.inside_target_rect {
+        Ok(())
+    } else {
+        Err(crate::gate::point_not_target(verb, x, y, &owner.actual))
+    }
+}
+
+/// Readable identity for a refusal: the window the caller actually aimed at.
+fn describe_window(hwnd: i64) -> String {
+    if hwnd == 0 {
+        return "hwnd=0 (no window under the point)".to_string();
+    }
+    unsafe {
+        let mut cls = [0u16; 128];
+        let nc = GetClassNameW(hwnd as HWND, cls.as_mut_ptr(), cls.len() as i32);
+        let mut ttl = [0u16; 128];
+        let nt = GetWindowTextW(hwnd as HWND, ttl.as_mut_ptr(), ttl.len() as i32);
+        let class = String::from_utf16_lossy(&cls[..nc.max(0) as usize]);
+        let title = String::from_utf16_lossy(&ttl[..nt.max(0) as usize]);
+        format!(
+            "hwnd={hwnd} class={class:?} title={title:?} pid={}",
+            crate::pid_of(hwnd as HWND)
+        )
+    }
+}
+
+/// Resolve one screen point against the locked target. This is the ONLY
+/// source of the guard's facts: the action cannot name its own recipient.
+fn point_owner_at(target: i64, x: i64, y: i64) -> PointOwner {
+    let hit = window_at(x, y).unwrap_or(0);
+    let root = if hit == 0 {
+        0
+    } else {
+        unsafe { GetAncestor(hit as HWND, GA_ROOTOWNER) as i64 }
+    };
+    let descendant =
+        target != 0 && hit != 0 && unsafe { IsChild(target as HWND, hit as HWND) != 0 };
+    let inside_target_rect = if target == 0 {
+        false
+    } else {
+        let mut rc = RECT {
+            left: 0,
+            top: 0,
+            right: 0,
+            bottom: 0,
+        };
+        unsafe {
+            GetWindowRect(target as HWND, &mut rc) != 0
+                && x >= rc.left as i64
+                && x <= rc.right as i64
+                && y >= rc.top as i64
+                && y <= rc.bottom as i64
+        }
+    };
+    PointOwner {
+        hit,
+        root,
+        inside_target_rect,
+        descendant,
+        actual: describe_window(hit),
+    }
+}
+
+/// ABSOLUTE coordinates are relative to the PRIMARY monitor unless
+/// VIRTUALDESK is set; mouse_normalized uses the whole virtual screen, so
+/// every absolute event must carry both flags or a secondary monitor is
+/// driven at the wrong point.
+const ABS_MOVE_FLAGS: u32 = MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK;
+
+/// One real mouse INPUT. Pointer delivery is the sole reason this helper
+/// exists; it is reachable only from the opt-in real-pointer branch.
+fn mouse_ev(dx: i32, dy: i32, data: u32, flags: u32) -> INPUT {
+    let mut input: INPUT = unsafe { std::mem::zeroed() };
+    input.r#type = INPUT_MOUSE;
+    input.Anonymous = INPUT_0 {
+        mi: MOUSEINPUT {
+            dx,
+            dy,
+            mouseData: data,
+            dwFlags: flags,
+            time: 0,
+            dwExtraInfo: 0,
+        },
+    };
+    input
+}
+
+/// `SendInput` absolute mouse coordinates are normalised over the whole
+/// virtual desktop, not just the primary monitor.
+fn mouse_normalized(x: i64, y: i64) -> (i32, i32) {
+    unsafe {
+        let sx = GetSystemMetrics(SM_XVIRTUALSCREEN) as i64;
+        let sy = GetSystemMetrics(SM_YVIRTUALSCREEN) as i64;
+        let sw = (GetSystemMetrics(SM_CXVIRTUALSCREEN) as i64).max(1);
+        let sh = (GetSystemMetrics(SM_CYVIRTUALSCREEN) as i64).max(1);
+        let nx = (((x - sx) as f64 * 65535.0) / (sw - 1).max(1) as f64)
+            .round()
+            .clamp(0.0, 65535.0) as i32;
+        let ny = (((y - sy) as f64 * 65535.0) / (sh - 1).max(1) as f64)
+            .round()
+            .clamp(0.0, 65535.0) as i32;
+        (nx, ny)
+    }
+}
+
+/// One absolute mouse event at a screen point, with the virtual-desktop
+/// flags on EVERY event (move, button and wheel), not just the move.
+fn mouse_at(x: i64, y: i64, data: u32, extra: u32) -> INPUT {
+    let (nx, ny) = mouse_normalized(x, y);
+    mouse_ev(nx, ny, data, ABS_MOVE_FLAGS | extra)
+}
+
+/// The INPUT sequence for a click/down/up at one screen point. Every event
+/// carries ABSOLUTE|VIRTUALDESK; only the first is a MOVE.
+fn click_inputs(sx: i64, sy: i64, verb: &str, btn: &str, count: i64) -> Result<Vec<INPUT>, String> {
+    let (down, up) = mouse_button_flags(btn).ok_or_else(|| format!("unknown button \"{btn}\""))?;
+    let mut out = vec![mouse_at(sx, sy, 0, MOUSEEVENTF_MOVE)];
+    match verb {
+        "down" => out.push(mouse_at(sx, sy, 0, down)),
+        "up" => out.push(mouse_at(sx, sy, 0, up)),
+        "click" => {
+            if count > MAX_CLICK_COUNT {
+                return Err(format!("click count absurd (>{MAX_CLICK_COUNT}): {count}"));
+            }
+            for _ in 0..count.max(1) {
+                out.push(mouse_at(sx, sy, 0, down));
+                out.push(mouse_at(sx, sy, 0, up));
+            }
+        }
+        _ => return Err(format!("unknown click verb \"{verb}\"")),
+    }
+    Ok(out)
+}
+
+fn mouse_button_flags(btn: &str) -> Option<(u32, u32)> {
+    match btn {
+        "left" => Some((MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP)),
+        "right" => Some((MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP)),
+        "middle" => Some((MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP)),
+        _ => None,
+    }
+}
+
+/// Real-pointer state for one opt-in burst. Absent when the caller did not
+/// pass `allow_cursor:true`, so a default burst cannot reach SendInput at all.
+struct RealInput {
+    dry_run: bool,
+    queued: Vec<INPUT>,
+    moves: i64,
 }
 
 /// Windows that would receive one foreground input action (gap 2): the real
@@ -2195,7 +2704,6 @@ fn uipi_targets_for_action(typ: &str, a: &Map<String, Value>) -> Vec<i64> {
     out
 }
 
-
 struct Burst {
     pending: Vec<INPUT>,
     marked: Vec<usize>,
@@ -2206,18 +2714,255 @@ struct Burst {
     /// Gap 2: set when the last flush short-sent against an elevated
     /// foreground (UIPI-suspected). Read by fail_since_flush at the call site.
     flush_uipi: bool,
+    /// Present only for an `allow_cursor:true` burst. When absent, no real
+    /// pointer INPUT can be queued or sent on any path.
+    real: Option<RealInput>,
 }
 
 impl Burst {
-    /// No-op by policy: `SendInput` is never called, so nothing is ever
-    /// queued and every flush is empty. Kept as a method because the posted
-    /// branches below still sequence through it (harmless, always clean).
+    /// Flush the queue. Without an opt-in, or under dry_run, this remains a
+    /// no-op: no input is queued and nothing is injected. With the opt-in it
+    /// sends the queued pointer INPUTs in one `SendInput` call, counts the
+    /// call, and reports a short send as a typed failure rather than claiming
+    /// delivery.
     fn flush(&mut self) -> (f64, Option<String>) {
         self.flush_uipi = false;
         self.pending.clear();
         self.marked.clear();
-        (0.0, None)
+        let Some(real) = self.real.as_mut() else {
+            return (0.0, None);
+        };
+        let inputs = std::mem::take(&mut real.queued);
+        if inputs.is_empty() || real.dry_run {
+            return (0.0, None);
+        }
+        let t = Instant::now();
+        let sent = unsafe {
+            SendInput(
+                inputs.len() as u32,
+                inputs.as_ptr(),
+                std::mem::size_of::<INPUT>() as i32,
+            )
+        } as usize;
+        self.calls += 1;
+        let ms = t.elapsed().as_secs_f64() * 1000.0;
+        self.sendinput_ms += ms;
+        self.events += sent as i64;
+        let err = if sent == inputs.len() {
+            None
+        } else {
+            Some(format!(
+                "sendinput_failed: {sent} of {} pointer events were injected; the rest were not sent",
+                inputs.len()
+            ))
+        };
+        (ms, err)
     }
+
+    /// Queue one pointer event for the opt-in path. Never called from the
+    /// default path: `real` is None there.
+    fn queue_pointer(&mut self, input: INPUT, is_move: bool) {
+        if let Some(real) = self.real.as_mut() {
+            real.queued.push(input);
+            if is_move {
+                real.moves += 1;
+            }
+        }
+    }
+
+    /// Whether a real pointer move was queued on this call.
+    fn pointer_moved(&self) -> bool {
+        self.real.as_ref().is_some_and(|r| r.moves > 0)
+    }
+}
+
+/// Deliver one coordinate pointer verb through the real input queue. Called
+/// ONLY after the gate returned `Delivery::Cursor`, which requires both the
+/// `allow_cursor:true` opt-in and a locked HWND. Every screen point is
+/// guarded against the target BEFORE anything is queued; a refusal names the
+/// window actually found. Never calls `SetForegroundWindow`.
+fn real_pointer_step(
+    i: usize,
+    typ_v: &Value,
+    ad: &Map<String, Value>,
+    t0: &Instant,
+    target: i64,
+    client_coords: bool,
+    st: &mut Burst,
+    dry_run: bool,
+) -> Result<Map<String, Value>, String> {
+    let verb = typ_v.as_str().unwrap_or("");
+    let to_screen = |x: i64, y: i64| -> Result<(i64, i64), String> {
+        if client_coords {
+            crate::target::client_point_to_screen(target, x, y)
+                .ok_or_else(|| "ClientToScreen failed for the locked target".to_string())
+        } else {
+            Ok((x, y))
+        }
+    };
+    let mut points: Vec<(i64, i64)> = Vec::new();
+    let mut inputs: Vec<INPUT> = Vec::new();
+    let move_count: i64;
+    let mut absolute_move = false;
+    match verb {
+        "move" => {
+            let has_abs = ad.contains_key("x") || ad.contains_key("y");
+            let has_rel = ad.contains_key("dx")
+                || ad.contains_key("dy")
+                || ad.get("relative").is_some_and(py_truthy);
+            if has_abs && has_rel {
+                return Err(
+                    "move takes x/y or dx/dy, not both (absolute or relative, never mixed)"
+                        .to_string(),
+                );
+            }
+            if has_abs {
+                let xv = ad
+                    .get("x")
+                    .ok_or_else(|| "move needs x and y".to_string())?;
+                let yv = ad
+                    .get("y")
+                    .ok_or_else(|| "move needs x and y".to_string())?;
+                let (x, y) = (py_int(xv)?, py_int(yv)?);
+                points.push(to_screen(x, y)?);
+                absolute_move = true;
+            } else {
+                let dx = opt_py_int(ad, "dx", 0)?;
+                let dy = opt_py_int(ad, "dy", 0)?;
+                let (cx, cy) = cursor_now();
+                points.push((cx.saturating_add(dx), cy.saturating_add(dy)));
+            }
+            move_count = 1;
+        }
+        "click" | "down" | "up" => {
+            let xv = ad.get("x").ok_or_else(|| format!("{verb} needs x and y"))?;
+            let yv = ad.get("y").ok_or_else(|| format!("{verb} needs x and y"))?;
+            let (sx, sy) = to_screen(py_int(xv)?, py_int(yv)?)?;
+            points.push((sx, sy));
+            let count = opt_py_int(ad, "count", 1)?;
+            inputs = click_inputs(sx, sy, verb, &bg_btn_name(ad), count)?;
+            move_count = 1;
+        }
+        "drag" => {
+            let from = unpack2(
+                ad.get("from")
+                    .ok_or_else(|| "drag needs from".to_string())?,
+            )?;
+            let to = unpack2(ad.get("to").ok_or_else(|| "drag needs to".to_string())?)?;
+            let (fx, fy) = to_screen(from.0, from.1)?;
+            let (tx, ty) = to_screen(to.0, to.1)?;
+            points.push((fx, fy));
+            points.push((tx, ty));
+            let btn = bg_btn_name(ad);
+            let Some((down, up)) = mouse_button_flags(&btn) else {
+                return Err(format!("unknown button \"{btn}\""));
+            };
+            inputs.push(mouse_at(fx, fy, 0, MOUSEEVENTF_MOVE));
+            inputs.push(mouse_at(fx, fy, 0, down));
+            inputs.push(mouse_at(tx, ty, 0, MOUSEEVENTF_MOVE));
+            inputs.push(mouse_at(tx, ty, 0, up));
+            move_count = 2;
+        }
+        "scroll" => {
+            let xv = ad
+                .get("x")
+                .ok_or_else(|| "scroll needs x and y".to_string())?;
+            let yv = ad
+                .get("y")
+                .ok_or_else(|| "scroll needs x and y".to_string())?;
+            let (sx, sy) = to_screen(py_int(xv)?, py_int(yv)?)?;
+            points.push((sx, sy));
+            let amount = opt_py_int(ad, "amount", 1)?;
+            let axis = match ad.get("axis") {
+                None | Some(Value::Null) => "v".to_string(),
+                Some(v) => py_str(v).to_lowercase(),
+            };
+            let (flag, data) = scroll_wheel(&axis, amount)?;
+            inputs.push(mouse_at(sx, sy, 0, MOUSEEVENTF_MOVE));
+            inputs.push(mouse_at(sx, sy, data, flag));
+            move_count = 1;
+        }
+        _ => return Err(format!("unknown real-pointer verb \"{verb}\"")),
+    }
+
+    // Guard EVERY point before a single event is queued. A refusal names the
+    // window that would really have received the input.
+    let mut guarded: Vec<(i64, i64)> = Vec::new();
+    for &(sx, sy) in &points {
+        let owner = point_owner_at(target, sx, sy);
+        if let Err(e) = point_guard(target, verb, sx, sy, &owner) {
+            let mut d = base_entry(i, typ_v, false, elapsed_ms(t0));
+            d.insert("code".to_string(), Value::from(e.code));
+            d.insert("error".to_string(), Value::from(e.text()));
+            d.insert(
+                "point".to_string(),
+                Value::from(vec![Value::from(sx), Value::from(sy)]),
+            );
+            d.insert("actualWindow".to_string(), Value::from(owner.actual));
+            d.insert("via".to_string(), Value::from("none"));
+            return Ok(d);
+        }
+        guarded.push((sx, sy));
+    }
+
+    let mut d = base_entry(i, typ_v, true, elapsed_ms(t0));
+    d.insert("delivered".to_string(), Value::from("cursor"));
+    d.insert("via".to_string(), Value::from("sendinput"));
+    d.insert("guarded".to_string(), Value::from(true));
+    d.insert(
+        "point".to_string(),
+        Value::from(
+            guarded
+                .iter()
+                .map(|&(x, y)| Value::from(vec![Value::from(x), Value::from(y)]))
+                .collect::<Vec<_>>(),
+        ),
+    );
+    if dry_run {
+        d.insert("dry_run".to_string(), Value::from(true));
+        return Ok(d);
+    }
+
+    if verb == "move" && absolute_move {
+        let (sx, sy) = guarded[0];
+        if !(i32::MIN as i64..=i32::MAX as i64).contains(&sx)
+            || !(i32::MIN as i64..=i32::MAX as i64).contains(&sy)
+        {
+            d.insert("ok".to_string(), Value::from(false));
+            d.insert(
+                "error".to_string(),
+                Value::from(format!(
+                    "bad_coordinates: screen point ({sx},{sy}) is outside i32 range; nothing was sent"
+                )),
+            );
+            return Ok(d);
+        }
+        let ok = unsafe { SetCursorPos(sx as i32, sy as i32) != 0 };
+        if !ok {
+            d.insert("ok".to_string(), Value::from(false));
+            d.insert(
+                "error".to_string(),
+                Value::from("SetCursorPos failed: the pointer was not moved".to_string()),
+            );
+            return Ok(d);
+        }
+        if let Some(real) = st.real.as_mut() {
+            real.moves += move_count;
+        }
+    } else {
+        for input in inputs {
+            st.queue_pointer(input, false);
+        }
+        if let Some(real) = st.real.as_mut() {
+            real.moves += move_count;
+        }
+        let (_, ferr) = st.flush();
+        if let Some(fe) = ferr {
+            d.insert("ok".to_string(), Value::from(false));
+            d.insert("error".to_string(), Value::from(fe));
+        }
+    }
+    Ok(d)
 }
 
 /// Typed code carried by a refusal, so the retro-marked action exposes
@@ -2227,6 +2972,7 @@ fn gate_code_of(msg: &str) -> Option<&'static str> {
         crate::gate::NO_FOREGROUND_POLICY,
         crate::gate::NO_CURSOR_POLICY,
         crate::gate::NO_CLIPBOARD_POLICY,
+        crate::gate::POINT_NOT_TARGET,
         crate::gate::BACKGROUND_UNAVAILABLE,
         crate::gate::TARGET_REQUIRED,
     ]
@@ -2379,6 +3125,22 @@ fn base_entry(index: usize, typ: &Value, ok: bool, ms: f64) -> Map<String, Value
     m
 }
 
+/// A dry run delivers nothing. Normalize EVERY result at the end of the
+/// burst, so no early-return path can leak a delivery claim into the reply:
+/// some branches used to report delivered:"posted" with posted:0 and an
+/// effect:"unverified" that read as "it may have acted". Only the four
+/// delivery fields are forced; ok, mode, bg_hwnd, codes and errors are left
+/// exactly as the branch produced them (mode/bg_hwnd describe the resolved
+/// target, not what was delivered).
+fn normalize_dry_results(results: &mut [Map<String, Value>]) {
+    for r in results.iter_mut() {
+        r.insert("delivered".to_string(), Value::from("none"));
+        r.insert("posted".to_string(), Value::from(0));
+        r.insert("effect".to_string(), Value::from("none"));
+        r.insert("dry_run".to_string(), Value::from(true));
+    }
+}
+
 fn unpack2(v: &Value) -> Result<(i64, i64), String> {
     match v {
         Value::Array(a) if a.len() == 2 => Ok((py_int(&a[0])?, py_int(&a[1])?)),
@@ -2410,7 +3172,6 @@ fn expand_arg(v: Option<&Value>) -> Result<Option<bool>, String> {
     }
 }
 
-
 /// `do` call arguments. Explicit struct (not a 10-positional-args function)
 /// so every call site names what it is asking for: a target lock, and the
 /// two no-steal permissions the gate mints permits from.
@@ -2433,6 +3194,13 @@ pub struct DoArgs<'a> {
     /// Explicit permission to overwrite the owner's global clipboard (a side
     /// effect outside the target window).
     pub allow_clipboard: bool,
+    /// Snapshot the prior clipboard text before the first write and put it
+    /// back after the last action, including a partial or failed burst.
+    pub restore_clipboard: bool,
+    /// Restore the entry pointer after the last action of an
+    /// `allow_cursor:true` burst, including a partial or failed one. Default
+    /// true; false leaves the pointer wherever the real input put it.
+    pub cursor_restore: bool,
 }
 
 impl<'a> DoArgs<'a> {
@@ -2450,6 +3218,8 @@ impl<'a> DoArgs<'a> {
             allow_foreground: false,
             allow_cursor: false,
             allow_clipboard: false,
+            restore_clipboard: false,
+            cursor_restore: true,
         }
     }
 
@@ -2461,9 +3231,8 @@ impl<'a> DoArgs<'a> {
         }
     }
 
-    /// Test-only foreground batch (dry_run). The flags are retained for
-    /// schema compatibility but buy nothing: every injecting verb is
-    /// refused under the background-only policy.
+    /// Test-only opt-in batch (dry_run). Flags buy real input only with a
+    /// locked target; without one every acting verb still refuses.
     pub fn foreground(actions: &'a [Value]) -> Self {
         DoArgs {
             dry_run: true,
@@ -2483,9 +3252,13 @@ pub fn do_burst(args: &DoArgs) -> String {
     let background = args.background.clone();
     let background_args = args.background_args.clone();
     let focus_guard = args.focus_guard;
+    let cursor_restore = args.cursor_restore;
     let settle_ms = args.settle_ms;
     let dry_run = args.dry_run;
     let desktop = args.desktop.clone();
+    // Clipboard writes are opt-in and ledgered; the ledger lives for the
+    // whole call so finish() runs even when actions fail or the burst stops.
+    let mut clip = ClipboardLedger::new(args.restore_clipboard);
     let t_all = Instant::now();
     let budget = burst_budget();
     let focus_before = fg_now();
@@ -2638,6 +3411,11 @@ pub fn do_burst(args: &DoArgs) -> String {
         events: 0,
         sendinput_ms: 0.0,
         flush_uipi: false,
+        real: args.allow_cursor.then(|| RealInput {
+            dry_run,
+            queued: Vec::new(),
+            moves: 0,
+        }),
     };
 
     for (i, a) in actions.iter().enumerate() {
@@ -2703,24 +3481,6 @@ pub fn do_burst(args: &DoArgs) -> String {
             st.results.push(m);
             continue;
         }
-        if args.allow_foreground {
-            let e = crate::gate::no_foreground_policy(typ);
-            let mut m = base_entry(i, &typ_v, false, elapsed_ms(&t0));
-            m.insert("code".to_string(), Value::from(e.code));
-            m.insert("error".to_string(), Value::from(e.text()));
-            if bg_mode {
-                m.insert("mode".to_string(), Value::from("background"));
-                m.insert(
-                    "bg_hwnd".to_string(),
-                    bg_hwnd.map(Value::from).unwrap_or(Value::Null),
-                );
-            }
-            if dry_run {
-                m.insert("dry_run".to_string(), Value::from(true));
-            }
-            st.results.push(m);
-            continue;
-        }
         let delivery = match ad.get("delivery") {
             None | Some(Value::Null) => "auto".to_string(),
             Some(Value::String(s)) => s.to_lowercase(),
@@ -2748,7 +3508,13 @@ pub fn do_burst(args: &DoArgs) -> String {
             st.results.push(m);
             continue;
         }
-        if delivery == "sendinput" {
+        // `delivery:"sendinput"` is still refused unless the caller ALSO
+        // opted in at the top level with a locked target and a pointer verb.
+        // There is no implicit foreground/input path.
+        let sendinput_opted = args.allow_cursor
+            && bg_hwnd.is_some()
+            && matches!(typ, "move" | "click" | "down" | "up" | "drag" | "scroll");
+        if delivery == "sendinput" && !sendinput_opted {
             let e = crate::gate::no_foreground_policy(&format!("{typ} delivery:\"sendinput\""));
             let mut m = base_entry(i, &typ_v, false, elapsed_ms(&t0));
             m.insert("code".to_string(), Value::from(e.code));
@@ -2788,33 +3554,53 @@ pub fn do_burst(args: &DoArgs) -> String {
             args.allow_foreground,
             args.allow_cursor,
         )
+        .locked_hwnd(bg_hwnd.is_some() || (typ == "focus_window" && ad.get("hwnd").is_some()))
         .private_desktop(private_desktop)
         .allow_clipboard(args.allow_clipboard);
-        if let Err(e) = gate.decide(typ, has_coords, has_element) {
-            let mut m = base_entry(i, &typ_v, false, elapsed_ms(&t0));
-            m.insert("code".to_string(), Value::from(e.code));
-            m.insert("error".to_string(), Value::from(e.text()));
-            if bg_mode {
-                m.insert("mode".to_string(), Value::from("background"));
-                m.insert(
-                    "bg_hwnd".to_string(),
-                    bg_hwnd.map(Value::from).unwrap_or(Value::Null),
-                );
+        let gate_delivery = match gate.decide(typ, has_coords, has_element) {
+            Err(e) => {
+                let mut m = base_entry(i, &typ_v, false, elapsed_ms(&t0));
+                m.insert("code".to_string(), Value::from(e.code));
+                m.insert("error".to_string(), Value::from(e.text()));
+                if bg_mode {
+                    m.insert("mode".to_string(), Value::from("background"));
+                    m.insert(
+                        "bg_hwnd".to_string(),
+                        bg_hwnd.map(Value::from).unwrap_or(Value::Null),
+                    );
+                }
+                if dry_run {
+                    m.insert("dry_run".to_string(), Value::from(true));
+                }
+                st.results.push(m);
+                continue;
             }
-            if dry_run {
-                m.insert("dry_run".to_string(), Value::from(true));
-            }
-            st.results.push(m);
-            continue;
-        }
+            Ok(d) => d,
+        };
         let keyboard_postable = private_desktop && matches!(typ, "type" | "key" | "hotkey");
         let is_bg_postable = bg_mode
+            && !matches!(
+                gate_delivery,
+                crate::gate::Delivery::Cursor | crate::gate::Delivery::Foreground
+            )
             && ((matches!(typ, "click" | "down" | "up" | "move" | "drag")
                 || keyboard_postable
                 || (typ == "scroll" && !has_scroll_element))
                 && !(has_element && matches!(typ, "type" | "click")));
 
         let step: Result<Option<Map<String, Value>>, String> = (|| {
+            if gate_delivery == crate::gate::Delivery::Cursor {
+                return Ok(Some(real_pointer_step(
+                    i,
+                    &typ_v,
+                    ad,
+                    &t0,
+                    bg_hwnd.unwrap_or(0),
+                    target_lock.is_some(),
+                    &mut st,
+                    dry_run,
+                )?));
+            }
             if !bg_mode {
                 for t in uipi_targets_for_action(typ, ad) {
                     if let Some(msg) = uipi_refusal(t) {
@@ -3893,14 +4679,70 @@ pub fn do_burst(args: &DoArgs) -> String {
                 return Ok(Some(d));
             }
             if typ == "clipboard_set" {
-                let e = crate::gate::no_clipboard_policy("clipboard_set");
-                let mut m = base_entry(i, &typ_v, false, elapsed_ms(&t0));
-                m.insert("code".to_string(), Value::from(e.code));
-                m.insert("error".to_string(), Value::from(e.text()));
-                if dry_run {
-                    m.insert("dry_run".to_string(), Value::from(true));
+                // The gate refuses unflagged writes before this branch, so
+                // no clipboard API is reached without the opt-in. Keep the
+                // check here as defence in depth.
+                if !args.allow_clipboard {
+                    let e = crate::gate::no_clipboard_policy("clipboard_set");
+                    let mut m = base_entry(i, &typ_v, false, elapsed_ms(&t0));
+                    m.insert("code".to_string(), Value::from(e.code));
+                    m.insert("error".to_string(), Value::from(e.text()));
+                    if dry_run {
+                        m.insert("dry_run".to_string(), Value::from(true));
+                    }
+                    return Ok(Some(m));
                 }
-                return Ok(Some(m));
+                let text = match ad.get("text").and_then(|v| v.as_str()) {
+                    Some(s) => s,
+                    None => {
+                        let mut m = base_entry(i, &typ_v, false, elapsed_ms(&t0));
+                        m.insert(
+                            "error".to_string(),
+                            Value::from("clipboard_set needs a text string"),
+                        );
+                        return Ok(Some(m));
+                    }
+                };
+                let n_chars = text.chars().count();
+                if let Err(e) = check_clip_len(n_chars) {
+                    let mut m = base_entry(i, &typ_v, false, elapsed_ms(&t0));
+                    m.insert("code".to_string(), Value::from("too_large"));
+                    m.insert("error".to_string(), Value::from(format!("too_large: {e}")));
+                    return Ok(Some(m));
+                }
+                if dry_run {
+                    let mut m = base_entry(i, &typ_v, true, elapsed_ms(&t0));
+                    m.insert("dry_run".to_string(), Value::from(true));
+                    m.insert("delivered".to_string(), Value::from("none"));
+                    m.insert("effect".to_string(), Value::from("unverified"));
+                    m.insert("text_chars".to_string(), Value::from(n_chars as i64));
+                    return Ok(Some(m));
+                }
+                // Snapshot before touching the owner's clipboard; a failed
+                // snapshot refuses the write instead of losing content.
+                if let Err(e) = clip.before_write() {
+                    let mut m = base_entry(i, &typ_v, false, elapsed_ms(&t0));
+                    m.insert("code".to_string(), Value::from("clipboard_unavailable"));
+                    m.insert("error".to_string(), Value::from(e.text()));
+                    return Ok(Some(m));
+                }
+                match clipboard_set_text(text) {
+                    Ok((bytes, attempts)) => {
+                        clip.wrote(bytes);
+                        let mut m = base_entry(i, &typ_v, true, elapsed_ms(&t0));
+                        m.insert("delivered".to_string(), Value::from("none"));
+                        m.insert("effect".to_string(), Value::from("unverified"));
+                        m.insert("bytes".to_string(), Value::from(bytes as i64));
+                        m.insert("attempts".to_string(), Value::from(attempts as i64));
+                        return Ok(Some(m));
+                    }
+                    Err(e) => {
+                        let mut m = base_entry(i, &typ_v, false, elapsed_ms(&t0));
+                        m.insert("code".to_string(), Value::from("clipboard_unavailable"));
+                        m.insert("error".to_string(), Value::from(e.text()));
+                        return Ok(Some(m));
+                    }
+                }
             }
             if typ == "clipboard_get" {
                 let (_, ferr) = st.flush();
@@ -3909,18 +4751,30 @@ pub fn do_burst(args: &DoArgs) -> String {
                 } else {
                     st.marked.clear();
                 }
+                if dry_run {
+                    // No OpenClipboard/GetClipboardData on a dry run: report
+                    // the resolved action without reading the owner's data.
+                    let mut m = base_entry(i, &typ_v, true, elapsed_ms(&t0));
+                    m.insert("dry_run".to_string(), Value::from(true));
+                    return Ok(Some(m));
+                }
                 match clipboard_get() {
-                    Ok(txt) => {
+                    Ok((txt, chars, truncated, attempts)) => {
                         let mut m = base_entry(i, &typ_v, true, elapsed_ms(&t0));
                         m.insert("text".to_string(), Value::from(txt));
+                        m.insert("chars".to_string(), Value::from(chars as i64));
+                        m.insert("truncated".to_string(), Value::from(truncated));
+                        m.insert("attempts".to_string(), Value::from(attempts as i64));
                         if dry_run {
                             m.insert("dry_run".to_string(), Value::from(true));
                         }
                         return Ok(Some(m));
                     }
                     Err(e) => {
+                        let (code, text) = e.wire();
                         let mut m = base_entry(i, &typ_v, false, elapsed_ms(&t0));
-                        m.insert("error".to_string(), Value::from(e));
+                        m.insert("code".to_string(), Value::from(code));
+                        m.insert("error".to_string(), Value::from(text));
                         return Ok(Some(m));
                     }
                 }
@@ -4431,11 +5285,33 @@ pub fn do_burst(args: &DoArgs) -> String {
                 if let Err(e) = lock.revalidate() {
                     return Ok(Some(target_failure(i, &typ_v, &t0, &e)));
                 }
-                let e = crate::gate::no_foreground_policy("focus_window");
-                let mut d = base_entry(i, &typ_v, false, elapsed_ms(&t0));
-                d.insert("code".to_string(), Value::from(e.code));
-                d.insert("error".to_string(), Value::from(e.text()));
-                d.insert("via".to_string(), Value::from("none"));
+                let mut d = base_entry(i, &typ_v, true, elapsed_ms(&t0));
+                d.insert("hwnd".to_string(), Value::from(lock.hwnd));
+                d.insert("delivered".to_string(), Value::from("foreground"));
+                d.insert("via".to_string(), Value::from("setforegroundwindow"));
+                if gate_delivery == crate::gate::Delivery::Foreground && !dry_run {
+                    // Explicit opt-in only. This is the sole call site of
+                    // SetForegroundWindow in a burst; no other verb reaches it.
+                    let ok = unsafe { SetForegroundWindow(lock.hwnd as HWND) != 0 };
+                    d.insert("ok".to_string(), Value::from(ok));
+                    if !ok {
+                        d.insert(
+                            "error".to_string(),
+                            Value::from(
+                                "SetForegroundWindow was refused by Windows; no other window was changed".to_string(),
+                            ),
+                        );
+                    }
+                } else {
+                    d.insert("via".to_string(), Value::from("none"));
+                    let e = crate::gate::no_foreground_policy("focus_window");
+                    d.insert("ok".to_string(), Value::from(false));
+                    d.insert("code".to_string(), Value::from(e.code));
+                    d.insert("error".to_string(), Value::from(e.text()));
+                }
+                if dry_run {
+                    d.insert("dry_run".to_string(), Value::from(true));
+                }
                 return Ok(Some(d));
             }
             let mut m = base_entry(i, &typ_v, false, elapsed_ms(&t0));
@@ -4470,6 +5346,24 @@ pub fn do_burst(args: &DoArgs) -> String {
             sleep_cancellable(p);
         }
     }
+    // Restore after the last action, including a failed or partial burst.
+    // Nothing holds a clipboard handle between actions, so the owner is
+    // never blocked for the length of the burst.
+    clip.finish();
+    // The entry pointer is put back after the LAST action, including a
+    // partial or failed burst. A refused action never queued input, so no
+    // restore is attempted and cursorRestored stays null.
+    let cursor_mid = cursor_now();
+    let mut cursor_restored: Option<bool> = None;
+    let cursor_used = args.allow_cursor && !dry_run && st.pointer_moved();
+    let entry_readable = (i32::MIN as i64..=i32::MAX as i64).contains(&cursor_before.0)
+        && (i32::MIN as i64..=i32::MAX as i64).contains(&cursor_before.1)
+        && cursor_before.0 >= 0
+        && cursor_before.1 >= 0;
+    if cursor_used && cursor_restore && entry_readable {
+        let ok = unsafe { SetCursorPos(cursor_before.0 as i32, cursor_before.1 as i32) != 0 };
+        cursor_restored = Some(ok);
+    }
     let total_ms = t_all.elapsed().as_secs_f64() * 1000.0;
     let focus_after = fg_now();
     for r in st.results.iter_mut() {
@@ -4487,10 +5381,24 @@ pub fn do_burst(args: &DoArgs) -> String {
         }
     }
     let mut focus_restored = true;
+    let mut foreground_restored: Option<bool> = None;
     let mut focus_guard_refusal: Option<String> = None;
     if focus_guard && focus_after != focus_before && focus_before != 0 {
-        focus_restored = false;
-        focus_guard_refusal = Some(crate::gate::no_foreground_policy("focus_guard restore").text());
+        if dry_run || !args.allow_foreground {
+            focus_restored = false;
+            focus_guard_refusal =
+                Some(crate::gate::no_foreground_policy("focus_guard restore").text());
+        } else {
+            let ok = unsafe { SetForegroundWindow(focus_before as HWND) != 0 };
+            foreground_restored = Some(ok);
+            focus_restored = ok;
+            if !ok {
+                focus_guard_refusal = Some(
+                    "focus_guard: SetForegroundWindow could not restore the entry window"
+                        .to_string(),
+                );
+            }
+        }
     }
     let mut hidden_meta: Option<Map<String, Value>> = None;
     let mut hidden_png: Option<Vec<u8>> = None;
@@ -4654,6 +5562,14 @@ pub fn do_burst(args: &DoArgs) -> String {
         hd.insert("teardown".to_string(), Value::Null);
         hidden_meta = Some(hd);
     }
+    if dry_run {
+        normalize_dry_results(&mut st.results);
+        // Defence in depth: the delivery gates already keep these at zero;
+        // make the whole-call contract explicit for a dry burst.
+        posted_total = 0;
+        st.calls = 0;
+        st.events = 0;
+    }
     let mut payload = Map::new();
     let failed = st
         .results
@@ -4683,10 +5599,15 @@ pub fn do_burst(args: &DoArgs) -> String {
         Value::from(py_round_n(st.sendinput_ms, 3)),
     );
     payload.insert("events".to_string(), Value::from(st.events));
+    payload.insert("clipboard".to_string(), Value::Object(clip.to_map()));
     payload.insert("focus_before".to_string(), Value::from(focus_before));
     payload.insert("focus_after".to_string(), Value::from(focus_after));
     if focus_guard {
         payload.insert("focus_restored".to_string(), Value::from(focus_restored));
+        payload.insert(
+            "foregroundRestored".to_string(),
+            foreground_restored.map(Value::from).unwrap_or(Value::Null),
+        );
         if let Some(r) = focus_guard_refusal {
             payload.insert("focus_guard_error".to_string(), Value::from(r));
         }
@@ -4695,6 +5616,14 @@ pub fn do_burst(args: &DoArgs) -> String {
     payload.insert(
         "cursorUnchanged".to_string(),
         Value::from(cursor_after == cursor_before),
+    );
+    payload.insert(
+        "cursorMoved".to_string(),
+        Value::from(cursor_used && cursor_mid != cursor_before),
+    );
+    payload.insert(
+        "cursorRestored".to_string(),
+        cursor_restored.map(Value::from).unwrap_or(Value::Null),
     );
     payload.insert(
         "foregroundUnchanged".to_string(),
@@ -4741,6 +5670,231 @@ pub fn do_burst(args: &DoArgs) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Stub resolver for the pure point guard: no window is created and no
+    /// API is called, so the decision is tested without a desktop.
+    fn owner(hit: i64, root: i64, inside: bool, descendant: bool) -> PointOwner {
+        PointOwner {
+            hit,
+            root,
+            inside_target_rect: inside,
+            descendant,
+            actual: format!("hwnd={hit} class=Other title=Other pid=9"),
+        }
+    }
+
+    #[test]
+    fn point_guard_accepts_only_the_locked_window_or_its_descendants() {
+        let target = 4242;
+        // The target itself, and a child inside it, are both deliverable.
+        assert!(
+            point_guard(target, "click", 10, 20, &owner(target, target, true, false)).is_ok(),
+            "a point on the locked window must be deliverable"
+        );
+        assert!(
+            point_guard(target, "click", 10, 20, &owner(9001, target, true, true)).is_ok(),
+            "a descendant inside the target must be deliverable"
+        );
+        // Outside the target's rect: same typed refusal, even at the same hit.
+        let e = point_guard(
+            target,
+            "click",
+            10,
+            20,
+            &owner(target, target, false, false),
+        )
+        .expect_err("a point outside the rect must be refused");
+        assert_eq!(e.code, crate::gate::POINT_NOT_TARGET);
+        assert!(e.text().contains("(10,20)"), "{}", e.text());
+        assert!(e.text().contains("hwnd=4242"), "{}", e.text());
+        // Someone else's top-level window wins the point: refuse, name it.
+        let e = point_guard(target, "click", 30, 40, &owner(7777, 7777, true, false))
+            .expect_err("another window under the point must be refused");
+        assert_eq!(e.code, crate::gate::POINT_NOT_TARGET);
+        assert!(
+            e.text().contains("hwnd=7777 class=Other"),
+            "the refusal must name the actual window: {}",
+            e.text()
+        );
+    }
+
+    #[test]
+    fn abs_pointer_events_carry_virtualdesk_on_every_click_event() {
+        assert_ne!(ABS_MOVE_FLAGS & MOUSEEVENTF_ABSOLUTE, 0);
+        assert_ne!(ABS_MOVE_FLAGS & MOUSEEVENTF_VIRTUALDESK, 0);
+        // A click's move, button-down and button-up all carry the absolute
+        // virtual-desktop flags, so a secondary monitor lands correctly.
+        let seq = click_inputs(100, 200, "click", "left", 2).expect("click INPUTs");
+        assert_eq!(seq.len(), 5, "move + two down/up pairs");
+        for (k, input) in seq.iter().enumerate() {
+            let flags = unsafe { input.Anonymous.mi }.dwFlags;
+            assert_ne!(
+                flags & MOUSEEVENTF_ABSOLUTE,
+                0,
+                "event {k} must be absolute"
+            );
+            assert_ne!(
+                flags & MOUSEEVENTF_VIRTUALDESK,
+                0,
+                "event {k} must use the virtual desktop, not the primary monitor"
+            );
+        }
+        assert_ne!(
+            unsafe { seq[0].Anonymous.mi }.dwFlags & MOUSEEVENTF_MOVE,
+            0,
+            "the first event positions the pointer"
+        );
+        assert_ne!(
+            unsafe { seq[1].Anonymous.mi }.dwFlags & MOUSEEVENTF_LEFTDOWN,
+            0,
+            "the second event presses the button"
+        );
+        assert_ne!(
+            unsafe { seq[4].Anonymous.mi }.dwFlags & MOUSEEVENTF_LEFTUP,
+            0,
+            "the last event releases the button"
+        );
+    }
+
+    /// Raw Win32 writer for the over-cap case: the production writer
+    /// correctly refuses >1 MiB, so the test seeds the clipboard itself to
+    /// prove the READER reports truncation honestly.
+    fn clip_write_raw_over_cap(text: &str) {
+        unsafe {
+            let units: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
+            let h = GlobalAlloc(GMEM_MOVEABLE, units.len() * 2);
+            assert!(!h.is_null(), "GlobalAlloc failed");
+            let p = GlobalLock(h) as *mut u16;
+            assert!(!p.is_null(), "GlobalLock failed");
+            std::ptr::copy_nonoverlapping(units.as_ptr(), p, units.len());
+            GlobalUnlock(h);
+            assert_ne!(
+                OpenClipboard(std::ptr::null_mut()),
+                0,
+                "OpenClipboard failed"
+            );
+            assert_ne!(EmptyClipboard(), 0, "EmptyClipboard failed");
+            assert!(
+                !SetClipboardData(13, h).is_null(),
+                "SetClipboardData failed"
+            );
+            CloseClipboard();
+        }
+    }
+
+    /// The 1 MiB read cap is honest: the action result now reports the
+    /// original character count and whether the returned text was cut.
+    #[test]
+    fn clipboard_get_over_cap_reports_truncated_and_original_chars() {
+        let _lock = clip_test_lock();
+        let _owner = ClipboardOwnerGuard(clip_snapshot_retry());
+        let chars = MAX_CLIP_CHARS + 7;
+        clip_write_raw_over_cap(&"x".repeat(chars));
+        let payload = do_burst_clip_retry(&DoArgs::new(&[serde_json::json!({
+            "type": "clipboard_get"
+        })]));
+        let first = &payload["results"][0];
+        assert_eq!(first["ok"], Value::from(true), "{first}");
+        assert_eq!(first["truncated"], Value::from(true), "{first}");
+        assert_eq!(first["chars"], Value::from(chars as i64), "{first}");
+        assert_eq!(
+            first["text"].as_str().unwrap_or("").chars().count(),
+            MAX_CLIP_CHARS,
+            "the returned text stays capped at 1 MiB"
+        );
+    }
+
+    #[test]
+    fn cursor_restore_defaults_to_true_and_can_be_opted_out() {
+        let args = DoArgs::new(&[]);
+        assert!(args.cursor_restore, "restore is opt-out, not opt-in");
+        let opted_out = DoArgs {
+            cursor_restore: false,
+            ..DoArgs::new(&[])
+        };
+        assert!(!opted_out.cursor_restore);
+        // A dry-run burst never injects, so there is nothing to restore.
+        let out = do_burst(&DoArgs {
+            dry_run: true,
+            allow_cursor: true,
+            ..DoArgs::new(&[serde_json::json!({"type": "move", "x": 1, "y": 1})])
+        });
+        let payload = sc(&out);
+        assert_eq!(payload["cursorRestored"], Value::Null);
+        assert_eq!(payload["cursorMoved"], Value::from(false));
+        assert_eq!(payload["cursorUnchanged"], Value::from(true));
+    }
+
+    #[test]
+    fn a_point_outside_the_target_names_the_actual_window_and_injects_nothing() {
+        let _g = crate::fixture::desktop();
+        let fx = crate::fixture::Fixture::new();
+        // The fixture is created offscreen, so a screen point derived from a
+        // client coordinate cannot land on it. dry_run proves the refusal
+        // happens before any injection would.
+        let out = do_burst(&DoArgs {
+            dry_run: true,
+            allow_cursor: true,
+            target: Some(serde_json::json!({ "hwnd": fx.hwnd_i64() })),
+            ..DoArgs::new(&[serde_json::json!({"type": "move", "x": 1000, "y": 1000})])
+        });
+        let payload = sc(&out);
+        let first = &payload["results"][0];
+        assert_eq!(first["ok"], Value::from(false), "{first}");
+        assert_eq!(first["code"], Value::from("point_not_target"), "{first}");
+        assert!(
+            first["error"]
+                .as_str()
+                .unwrap_or("")
+                .contains("point guard"),
+            "the refusal must name the guard: {first}"
+        );
+        assert_eq!(payload["sendinput_calls"], Value::from(0));
+        assert_eq!(payload["events"], Value::from(0));
+    }
+
+    /// LIVE (ignored): create a visible test window, move the real pointer
+    /// inside it with the flag, then assert the move happened and the entry
+    /// pointer was restored. Run only on an interactive Windows desktop with
+    /// `cargo test -p desktop-engine live_allow_cursor_moves_and_restores_pointer -- --ignored`.
+    #[test]
+    #[ignore = "needs an interactive Windows desktop and moves the real pointer"]
+    fn live_allow_cursor_moves_and_restores_pointer() {
+        let _g = crate::fixture::desktop();
+        let fx = crate::fixture::Fixture::new();
+        let hwnd = fx.hwnd_i64();
+        unsafe {
+            SetWindowPos(
+                hwnd as HWND,
+                HWND_TOPMOST,
+                200,
+                160,
+                400,
+                300,
+                SWP_NOACTIVATE | SWP_SHOWWINDOW,
+            );
+        }
+        std::thread::sleep(Duration::from_millis(100));
+        let (sx, sy) = crate::target::client_point_to_screen(hwnd, 200, 150)
+            .expect("ClientToScreen on the visible test window");
+        let before = cursor_now();
+        let out = do_burst(&DoArgs {
+            allow_cursor: true,
+            target: Some(serde_json::json!({ "hwnd": hwnd })),
+            ..DoArgs::new(&[serde_json::json!({"type": "move", "x": 200, "y": 150})])
+        });
+        let payload = sc(&out);
+        let first = &payload["results"][0];
+        assert_eq!(first["ok"], Value::from(true), "real move failed: {first}");
+        assert_eq!(first["delivered"], Value::from("cursor"), "{first}");
+        assert_eq!(payload["cursorMoved"], Value::from(true), "{payload}");
+        assert_eq!(payload["cursorRestored"], Value::from(true), "{payload}");
+        assert_eq!(
+            cursor_now(),
+            before,
+            "the entry pointer must be restored (the test moved it to {sx},{sy})"
+        );
+    }
 
     /// The one geometry gate (pure): a rect with no area is refused, never
     /// turned into a "centre". On the pre-fix tree `[0,0,0,0]` fed straight
@@ -5215,10 +6369,10 @@ mod tests {
         assert_eq!(payload["results"][0].get("ok"), Some(&Value::from(false)));
     }
 
-    /// The pointer is never moved: every move refuses with the policy
-    /// code, whatever the coordinates, and sends nothing.
+    /// Without the opt-in the pointer is never moved: every move refuses
+    /// with the policy code, whatever the coordinates, and sends nothing.
     #[test]
-    fn move_always_refuses_with_no_cursor_policy() {
+    fn move_without_opt_in_always_refuses_with_no_cursor_policy() {
         for action in [
             serde_json::json!({"type": "move", "dx": 30000, "dy": -30000}),
             serde_json::json!({"type": "move", "x": 10, "y": 10}),
@@ -5258,7 +6412,7 @@ mod tests {
         let payload = sc(&out);
         let results = payload["results"].as_array().expect("results");
         assert_eq!(results[0].get("ok"), Some(&Value::from(true)));
-        assert_eq!(results[0].get("delivered"), Some(&Value::from("posted")));
+        assert_eq!(results[0].get("delivered"), Some(&Value::from("none")));
         assert_eq!(payload.get("events"), Some(&Value::from(0)));
         assert_eq!(payload.get("sendinput_calls"), Some(&Value::from(0)));
     }
@@ -5291,7 +6445,7 @@ mod tests {
     }
 
     #[test]
-    fn posted_key_dry_run_reports_posted_without_sending() {
+    fn posted_key_dry_run_reports_nothing_delivered() {
         let _g = crate::fixture::desktop();
         let fx = crate::fixture::Fixture::new();
         let hwnd = fx.hwnd_i64();
@@ -5303,13 +6457,13 @@ mod tests {
         let payload = sc(&out);
         let r = &payload["results"][0];
         assert_eq!(r["ok"], Value::from(true), "dry-run posted key: {r}");
-        assert_eq!(r["delivered"], Value::from("posted"), "{r}");
-        assert_eq!(r["effect"], Value::from("unverified"), "{r}");
+        assert_eq!(r["delivered"], Value::from("none"), "{r}");
+        assert_eq!(r["effect"], Value::from("none"), "{r}");
         assert_eq!(r["posted"], Value::from(0), "{r}");
         assert_eq!(r["dry_run"], Value::from(true), "{r}");
         assert_eq!(payload["sendinput_calls"], Value::from(0));
         assert_eq!(payload["events"], Value::from(0));
-        println!("POSTED_KEY_DRY_RUN_OK delivered=posted effect=unverified");
+        println!("POSTED_KEY_DRY_RUN_OK delivered=none effect=none");
     }
 
     #[test]
@@ -5538,28 +6692,31 @@ mod tests {
     #[test]
     fn clip_read_u16_requires_nul_within_bounds() {
         let buf: Vec<u16> = "hi".encode_utf16().chain(std::iter::once(0)).collect();
-        let s = unsafe { clip_read_u16(buf.as_ptr(), 10).expect("nul-terminated") };
+        let s = unsafe { clip_read_u16(buf.as_ptr(), 10, 0).expect("nul-terminated") };
         assert_eq!(s, "hi");
         let no_nul: Vec<u16> = "hi".encode_utf16().collect();
         assert!(
-            unsafe { clip_read_u16(no_nul.as_ptr(), 2) }.is_err(),
+            unsafe { clip_read_u16(no_nul.as_ptr(), 2, 0) }.is_err(),
             "missing NUL must fail instead of over-reading"
         );
         let mut big = vec!['x' as u16; 100];
         big.push(0);
         assert!(
-            unsafe { clip_read_u16(big.as_ptr(), 10) }.is_err(),
+            unsafe { clip_read_u16(big.as_ptr(), 10, 0) }.is_err(),
             "scan must stop at the GlobalSize bound even with a later NUL"
         );
         let empty: Vec<u16> = vec![0];
-        assert_eq!(unsafe { clip_read_u16(empty.as_ptr(), 1).unwrap() }, "");
+        assert_eq!(unsafe { clip_read_u16(empty.as_ptr(), 1, 0).unwrap() }, "");
     }
 
     #[test]
     fn clipboard_over_cap_set_rejected_before_touch() {
         let big = "x".repeat(1_048_576 + 1);
         let actions = vec![serde_json::json!({"type": "clipboard_set", "text": big})];
-        let out = do_burst(&DoArgs::new(&actions));
+        let out = do_burst(&DoArgs {
+            allow_clipboard: true,
+            ..DoArgs::new(&actions)
+        });
         let outer: Value = serde_json::from_str(&out).expect("outer frame");
         let first = outer
             .get("structuredContent")
@@ -5570,8 +6727,13 @@ mod tests {
         assert_eq!(first.get("ok"), Some(&Value::from(false)));
         assert_eq!(
             first.get("code").and_then(|c| c.as_str()),
-            Some("no_clipboard_policy"),
-            "over-cap set must name the policy, got: {first:?}"
+            Some("too_large"),
+            "over-cap set must be typed before OpenClipboard, got: {first:?}"
+        );
+        let outer: Value = serde_json::from_str(&out).expect("outer frame");
+        assert_eq!(
+            outer["structuredContent"]["clipboard"]["writes"],
+            Value::from(0)
         );
     }
 
@@ -5628,6 +6790,11 @@ mod tests {
 
     #[test]
     fn clipboard_set_without_flag_is_a_typed_refusal_and_burst_continues() {
+        // The follow-up read needs CF_UNICODETEXT present; seed it and
+        // serialise instead of depending on another test's clipboard state.
+        let _lock = clip_test_lock();
+        let _owner = ClipboardOwnerGuard(clip_snapshot_retry());
+        clip_write_retry("A");
         let actions = vec![
             serde_json::json!({"type": "clipboard_set", "text": "SHOULD-NOT-LAND"}),
             serde_json::json!({"type": "wait", "ms": 1}),
@@ -5672,6 +6839,405 @@ mod tests {
             first.get("code").is_none(),
             "clipboard_get needs no flag, got: {first:?}"
         );
+    }
+
+    /// Clipboard is a single global resource. Serialise the tests that
+    /// touch it so one test's write cannot move another's sequence number.
+    static CLIPBOARD_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn clip_test_lock() -> std::sync::MutexGuard<'static, ()> {
+        CLIPBOARD_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Retry the clipboard briefly: another application can hold the handle
+    /// for a moment. Tests must not fail on that transient contention.
+    fn clip_snapshot_retry() -> Option<ClipboardPrevious> {
+        for _ in 0..10 {
+            if let Ok(p) = clipboard_snapshot() {
+                return Some(p);
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        None
+    }
+
+    fn clip_write_retry(s: &str) {
+        for _ in 0..10 {
+            if clipboard_set_text(s).is_ok() {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        panic!("could not open the clipboard for test setup");
+    }
+
+    fn clip_get_retry() -> String {
+        for _ in 0..10 {
+            if let Ok((s, _, _, _)) = clipboard_get() {
+                return s;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        panic!("clipboard stayed unreadable for the test");
+    }
+
+    /// A transient OpenClipboard failure is a typed result, not a test
+    /// failure: retry the same burst until the OS lets us through.
+    fn do_burst_clip_retry(args: &DoArgs) -> Value {
+        for _ in 0..10 {
+            let payload = sc(&do_burst(args));
+            let unavailable = payload["results"].as_array().is_some_and(|rs| {
+                rs.iter()
+                    .any(|r| r["code"] == Value::from("clipboard_unavailable"))
+            });
+            if !unavailable {
+                return payload;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        panic!("clipboard stayed unavailable for the test burst");
+    }
+
+    fn clip_restore_best_effort(previous: &Option<ClipboardPrevious>) {
+        let r = match previous.clone() {
+            Some(ClipboardPrevious::Text(ref s)) => clipboard_set_text(s).map(|_| ()),
+            Some(ClipboardPrevious::Empty) | Some(ClipboardPrevious::NonText) => {
+                clipboard_clear().map(|_| ())
+            }
+            None => Ok(()),
+        };
+        if let Err(e) = r {
+            eprintln!("clipboard test cleanup failed: {e}");
+        }
+    }
+
+    /// Saves whatever the owner had before the test touches the clipboard
+    /// and puts it back in Drop, so even a panic leaves no residue.
+    struct ClipboardOwnerGuard(Option<ClipboardPrevious>);
+
+    impl Drop for ClipboardOwnerGuard {
+        fn drop(&mut self) {
+            clip_restore_best_effort(&self.0);
+        }
+    }
+
+    #[test]
+    fn clipboard_error_names_stage_code_and_attempts() {
+        let e = ClipboardError::new("OpenClipboard", 5, 3);
+        let text = e.text();
+        assert!(text.starts_with("clipboard_unavailable:"), "{text}");
+        assert!(text.contains("stage=OpenClipboard"), "{text}");
+        assert!(text.contains("win32_error=5"), "{text}");
+        assert!(text.contains("attempts=3"), "{text}");
+    }
+
+    /// An empty clipboard is a normal state: the read must say that no
+    /// text format is present, not that the clipboard could not be opened.
+    #[test]
+    fn clipboard_get_with_no_text_format_is_typed_and_not_unavailable() {
+        let _lock = clip_test_lock();
+        let _owner = ClipboardOwnerGuard(clip_snapshot_retry());
+        clip_write_retry("owner text");
+        let mut cleared = false;
+        for _ in 0..10 {
+            if clipboard_clear().is_ok() {
+                cleared = true;
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(cleared, "could not clear the clipboard for test setup");
+        assert_eq!(
+            unsafe { IsClipboardFormatAvailable(CF_UNICODETEXT) },
+            0,
+            "the clipboard must hold no text format for this test"
+        );
+        let payload = do_burst_clip_retry(&DoArgs::new(&[serde_json::json!({
+            "type": "clipboard_get"
+        })]));
+        let first = &payload["results"][0];
+        assert_eq!(first["ok"], Value::from(false), "{first}");
+        assert_eq!(first["code"], Value::from("no_text_format"), "{first}");
+        let err = first["error"].as_str().unwrap_or("");
+        assert_eq!(
+            err,
+            "no_text_format: the clipboard holds no CF_UNICODETEXT (it may be empty or hold another format)",
+            "{err}"
+        );
+        assert!(!err.contains("attempts="), "no retry was made: {err}");
+        assert!(!err.contains("clipboard_unavailable"), "{err}");
+    }
+
+    /// Hold the clipboard open from another thread past the bounded retry
+    /// cap. Drop releases and joins before the owner guard restores, so a
+    /// panic cannot strand the owner's clipboard behind our handle.
+    struct ClipboardContentionHold {
+        release: Option<std::sync::mpsc::Sender<()>>,
+        holder: Option<std::thread::JoinHandle<()>>,
+    }
+
+    impl ClipboardContentionHold {
+        fn new() -> Self {
+            let (opened_tx, opened_rx) = std::sync::mpsc::channel();
+            let (release_tx, release_rx) = std::sync::mpsc::channel();
+            let holder = std::thread::spawn(move || {
+                unsafe {
+                    let mut opened = false;
+                    for _ in 0..CLIP_OPEN_MAX_ATTEMPTS {
+                        if OpenClipboard(GetDesktopWindow()) != 0 {
+                            opened = true;
+                            break;
+                        }
+                        std::thread::sleep(CLIP_OPEN_BACKOFF);
+                    }
+                    if !opened {
+                        return; // opened_tx drops: the receiver sees failure
+                    }
+                    let _ = opened_tx.send(());
+                    // Bounded even if the release signal is lost.
+                    let _ = release_rx.recv_timeout(Duration::from_secs(2));
+                    CloseClipboard();
+                }
+            });
+            opened_rx
+                .recv_timeout(Duration::from_secs(2))
+                .expect("contention thread never opened the clipboard");
+            ClipboardContentionHold {
+                release: Some(release_tx),
+                holder: Some(holder),
+            }
+        }
+    }
+
+    impl Drop for ClipboardContentionHold {
+        fn drop(&mut self) {
+            if let Some(tx) = self.release.take() {
+                let _ = tx.send(());
+            }
+            if let Some(h) = self.holder.take() {
+                let _ = h.join();
+            }
+        }
+    }
+
+    /// A truly locked clipboard still fails after the bounded retry and
+    /// keeps the clipboard_unavailable code, stage and attempt count.
+    #[test]
+    fn clipboard_get_under_open_contention_stays_clipboard_unavailable() {
+        let _lock = clip_test_lock();
+        let _owner = ClipboardOwnerGuard(clip_snapshot_retry());
+        clip_write_retry("R");
+        let hold = ClipboardContentionHold::new();
+        let payload = sc(&do_burst(&DoArgs::new(&[serde_json::json!({
+            "type": "clipboard_get"
+        })])));
+        let first = &payload["results"][0];
+        assert_eq!(first["ok"], Value::from(false), "{first}");
+        assert_eq!(
+            first["code"],
+            Value::from("clipboard_unavailable"),
+            "{first}"
+        );
+        let err = first["error"].as_str().unwrap_or("");
+        assert!(err.starts_with("clipboard_unavailable: "), "{err}");
+        assert!(err.contains("stage=OpenClipboard"), "{err}");
+        let attempts = err
+            .split("attempts=")
+            .nth(1)
+            .and_then(|s| s.split_whitespace().next())
+            .and_then(|s| s.parse::<u32>().ok())
+            .unwrap_or(0);
+        assert!(attempts > 1, "the bounded retry must be reported: {err}");
+        drop(hold);
+    }
+
+    /// A second thread holds the global clipboard open for ~10 ms while a
+    /// read runs. The bounded retry must ride out that transient contention
+    /// and report more than one attempt.
+    #[test]
+    fn clipboard_get_retries_transient_open_contention() {
+        let _lock = clip_test_lock();
+        let _owner = ClipboardOwnerGuard(clip_snapshot_retry());
+        clip_write_retry("R");
+        let (opened_tx, opened_rx) = std::sync::mpsc::channel();
+        let holder = std::thread::spawn(move || {
+            unsafe {
+                // A window-owned open really excludes this process: two
+                // OpenClipboard(NULL) calls in one task share ownership.
+                // Retry here too: another process can win the lock first.
+                let mut opened = false;
+                for _ in 0..CLIP_OPEN_MAX_ATTEMPTS {
+                    if OpenClipboard(GetDesktopWindow()) != 0 {
+                        opened = true;
+                        break;
+                    }
+                    std::thread::sleep(CLIP_OPEN_BACKOFF);
+                }
+                if !opened {
+                    return; // opened_tx drops: the receiver sees a failed holder
+                }
+                let _ = opened_tx.send(());
+                std::thread::sleep(Duration::from_millis(12));
+                CloseClipboard();
+            }
+        });
+        opened_rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("contention thread never opened the clipboard");
+        let (text, _, _, attempts) =
+            clipboard_get().expect("read must survive transient OpenClipboard contention");
+        holder.join().expect("contention thread panicked");
+        assert_eq!(text, "R");
+        assert!(attempts > 1, "the read must retry; attempts={attempts}");
+    }
+
+    /// LIVE stress: 200 real set/get cycles must all succeed against the
+    /// global clipboard. Ignored by default so normal runs stay quick.
+    #[test]
+    #[ignore = "live clipboard stress: 200 set/get cycles on the global clipboard"]
+    fn clipboard_set_get_200_cycles_without_failures() {
+        let _lock = clip_test_lock();
+        let _owner = ClipboardOwnerGuard(clip_snapshot_retry());
+        for i in 0..200 {
+            let text = format!("cycle-{i}");
+            let (bytes, attempts) =
+                clipboard_set_text(&text).expect("stress set failed on cycle {i}");
+            assert_eq!(bytes, (text.len() + 1) * 2, "cycle {i}");
+            assert!(attempts >= 1, "cycle {i}");
+            let (read, _, truncated, read_attempts) =
+                clipboard_get().expect("stress get failed on cycle {i}");
+            assert_eq!(read, text, "cycle {i}");
+            assert!(!truncated, "cycle {i}");
+            assert!(read_attempts >= 1, "cycle {i}");
+        }
+    }
+
+    /// LIVE clipboard round trip: A is on the clipboard before the burst, B
+    /// is written by it, and A is back afterwards. The burst itself sees B
+    /// on its own clipboard_get; only the post-burst read sees A again.
+    #[test]
+    fn restore_clipboard_brings_back_previous_text() {
+        let _lock = clip_test_lock();
+        let _owner = ClipboardOwnerGuard(clip_snapshot_retry());
+        clip_write_retry("A");
+        let actions = vec![
+            serde_json::json!({"type": "clipboard_set", "text": "B"}),
+            serde_json::json!({"type": "clipboard_get"}),
+        ];
+        let payload = do_burst_clip_retry(&DoArgs {
+            allow_clipboard: true,
+            restore_clipboard: true,
+            ..DoArgs::new(&actions)
+        });
+        assert_eq!(payload["results"][0]["ok"], Value::from(true), "{payload}");
+        assert_eq!(
+            payload["results"][1]["text"],
+            Value::from("B"),
+            "the burst must see its own write before the restore: {payload}"
+        );
+        let clip = &payload["clipboard"];
+        assert_eq!(clip["writes"], Value::from(1), "{clip}");
+        assert_eq!(clip["restores"], Value::from(1), "{clip}");
+        assert_eq!(clip["previous"], Value::from("text"), "{clip}");
+        assert!(clip["bytes"].as_i64().unwrap_or(0) > 0, "{clip}");
+        assert_eq!(
+            clip_get_retry(),
+            "A",
+            "restore must put the owner's text back"
+        );
+    }
+
+    /// A partial burst still restores: a refused action after the write
+    /// must not strand the owner's clipboard with our text.
+    #[test]
+    fn restore_runs_after_a_partial_failed_burst() {
+        let _lock = clip_test_lock();
+        let _owner = ClipboardOwnerGuard(clip_snapshot_retry());
+        clip_write_retry("A");
+        let actions = vec![
+            serde_json::json!({"type": "clipboard_set", "text": "B"}),
+            serde_json::json!({"type": "move", "dx": 5, "dy": 5}),
+        ];
+        let payload = do_burst_clip_retry(&DoArgs {
+            allow_clipboard: true,
+            restore_clipboard: true,
+            ..DoArgs::new(&actions)
+        });
+        assert_eq!(payload["results"][0]["ok"], Value::from(true), "{payload}");
+        assert_eq!(
+            payload["results"][1]["code"],
+            Value::from("no_cursor_policy"),
+            "the later action must still be refused: {payload}"
+        );
+        assert_eq!(payload["clipboard"]["writes"], Value::from(1), "{payload}");
+        assert_eq!(
+            payload["clipboard"]["restores"],
+            Value::from(1),
+            "{payload}"
+        );
+        assert_eq!(clip_get_retry(), "A", "partial burst must still restore");
+    }
+
+    /// The flag alone writes text and reports the ledger; no restore is
+    /// attempted, so the burst's write stays on the clipboard.
+    #[test]
+    fn allowed_clipboard_set_writes_and_reports_ledger() {
+        let _lock = clip_test_lock();
+        let _owner = ClipboardOwnerGuard(clip_snapshot_retry());
+        clip_write_retry("A");
+        let actions = vec![serde_json::json!({"type": "clipboard_set", "text": "B"})];
+        let payload = do_burst_clip_retry(&DoArgs {
+            allow_clipboard: true,
+            ..DoArgs::new(&actions)
+        });
+        assert_eq!(payload["results"][0]["ok"], Value::from(true), "{payload}");
+        assert_eq!(
+            payload["results"][0]["bytes"].as_i64().unwrap_or(0),
+            4,
+            "B plus its UTF-16 NUL is four bytes: {payload}"
+        );
+        assert_eq!(payload["clipboard"]["writes"], Value::from(1), "{payload}");
+        assert_eq!(
+            payload["clipboard"]["restores"],
+            Value::from(0),
+            "{payload}"
+        );
+        assert_eq!(
+            payload["clipboard"]["previous"],
+            Value::from("text"),
+            "{payload}"
+        );
+        assert_eq!(clip_get_retry(), "B");
+    }
+
+    /// Unflagged writes are refused before OpenClipboard: the clipboard
+    /// sequence number does not move and the no-steal verdicts stay true.
+    #[test]
+    fn unflagged_clipboard_set_never_touches_the_clipboard() {
+        let _lock = clip_test_lock();
+        use windows_sys::Win32::System::DataExchange::GetClipboardSequenceNumber;
+        let actions = vec![
+            serde_json::json!({"type": "clipboard_set", "text": "SHOULD-NOT-LAND"}),
+            serde_json::json!({"type": "wait", "ms": 1}),
+        ];
+        let before = unsafe { GetClipboardSequenceNumber() };
+        let out = do_burst(&DoArgs::new(&actions));
+        let after = unsafe { GetClipboardSequenceNumber() };
+        let payload = sc(&out);
+        assert_eq!(
+            before, after,
+            "unflagged write must not touch the clipboard"
+        );
+        assert_eq!(
+            payload["results"][0]["code"],
+            Value::from("no_clipboard_policy"),
+            "{payload}"
+        );
+        assert_eq!(payload["clipboard"]["writes"], Value::from(0), "{payload}");
+        assert!(payload["foregroundUnchanged"].is_boolean(), "{payload}");
+        assert!(payload["cursorUnchanged"].is_boolean(), "{payload}");
     }
 
     #[test]
@@ -5863,7 +7429,6 @@ mod tests {
             );
         }
     }
-
 
     fn burst_bg(actions: &[Value], bg: &str, dry_run: bool) -> (String, Map<String, Value>) {
         let out = do_burst(&DoArgs {
@@ -6344,7 +7909,6 @@ mod tests {
         assert_eq!(fx.edit_text(), "");
     }
 
-
     fn sc(out: &str) -> Value {
         let outer: Value = serde_json::from_str(out).expect("outer frame");
         outer
@@ -6784,11 +8348,11 @@ mod tests {
         report_pointer(cur_before, "gate refusal");
     }
 
-    /// LIVE: the explicit flags buy nothing - the same burst is refused per
-    /// action with the policy code (dry_run proves it without touching the
-    /// desktop). No flag reaches any injection API because none exists.
+    /// LIVE-safe (dry_run): flags alone buy nothing. Without a locked target
+    /// the point guard cannot run and no action is injected; with one the
+    /// cursor verb takes the real path (proved by the ignored live test).
     #[test]
-    fn live_explicit_flags_buy_nothing_dry_run() {
+    fn live_flags_without_a_target_refuse_dry_run() {
         let actions = vec![
             serde_json::json!({"type": "click", "x": 5, "y": 5}),
             serde_json::json!({"type": "type", "text": "x"}),
@@ -6802,17 +8366,17 @@ mod tests {
         let payload = sc(&out);
         assert_eq!(
             payload["results"][0]["code"],
-            Value::from("no_foreground_policy"),
-            "allow_foreground must refuse, not unlock: {payload:?}"
+            Value::from("target_required"),
+            "a real pointer needs a locked target: {payload:?}"
         );
         assert_eq!(
             payload["results"][1]["code"],
-            Value::from("no_foreground_policy"),
-            "allow_foreground must refuse, not unlock: {payload:?}"
+            Value::from("target_required"),
+            "no fallback to the foreground window: {payload:?}"
         );
         assert_eq!(payload["sendinput_calls"], Value::from(0));
         assert_eq!(payload["events"], Value::from(0));
-        println!("FLAGS_BUY_NOTHING_OK codes=no_foreground_policy events=0");
+        println!("FLAGS_WITHOUT_TARGET_OK codes=target_required events=0");
     }
 
     /// LIVE: a target that closed mid-call is `target_gone` on the next
@@ -7028,9 +8592,9 @@ mod tests {
         assert_eq!(payload["events"], Value::from(0), "dry run queues nothing");
     }
 
-    /// LIVE: a cursor-only call (allow_cursor without allow_foreground) can
-    /// never move the pointer: the policy refuses with no_cursor_policy
-    /// BEFORE anything is posted: ok:false, code, zero events, zero posts.
+    /// LIVE-safe: a cursor-only call with NO target cannot run the point
+    /// guard, so it refuses with target_required BEFORE anything is posted:
+    /// ok:false, typed code, zero events, zero posts, zero injected input.
     #[test]
     fn live_cursor_only_pointer_actions_are_typed_failures() {
         let _g = crate::fixture::desktop();
@@ -7052,8 +8616,8 @@ mod tests {
             assert_eq!(r["ok"], Value::from(false), "action {k} must fail: {r}");
             assert_eq!(
                 r["code"],
-                Value::from("no_cursor_policy"),
-                "action {k} must name the rule: {r}"
+                Value::from("target_required"),
+                "action {k} must name the missing lock: {r}"
             );
         }
         assert_eq!(payload["events"], Value::from(0), "nothing may be queued");
@@ -7065,10 +8629,10 @@ mod tests {
         );
     }
 
-    /// LIVE: with BOTH flags every injecting verb still refuses ÔÇö the flags
-    /// buy nothing. The other half of "refuses or posts, never silent".
+    /// LIVE-safe: with BOTH flags but no target nothing is injected. The
+    /// other half of "refuses or posts, never silent".
     #[test]
-    fn live_both_flags_still_refuse() {
+    fn live_both_flags_without_a_target_refuse() {
         let actions = vec![serde_json::json!({"type": "click", "x": 5, "y": 5})];
         let out = do_burst(&DoArgs {
             dry_run: true,
@@ -7080,16 +8644,16 @@ mod tests {
         assert_eq!(payload["results"][0]["ok"], Value::from(false));
         assert_eq!(
             payload["results"][0]["code"],
-            Value::from("no_foreground_policy"),
-            "flags must refuse, not unlock: {payload:?}"
+            Value::from("target_required"),
+            "flags without a lock must refuse: {payload:?}"
         );
         assert_eq!(payload["events"], Value::from(0));
         assert_eq!(payload["sendinput_calls"], Value::from(0));
     }
 
-    /// The flush is a no-op by policy: `SendInput` is never called, so a
-    /// flush never sends, never fails and never marks anything ÔÇö the posted
-    /// branches sequence through it harmlessly.
+    /// Without the opt-in there is no queue, so a flush never sends, never
+    /// fails and never marks anything ÔÇö posted branches sequence through it
+    /// harmlessly. The opt-in queue is proved by the ignored live test.
     #[test]
     fn flush_is_a_noop_and_sends_nothing() {
         let mut st = Burst {
@@ -7100,6 +8664,7 @@ mod tests {
             events: 0,
             sendinput_ms: 0.0,
             flush_uipi: false,
+            real: None,
         };
         let (dt, err) = st.flush();
         assert!(err.is_none(), "a flush never fails: {err:?}");
@@ -7249,5 +8814,229 @@ mod tests {
         assert_eq!(l.hwnd, a.hwnd_i64());
         let e = crate::target::lock(&spec).expect_err("prefix class must not match");
         assert_eq!(e.code, "target_gone", "{}", e.text());
+    }
+
+    /// A dry burst reports nothing delivered. This is the exact shape that
+    /// used to answer delivered:"posted", effect:"unverified", posted:0.
+    #[test]
+    fn dry_run_reports_nothing_delivered() {
+        let _g = crate::fixture::desktop();
+        let f = crate::fixture::MessageWindow::new();
+        let hwnd = f.hwnd_i64();
+        let actions = vec![
+            serde_json::json!({"type": "type", "text": "hi"}),
+            serde_json::json!({"type": "click", "x": 10, "y": 10}),
+        ];
+        let out = do_burst(&DoArgs {
+            dry_run: true,
+            target: Some(serde_json::json!({ "hwnd": hwnd })),
+            ..DoArgs::new(&actions)
+        });
+        let payload = sc(&out);
+        let results = payload["results"].as_array().expect("results");
+        assert_eq!(results.len(), 2, "{payload}");
+        for (i, r) in results.iter().enumerate() {
+            assert_eq!(r["ok"], Value::from(true), "result {i}: {r}");
+            assert_eq!(r["delivered"], Value::from("none"), "result {i}: {r}");
+            assert_eq!(r["posted"], Value::from(0), "result {i}: {r}");
+            assert_eq!(r["effect"], Value::from("none"), "result {i}: {r}");
+            assert_eq!(r["dry_run"], Value::from(true), "result {i}: {r}");
+            assert_eq!(r["mode"], Value::from("background"), "result {i}: {r}");
+            assert_eq!(r["bg_hwnd"], Value::from(hwnd), "result {i}: {r}");
+        }
+    }
+
+    /// A dry run makes no delivery call: no PostMessage, no SendInput, no
+    /// SetCursorPos, no SetForegroundWindow. The opt-in flags are set here on
+    /// purpose: they must not unlock a delivery under dry_run.
+    #[test]
+    fn dry_run_posts_no_messages_and_keeps_the_pointer() {
+        let _g = crate::fixture::desktop();
+        let f = crate::fixture::MessageWindow::new();
+        let hwnd = f.hwnd_i64();
+        crate::fixture::reset_msg_counts();
+        let fg_before = fg_now();
+        let cur_before = cursor_now();
+        let actions = vec![
+            serde_json::json!({"type": "click", "x": 10, "y": 10}),
+            serde_json::json!({"type": "type", "text": "hi"}),
+            serde_json::json!({"type": "key", "name": "a"}),
+        ];
+        let out = do_burst(&DoArgs {
+            dry_run: true,
+            allow_cursor: true,
+            allow_foreground: true,
+            target: Some(serde_json::json!({ "hwnd": hwnd })),
+            ..DoArgs::new(&actions)
+        });
+        let payload = sc(&out);
+        for (i, r) in payload["results"]
+            .as_array()
+            .expect("results")
+            .iter()
+            .enumerate()
+        {
+            assert_eq!(r["delivered"], Value::from("none"), "result {i}: {r}");
+            assert_eq!(r["posted"], Value::from(0), "result {i}: {r}");
+            assert_eq!(r["effect"], Value::from("none"), "result {i}: {r}");
+            assert_eq!(r["dry_run"], Value::from(true), "result {i}: {r}");
+        }
+        assert_eq!(payload["posted_messages"], Value::from(0), "{payload}");
+        assert_eq!(payload["sendinput_calls"], Value::from(0), "{payload}");
+        assert_eq!(payload["events"], Value::from(0), "{payload}");
+        assert_eq!(payload["clipboard"]["writes"], Value::from(0), "{payload}");
+        assert_eq!(
+            payload["clipboard"]["restores"],
+            Value::from(0),
+            "{payload}"
+        );
+        assert_eq!(payload["clipboard"]["bytes"], Value::from(0), "{payload}");
+        assert_eq!(payload["cursorMoved"], Value::from(false), "{payload}");
+        assert!(payload["cursorRestored"].is_null(), "{payload}");
+        assert_eq!(
+            payload["foregroundUnchanged"],
+            Value::from(true),
+            "{payload}"
+        );
+        assert_eq!(
+            crate::fixture::msg_counts(),
+            (0, 0, 0, 0, 0),
+            "a dry run must post no window message"
+        );
+        assert_eq!(
+            cursor_now(),
+            cur_before,
+            "a dry run must not move the pointer"
+        );
+        assert_eq!(
+            fg_now(),
+            fg_before,
+            "a dry run must not change the foreground"
+        );
+    }
+
+    /// The control: the same burst without dry_run still reports real
+    /// delivery and real posted counts, so the dry-run fix is not a blanket
+    /// zeroing of every result.
+    #[test]
+    fn non_dry_burst_reports_real_delivery() {
+        let _g = crate::fixture::desktop();
+        let f = crate::fixture::MessageWindow::new();
+        let hwnd = f.hwnd_i64();
+        crate::fixture::reset_msg_counts();
+        let actions = vec![
+            serde_json::json!({"type": "type", "text": "hi"}),
+            serde_json::json!({"type": "click", "x": 10, "y": 10}),
+        ];
+        let out = do_burst(&DoArgs {
+            target: Some(serde_json::json!({ "hwnd": hwnd })),
+            ..DoArgs::new(&actions)
+        });
+        let payload = sc(&out);
+        let results = payload["results"].as_array().expect("results");
+        assert_eq!(results[0]["ok"], Value::from(true), "{results:?}");
+        assert_eq!(
+            results[0]["delivered"],
+            Value::from("posted"),
+            "{results:?}"
+        );
+        assert_eq!(results[0]["posted"], Value::from(2), "{results:?}");
+        assert!(results[0].get("dry_run").is_none(), "{results:?}");
+        assert_eq!(results[1]["ok"], Value::from(true), "{results:?}");
+        assert_eq!(
+            results[1]["delivered"],
+            Value::from("posted"),
+            "{results:?}"
+        );
+        assert_eq!(results[1]["posted"], Value::from(2), "{results:?}");
+        assert!(results[1].get("dry_run").is_none(), "{results:?}");
+        // The summary counts posted window messages (the click pair); the
+        // posted-key count lives on the type result, not in this counter.
+        assert_eq!(payload["posted_messages"], Value::from(2), "{payload}");
+        assert!(
+            wait_until(|| {
+                let (down, up, ..) = crate::fixture::msg_counts();
+                down >= 1 && up >= 1
+            }),
+            "a real burst must still post the click pair: {:?}",
+            crate::fixture::msg_counts()
+        );
+    }
+
+    /// A dry run does not even open the clipboard. The sentinel is seeded
+    /// first: the old clipboard_get branch would have read it, and the old
+    /// clipboard_set branch would have overwritten it.
+    #[test]
+    fn dry_run_clipboard_actions_never_open_or_write() {
+        let _g = crate::fixture::desktop();
+        let _lock = clip_test_lock();
+        let _owner = ClipboardOwnerGuard(clip_snapshot_retry());
+        clip_write_retry("dry-run-sentinel");
+        let out = do_burst(&DoArgs {
+            dry_run: true,
+            allow_clipboard: true,
+            restore_clipboard: true,
+            ..DoArgs::new(&[
+                serde_json::json!({"type": "clipboard_set", "text": "should-not-land"}),
+                serde_json::json!({"type": "clipboard_get"}),
+            ])
+        });
+        let payload = sc(&out);
+        let results = payload["results"].as_array().expect("results");
+        for (i, r) in results.iter().enumerate() {
+            assert_eq!(r["ok"], Value::from(true), "result {i}: {r}");
+            assert_eq!(r["delivered"], Value::from("none"), "result {i}: {r}");
+            assert_eq!(r["posted"], Value::from(0), "result {i}: {r}");
+            assert_eq!(r["effect"], Value::from("none"), "result {i}: {r}");
+        }
+        assert!(
+            results[0].get("bytes").is_none(),
+            "no clipboard write: {}",
+            results[0]
+        );
+        assert!(
+            results[1].get("text").is_none(),
+            "no clipboard read: {}",
+            results[1]
+        );
+        assert_eq!(payload["clipboard"]["writes"], Value::from(0), "{payload}");
+        assert_eq!(
+            payload["clipboard"]["restores"],
+            Value::from(0),
+            "{payload}"
+        );
+        assert_eq!(payload["clipboard"]["bytes"], Value::from(0), "{payload}");
+        assert_eq!(
+            clip_get_retry(),
+            "dry-run-sentinel",
+            "the clipboard is untouched"
+        );
+    }
+
+    /// A dry run never sends BM_CLICK (SendMessageTimeoutW in win32_activate)
+    /// and never fires a UIA pattern: invoke resolves the control and stops
+    /// at via:"none".
+    #[test]
+    fn dry_run_invoke_resolves_without_sending_bm_click() {
+        let _g = crate::fixture::desktop();
+        let fx = crate::fixture::Fixture::new();
+        let bg = format!("hwnd:{}", fx.hwnd_i64());
+        let fp = live_fp(fx.hwnd(), "name", "OK");
+        let out = do_burst(&DoArgs {
+            background: Some(bg),
+            dry_run: true,
+            ..DoArgs::new(&[serde_json::json!({
+                "type": "invoke", "element": "name:OK", "expect_fp": fp
+            })])
+        });
+        let payload = sc(&out);
+        let r = &payload["results"][0];
+        assert_eq!(r["ok"], Value::from(true), "{r}");
+        assert_eq!(r["resolution"], Value::from("found"), "{r}");
+        assert_eq!(r["via"], Value::from("none"), "{r}");
+        assert_eq!(r["delivered"], Value::from("none"), "{r}");
+        assert_eq!(r["effect"], Value::from("none"), "{r}");
+        assert_eq!(payload["sendinput_calls"], Value::from(0), "{payload}");
+        assert_eq!(payload["events"], Value::from(0), "{payload}");
     }
 }

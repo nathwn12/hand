@@ -39,6 +39,7 @@ macro_rules! err_eprintln {
     };
 }
 
+pub mod record;
 pub mod schemas;
 
 use std::collections::HashMap;
@@ -146,7 +147,6 @@ pub fn enable_per_monitor_dpi_v2() -> DpiAwarenessLevel {
     }
 }
 
-
 const MODE_B_NOTE: &str = "Mode B (Windows.Graphics.Capture) deferred: needs a WinRT + D3D11 frame pool in this Rust stack and is untestable on a single-monitor box here; Mode A covers the verifiable cases.";
 const FORMULA: &str = "screen_x = source.x + round((img_x + 0.5) * source.w / image.w); screen_y = source.y + round((img_y + 0.5) * source.h / image.h)";
 const SUPPORTED_VERSIONS: [&str; 2] = ["2025-06-18", "2025-11-25"];
@@ -171,7 +171,6 @@ static STALE: LazyLock<Mutex<StaleMap>> = LazyLock::new(|| Mutex::new(HashMap::n
 pub fn forget_stale(hwnd: i64) {
     STALE.lock().unwrap().remove(&hwnd);
 }
-
 
 /// Python round() half-to-even to an integer value.
 fn py_round_half_even(x: f64) -> f64 {
@@ -215,7 +214,6 @@ fn py_repr_str(s: &str) -> String {
     o.push(q);
     o
 }
-
 
 struct VErr {
     loc: String,
@@ -673,7 +671,6 @@ fn missing_arg(_tool: &str, args: &Map<String, Value>, field: &str) -> VErr {
     }
 }
 
-
 /// Float rendering matching Python repr() for the value ranges this server
 /// emits (bounded magnitudes; never exponent-form, never non-finite).
 fn py_float(f: f64) -> String {
@@ -800,7 +797,6 @@ pub fn py_repr_value(v: &Value) -> String {
         }
     }
 }
-
 
 fn jstr(s: &str) -> String {
     serde_json::to_string(s).unwrap()
@@ -932,7 +928,6 @@ pub fn screenshot_ok(blocks: &[String], cmap: &Value) -> String {
 pub fn tool_err_blocks(blocks: &[String]) -> String {
     format!("{{\"content\":[{}],\"isError\":true}}", blocks.join(","))
 }
-
 
 pub(crate) unsafe fn win_text(hwnd: HWND) -> String {
     let mut buf = vec![0u16; 512];
@@ -1224,11 +1219,8 @@ fn cloaked(hwnd: HWND) -> i64 {
 }
 
 fn win_dpi(hwnd: HWND) -> i64 {
-    unsafe {
-        GetDpiForWindow(hwnd) as i64
-    }
+    unsafe { GetDpiForWindow(hwnd) as i64 }
 }
-
 
 /// Elevation of one open token: Some(true) elevated, Some(false) not.
 /// The caller owns `tok` (opened via OpenProcessToken); it is not closed here.
@@ -1338,7 +1330,6 @@ fn is_maximized(hwnd: HWND) -> bool {
     }
 }
 
-
 fn window_info(hwnd: HWND, include_app_ids: bool) -> Option<Map<String, Value>> {
     unsafe {
         if IsWindowVisible(hwnd) == 0 {
@@ -1404,7 +1395,10 @@ fn window_info(hwnd: HWND, include_app_ids: bool) -> Option<Map<String, Value>> 
         let dpi = win_dpi(hwnd);
         m.insert("dpi".to_string(), Value::from(dpi));
         if dpi > 0 {
-            m.insert("scale".to_string(), Value::from(py_round_n(dpi as f64 / 96.0, 3)));
+            m.insert(
+                "scale".to_string(),
+                Value::from(py_round_n(dpi as f64 / 96.0, 3)),
+            );
         }
         // 0-based monitor index, the same space `screenshot display=` uses.
         let hmon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
@@ -1595,7 +1589,6 @@ pub mod shot;
 pub mod target;
 pub mod uia;
 pub mod winop;
-
 
 /// Puppet's tool catalog (`{"tools":[...]}`), every tool body unchanged from
 /// the pinned release.
@@ -1792,6 +1785,6 @@ mod tests {
         assert_eq!(info["version"], json!(UPSTREAM_VERSION));
         assert_eq!(info["available"], json!(true));
         assert_eq!(info["backend"], json!("uia+win32"));
-        assert_eq!(info["toolCount"], json!(7));
+        assert_eq!(info["toolCount"], json!(8));
     }
 }

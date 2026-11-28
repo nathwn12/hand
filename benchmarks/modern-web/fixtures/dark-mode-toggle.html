@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>dark-mode-toggle</title>
+<style>body{font:16px/1.4 system-ui,sans-serif;margin:16px}button{margin:4px}output{display:block;margin-top:12px}</style>
+</head><body>
+<button id="t" aria-pressed="false">Toggle theme</button><output id="out">light</output>
+<script>
+document.getElementById('t').onclick=()=>{const dark=document.documentElement.getAttribute('data-theme')!=='dark';document.documentElement.setAttribute('data-theme',dark?'dark':'light');document.getElementById('t').setAttribute('aria-pressed',String(dark));document.getElementById('out').textContent=dark?'dark':'light';};
+</script>
+</body></html>

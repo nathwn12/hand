@@ -1,10 +1,10 @@
 [workspace]
-members = ["crates/browser-engine", "crates/desktop-engine"]
+members = ["crates/mjpeg-avi", "crates/browser-engine", "crates/desktop-engine"]
 resolver = "2"
 
 [package]
 name = "hand"
-version = "0.3.4"
+version = "0.4.0"
 edition = "2021"
 license = "MIT"
 rust-version = "1.88"

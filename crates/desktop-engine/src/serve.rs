@@ -2,7 +2,8 @@
 
 use crate::burst::do_burst;
 use crate::schemas::{
-    TOOL_CURSOR, TOOL_DIFF, TOOL_DO, TOOL_ELEMENTS, TOOL_LIST_WINDOWS, TOOL_SCREENSHOT, TOOL_WINDOW,
+    TOOL_CURSOR, TOOL_DIFF, TOOL_DO, TOOL_ELEMENTS, TOOL_LIST_WINDOWS, TOOL_RECORD,
+    TOOL_SCREENSHOT, TOOL_WINDOW,
 };
 use crate::screen::{dispatch_screenshot, ShotArgs};
 use crate::shot::{compact_entry, element_model, elements_object};
@@ -120,7 +121,7 @@ fn init_result(params: &Value) -> String {
 }
 
 fn tools_list_result() -> String {
-    format!("{{\"tools\":[{TOOL_SCREENSHOT},{TOOL_DIFF},{TOOL_LIST_WINDOWS},{TOOL_WINDOW},{TOOL_DO},{TOOL_CURSOR},{TOOL_ELEMENTS}]}}")
+    format!("{{\"tools\":[{TOOL_SCREENSHOT},{TOOL_DIFF},{TOOL_LIST_WINDOWS},{TOOL_WINDOW},{TOOL_DO},{TOOL_CURSOR},{TOOL_ELEMENTS},{TOOL_RECORD}]}}")
 }
 
 /// `server/discover` (2026-07-28 discovery path): the full known-version
@@ -547,6 +548,23 @@ fn call_diff(args: &Map<String, Value>) -> String {
     })
 }
 
+/// A `do` burst with an empty `actions` array violates the published
+/// `minItems:1` contract. Refuse with a typed `invalid_args`/`bad_value`
+/// error BEFORE `do_burst` is entered, so no foreground, cursor or clipboard
+/// read happens and no `results:[]` can read as a successful no-op.
+fn empty_burst_refusal() -> String {
+    let mut payload = Map::new();
+    payload.insert("ok".to_string(), Value::from(false));
+    payload.insert("code".to_string(), Value::from("invalid_args"));
+    payload.insert("reason".to_string(), Value::from("bad_value"));
+    payload.insert("arg".to_string(), Value::from("actions"));
+    payload.insert(
+        "error".to_string(),
+        Value::from("desktop_do needs at least one action in actions (minItems:1); nothing ran"),
+    );
+    wrapped_text(&py_dumps(&Value::Object(payload)))
+}
+
 fn call_do(args: &Map<String, Value>) -> String {
     let mut errs = Vec::new();
     check_no_extra(
@@ -564,6 +582,8 @@ fn call_do(args: &Map<String, Value>) -> String {
             "allow_foreground",
             "allow_cursor",
             "allow_clipboard",
+            "restore_clipboard",
+            "cursor_restore",
         ],
     );
     let actions: Option<Vec<Value>> = match args.get("actions") {
@@ -655,8 +675,18 @@ fn call_do(args: &Map<String, Value>) -> String {
     let allow_foreground = do_bool(args, &mut errs, "allow_foreground");
     let allow_cursor = do_bool(args, &mut errs, "allow_cursor");
     let allow_clipboard = do_bool(args, &mut errs, "allow_clipboard");
+    let restore_clipboard = do_bool(args, &mut errs, "restore_clipboard");
+    // Unlike the other flags this one defaults to TRUE: the entry pointer is
+    // restored after an opt-in burst unless the caller explicitly opts out.
+    let cursor_restore = match args.get("cursor_restore") {
+        None => Some(true),
+        Some(_) => do_bool(args, &mut errs, "cursor_restore"),
+    };
     if !errs.is_empty() {
         return err_result_text(&verr_text("do", &errs));
+    }
+    if actions.as_ref().is_some_and(|v| v.is_empty()) {
+        return empty_burst_refusal();
     }
     do_burst(&crate::burst::DoArgs {
         actions: &actions.unwrap(),
@@ -670,6 +700,8 @@ fn call_do(args: &Map<String, Value>) -> String {
         allow_foreground: allow_foreground.unwrap(),
         allow_cursor: allow_cursor.unwrap(),
         allow_clipboard: allow_clipboard.unwrap(),
+        restore_clipboard: restore_clipboard.unwrap(),
+        cursor_restore: cursor_restore.unwrap(),
     })
 }
 
@@ -804,6 +836,7 @@ fn tools_call(params: &Value) -> String {
             None => do_cursor(),
         },
         "elements" => call_elements(&args),
+        "record" => crate::record::dispatch_record(&args),
         _ => err_result_text(&format!("Unknown tool: '{name}'")),
     }
 }
@@ -1201,6 +1234,33 @@ mod tests {
             s.contains("-32600"),
             "batch array must be explicitly rejected, got: {s}"
         );
+    }
+
+    /// Defect 1 proof: an empty actions array is refused before any work
+    /// as typed invalid_args/bad_value, with no results array claiming success.
+    #[test]
+    fn empty_burst_is_invalid_args_and_runs_nothing() {
+        let params = serde_json::json!({"name": "do", "arguments": {"actions": []}});
+        let out = tools_call(&params);
+        let env: Value = serde_json::from_str(&out).expect("envelope");
+        assert_eq!(
+            env["isError"],
+            Value::from(true),
+            "empty burst must error: {out}"
+        );
+        let sc = env
+            .get("structuredContent")
+            .expect("typed structured error");
+        assert_eq!(sc["code"], Value::from("invalid_args"), "{sc}");
+        assert_eq!(sc["reason"], Value::from("bad_value"), "{sc}");
+        assert_eq!(sc["arg"], Value::from("actions"), "{sc}");
+        assert!(
+            sc.get("results").is_none(),
+            "no results array may claim success: {sc}"
+        );
+        let prose = sc["error"].as_str().unwrap_or("");
+        assert!(prose.contains("at least one action"), "{prose}");
+        assert!(prose.contains("nothing ran"), "{prose}");
     }
 
     #[test]
@@ -2010,7 +2070,6 @@ mod tests {
         println!("ELEMENTS_DETAIL_FIXTURE_JSON={payload}");
     }
 }
-
 
 /// hand integration: the tool catalog body, unchanged from Puppet's own
 /// `tools/list` result.

@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>navigation-drawer</title>
+<style>body{font:16px/1.4 system-ui,sans-serif;margin:16px}button{margin:4px}output{display:block;margin-top:12px}</style>
+</head><body>
+<button id="o">Open menu</button><aside id="d" hidden>Drawer content</aside><output id="out">idle</output>
+<script>
+document.getElementById('o').onclick=()=>{document.getElementById('d').hidden=false;document.getElementById('out').textContent='open';};
+</script>
+</body></html>

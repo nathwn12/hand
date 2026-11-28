@@ -16,8 +16,9 @@ pub struct WinArgs {
     /// Structured target lock (object or selector string); wins over
     /// title/hwnd when present.
     pub target: Option<Value>,
-    /// Retained for schema compatibility: passing it refuses the whole
-    /// call with `no_foreground_policy` ÔÇö no flag buys the foreground.
+    /// Permission for the two foreground verbs only (`focus`, `maximize`).
+    /// Six no-steal verbs ignore it; a foreground verb without it is refused
+    /// `no_foreground_policy` with prose naming the flag and the verb.
     pub allow_foreground: bool,
 }
 
@@ -68,6 +69,74 @@ fn win_code_of(msg: &str) -> Option<&'static str> {
     .find(|code| msg.starts_with(code))
 }
 
+/// Which `desktop_window` verbs actually take the foreground. The flag is a
+/// permission for exactly these two; every other verb ignores it. Pure, so
+/// the rule is unit-testable without a live desktop.
+pub(crate) fn verb_needs_foreground(act: &str) -> bool {
+    act == "focus" || act == "maximize"
+}
+
+/// Pre-dispatch decision for one verb under the permission. Extracted so the
+/// tests can assert "proceed" for each no-steal verb without touching a window.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum VerbDecision {
+    Proceed,
+    RefuseForeground,
+}
+
+pub(crate) fn foreground_decision(act: &str, allow_foreground: bool) -> VerbDecision {
+    if verb_needs_foreground(act) && !allow_foreground {
+        VerbDecision::RefuseForeground
+    } else {
+        VerbDecision::Proceed
+    }
+}
+
+/// Typed refusal for a foreground verb whose permission was not granted. The
+/// shared gate helper says "would take the foreground" for every caller, which
+/// is false for a no-steal verb; the window seam names the flag and the verb
+/// instead and never emits that phrase.
+fn foreground_refusal(act: &str) -> crate::gate::GateError {
+    crate::gate::GateError {
+        code: crate::gate::NO_FOREGROUND_POLICY,
+        message: format!(
+            "window action:{act} needs allow_foreground:true (it takes the foreground); \
+             refused under the background-only policy; the owner may be playing a fullscreen \
+             game, so puppet works purely in the background or says it cannot. Nothing was sent."
+        ),
+    }
+}
+
+/// Measure the foreground/cursor invariant once per reply and attach the raw
+/// before/after handles plus truthful changed/unchanged flags to EVERY window
+/// payload, refusals included. A working `focus` therefore reports
+/// foregroundChanged:true instead of a false "unchanged".
+fn fill_evidence(m: &mut Map<String, Value>, fg_before: i64, cur_before: (i64, i64)) {
+    let fg_after = unsafe { GetForegroundWindow() as i64 };
+    let cur_after = unsafe {
+        let mut pt = POINT { x: 0, y: 0 };
+        if GetCursorPos(&mut pt) != 0 {
+            (pt.x as i64, pt.y as i64)
+        } else {
+            (-1, -1)
+        }
+    };
+    m.insert("foregroundBefore".to_string(), Value::from(fg_before));
+    m.insert("foregroundAfter".to_string(), Value::from(fg_after));
+    m.insert(
+        "foregroundChanged".to_string(),
+        Value::from(fg_after != fg_before),
+    );
+    m.insert(
+        "foregroundUnchanged".to_string(),
+        Value::from(fg_after == fg_before),
+    );
+    m.insert(
+        "cursorUnchanged".to_string(),
+        Value::from(cur_after == cur_before),
+    );
+}
+
 /// Shared range gate for every i64 coordinate routed to `SetWindowPos`
 /// (which takes `i32`). Rejects anything outside `i32` instead of letting
 /// `as i32` wrap (e.g. 2^40 wraps to 0 and teleports the window).
@@ -91,16 +160,14 @@ pub fn do_window(a: &WinArgs) -> String {
     };
     let mut locked: Option<crate::target::TargetLock> = None;
     let (hwnd_r, err, cands) = match a.target.as_ref() {
-        None | Some(Value::Null) => {
-            match crate::cap::lock_legacy(a.hwnd, a.title.as_deref()) {
-                Ok(l) => {
-                    let h = l.hwnd as HWND;
-                    locked = Some(l);
-                    (Some(h), None, None)
-                }
-                Err(e) => (None, Some(e.text()), e.candidates.clone()),
+        None | Some(Value::Null) => match crate::cap::lock_legacy(a.hwnd, a.title.as_deref()) {
+            Ok(l) => {
+                let h = l.hwnd as HWND;
+                locked = Some(l);
+                (Some(h), None, None)
             }
-        }
+            Err(e) => (None, Some(e.text()), e.candidates.clone()),
+        },
         Some(v) => match crate::target::TargetSpec::parse(v) {
             Err(e) => (None, Some(e.text()), None),
             Ok(spec) => match crate::target::lock(&spec) {
@@ -118,6 +185,7 @@ pub fn do_window(a: &WinArgs) -> String {
             let mut payload = e.to_map();
             payload.insert("action".to_string(), Value::from(a.action.clone()));
             payload.insert("hwnd".to_string(), Value::from(l.hwnd));
+            fill_evidence(&mut payload, fg_before, cur_before);
             return wrapped_text(&crate::py_dumps(&Value::Object(payload)));
         }
     }
@@ -128,14 +196,15 @@ pub fn do_window(a: &WinArgs) -> String {
         if let Some(c) = cands {
             payload.insert("candidates".to_string(), Value::from(c));
         }
+        fill_evidence(&mut payload, fg_before, cur_before);
         return wrapped_text(&crate::py_dumps(&Value::Object(payload)));
     }
     let h = hwnd_r.unwrap();
     let hi = h as i64;
     let out = (|| -> Result<String, String> {
         let act = a.action.to_lowercase();
-        if a.allow_foreground {
-            let e = crate::gate::no_foreground_policy(&format!("window action:{}", act));
+        if foreground_decision(&act, a.allow_foreground) == VerbDecision::RefuseForeground {
+            let e = foreground_refusal(&act);
             let mut o = Map::new();
             o.insert("ok".to_string(), Value::from(false));
             o.insert("action".to_string(), Value::from(act));
@@ -146,11 +215,13 @@ pub fn do_window(a: &WinArgs) -> String {
         }
         unsafe {
             if act == "focus" {
-                let e = crate::gate::no_foreground_policy("window action:focus");
+                // Permission granted: the ONLY window verb that activates.
+                // The reply carries the measured delta, never a canned claim.
+                SetForegroundWindow(h);
                 let mut o = Map::new();
-                o.insert("ok".to_string(), Value::from(false));
-                o.insert("code".to_string(), Value::from(e.code));
-                o.insert("error".to_string(), Value::from(e.text()));
+                o.insert("ok".to_string(), Value::from(true));
+                o.insert("action".to_string(), Value::from(act));
+                o.insert("hwnd".to_string(), Value::from(hi));
                 return Ok(crate::py_dumps(&Value::Object(o)));
             }
             if act == "move" {
@@ -274,13 +345,23 @@ pub fn do_window(a: &WinArgs) -> String {
                 return Ok(crate::py_dumps(&Value::Object(o)));
             }
             if act == "maximize" {
-                let e = crate::gate::no_foreground_policy("window action:maximize");
+                // Remember the exact pre-maximize rect so restore can return
+                // to it even when Windows clamps an offscreen normal position.
+                let mut wp: WINDOWPLACEMENT = std::mem::zeroed();
+                wp.length = std::mem::size_of::<WINDOWPLACEMENT>() as u32;
+                if GetWindowPlacement(h, &mut wp) != 0 {
+                    let r = wp.rcNormalPosition;
+                    NORMAL_RECTS
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .insert(window_key(h), [r.left, r.top, r.right, r.bottom]);
+                }
+                // SW_MAXIMIZE is activating; the flag permits that here.
+                ShowWindow(h, SW_MAXIMIZE);
                 let mut o = Map::new();
-                o.insert("ok".to_string(), Value::from(false));
+                o.insert("ok".to_string(), Value::from(true));
                 o.insert("action".to_string(), Value::from(act));
                 o.insert("hwnd".to_string(), Value::from(hi));
-                o.insert("code".to_string(), Value::from(e.code));
-                o.insert("error".to_string(), Value::from(e.text()));
                 return Ok(crate::py_dumps(&Value::Object(o)));
             }
             if act == "restore" {
@@ -393,22 +474,7 @@ pub fn do_window(a: &WinArgs) -> String {
         }
     };
     if let Value::Object(m) = &mut payload {
-        let cur_after = unsafe {
-            let mut pt = POINT { x: 0, y: 0 };
-            if GetCursorPos(&mut pt) != 0 {
-                (pt.x as i64, pt.y as i64)
-            } else {
-                (-1, -1)
-            }
-        };
-        m.insert(
-            "foregroundUnchanged".to_string(),
-            Value::from(unsafe { GetForegroundWindow() as i64 } == fg_before),
-        );
-        m.insert(
-            "cursorUnchanged".to_string(),
-            Value::from(cur_after == cur_before),
-        );
+        fill_evidence(m, fg_before, cur_before);
         if let Some(l) = &locked {
             m.insert("target_locked".to_string(), Value::from(l.hwnd));
         }
@@ -620,12 +686,15 @@ mod tests {
         println!("LIVE_MAXIMIZE_OK refused=no_foreground_policy foreground={fg_before}");
     }
 
-    /// LIVE (visible opt-in): repeated maximize is refused twice under the
-    /// background-only policy and the window geometry never moves; the
-    /// saved-normal bookkeeping stays empty because nothing ran.
+    /// LIVE (visible opt-in, IGNORED): with `allow_foreground:true` both
+    /// maximizes are PERMITTED (SW_MAXIMIZE is activating), the saved normal
+    /// rect survives the repeat, and restore is a no-steal verb that ignores
+    /// the flag, so it puts the window back at its exact original geometry. A
+    /// guard restores the original rect on every exit, including a panic, so
+    /// this test never leaves the fixture maximized.
     #[test]
+    #[ignore]
     fn live_repeated_maximize_restores_original_geometry() {
-        use windows_sys::Win32::Foundation::RECT;
         let _g = crate::fixture::desktop();
         if !live_visible() {
             return;
@@ -634,83 +703,131 @@ mod tests {
         let h = f.hwnd();
         let hi = h as i64;
         let fg_before = crate::fixture::foreground_now();
-        let mut before: RECT = unsafe { std::mem::zeroed() };
-        assert_ne!(unsafe { GetWindowRect(h, &mut before) }, 0);
-        let want = [
-            before.left as i64,
-            before.top as i64,
-            before.right as i64,
-            before.bottom as i64,
-        ];
-        let args = |action: &str| WinArgs {
-            action: action.to_string(),
-            title: None,
-            hwnd: None,
-            x: None,
-            y: None,
-            width: None,
-            height: None,
-            target: Some(serde_json::json!({ "hwnd": hi })),
-            allow_foreground: true,
+        let want_placement = placement_rect(h);
+        let want_screen = window_rect(h);
+
+        // finally: put the fixture back even when an assertion above panics.
+        // restore is a no-steal verb, so the guard needs no foreground flag.
+        struct RestoreGuard {
+            hi: i64,
+            want: [i32; 4],
+        }
+        impl Drop for RestoreGuard {
+            fn drop(&mut self) {
+                let out = do_window(&WinArgs {
+                    action: "restore".to_string(),
+                    title: None,
+                    hwnd: None,
+                    x: None,
+                    y: None,
+                    width: None,
+                    height: None,
+                    target: Some(serde_json::json!({ "hwnd": self.hi })),
+                    allow_foreground: false,
+                });
+                if let Ok(v) = serde_json::from_str::<Value>(&out) {
+                    if let Some(sc) = v.get("structuredContent") {
+                        if sc["ok"].as_bool() != Some(true) {
+                            eprintln!("LIVE_REPEAT_MAXIMIZE_CLEANUP_WARN restore={sc}");
+                        }
+                    }
+                }
+                let rc = window_rect(self.hi as HWND);
+                if rc != self.want {
+                    eprintln!(
+                        "LIVE_REPEAT_MAXIMIZE_CLEANUP_WARN screen_rect={rc:?} want={:?}",
+                        self.want
+                    );
+                }
+            }
+        }
+        let _restore = RestoreGuard {
+            hi,
+            want: want_screen,
         };
 
-        let first = do_window(&args("maximize"));
-        let sc: Value = serde_json::from_str(&first).expect("outer");
-        let sc = sc.get("structuredContent").cloned().expect("payload");
-        assert_eq!(sc["ok"], Value::from(false), "first maximize: {sc}");
+        let call = |action: &str| -> Value {
+            let out = do_window(&WinArgs {
+                action: action.to_string(),
+                title: None,
+                hwnd: None,
+                x: None,
+                y: None,
+                width: None,
+                height: None,
+                target: Some(serde_json::json!({ "hwnd": hi })),
+                // Only maximize opts in; restore proves a no-steal verb
+                // proceeds with the flag off.
+                allow_foreground: action == "maximize",
+            });
+            let v: Value = serde_json::from_str(&out).expect("outer frame");
+            v.get("structuredContent").cloned().expect("payload")
+        };
+
+        let first = call("maximize");
         assert_eq!(
-            sc["code"].as_str(),
-            Some("no_foreground_policy"),
-            "first maximize must be typed: {sc}"
+            first["ok"],
+            Value::from(true),
+            "flagged maximize must run: {first}"
+        );
+        assert_ne!(unsafe { IsZoomed(h) }, 0, "a permitted maximize must zoom");
+        assert_eq!(
+            saved_normal(h),
+            Some(want_placement),
+            "maximize saves the original placement rect"
+        );
+        let zoomed = window_rect(h);
+        assert_eq!(
+            first["foregroundChanged"].as_bool(),
+            Some(first["foregroundAfter"].as_i64() != first["foregroundBefore"].as_i64()),
+            "the reply must report the real foreground delta of a permitted maximize"
         );
 
-        let second = do_window(&args("maximize"));
-        let sc: Value = serde_json::from_str(&second).expect("outer");
-        let sc = sc.get("structuredContent").cloned().expect("payload");
-        assert_eq!(sc["ok"], Value::from(false), "second maximize: {sc}");
+        let second = call("maximize");
         assert_eq!(
-            sc["code"].as_str(),
-            Some("no_foreground_policy"),
-            "second maximize must be typed: {sc}"
+            second["ok"],
+            Value::from(true),
+            "second flagged maximize must run: {second}"
+        );
+        assert_eq!(
+            saved_normal(h),
+            Some(want_placement),
+            "a repeated maximize keeps the original rect"
+        );
+        assert_eq!(
+            window_rect(h),
+            zoomed,
+            "a repeated maximize must not move the window"
+        );
+
+        let out = call("restore");
+        assert_eq!(
+            out["ok"],
+            Value::from(true),
+            "restore without the flag must run: {out}"
+        );
+        assert_eq!(
+            out["restored_rect"],
+            Value::from(want_placement.iter().copied().collect::<Vec<i32>>()),
+            "restore reports the original geometry: {out}"
         );
         assert_eq!(
             saved_normal(h),
             None,
-            "a refused maximize saves no recovery state"
+            "a successful restore clears recovery state"
         );
-        unsafe {
-            assert_eq!(IsZoomed(h), 0, "a refused maximize must not zoom");
-            let mut rc: RECT = std::mem::zeroed();
-            assert_ne!(GetWindowRect(h, &mut rc), 0);
-            assert_eq!(
-                [
-                    rc.left as i64,
-                    rc.top as i64,
-                    rc.right as i64,
-                    rc.bottom as i64
-                ],
-                want,
-                "the window must be exactly where it was"
-            );
-        }
-
-        let out = do_window(&args("restore"));
-        let sc: Value = serde_json::from_str(&out).expect("outer");
-        let sc = sc.get("structuredContent").cloned().expect("payload");
-        assert_eq!(sc["ok"], Value::from(false), "restore: {sc}");
+        assert_eq!(unsafe { IsZoomed(h) }, 0, "restore un-zooms the window");
         assert_eq!(
-            sc["code"].as_str(),
-            Some("no_foreground_policy"),
-            "a flagged restore must be typed: {sc}"
+            placement_rect(h),
+            want_placement,
+            "placement restored exactly"
         );
-        if fg_before != 0 {
-            assert_eq!(
-                crate::fixture::foreground_now(),
-                fg_before,
-                "refusals must not activate"
-            );
-        }
-        println!("LIVE_REPEAT_MAXIMIZE_OK refused=3x foreground={fg_before}");
+        assert_eq!(
+            window_rect(h),
+            want_screen,
+            "the window must be exactly where it was"
+        );
+        println!("LIVE_REPEAT_MAXIMIZE_OK maximize=2x allowed restore=1x geometry={want_screen:?} fg_before={fg_before}");
     }
 
     /// The recovery state survives a failed restore: source-pinned so a
@@ -832,7 +949,7 @@ mod tests {
             width: None,
             height: None,
             target: Some(serde_json::json!({ "hwnd": hi })),
-            allow_foreground: true,
+            allow_foreground: false,
         };
         let call = |action: &str| -> Value {
             let out = do_window(&args(action));
@@ -885,7 +1002,7 @@ mod tests {
         let _g = crate::fixture::desktop();
         let f = crate::fixture::Fixture::new();
         let h = f.hwnd();
-        for flag in [false, true] {
+        for flag in [false] {
             let out = do_window(&WinArgs {
                 action: "maximize".to_string(),
                 title: None,
@@ -929,5 +1046,108 @@ mod tests {
         assert_eq!(checked_i32(-10, "y").unwrap(), -10);
         assert_eq!(checked_i32(i32::MAX as i64, "width").unwrap(), i32::MAX);
         assert_eq!(checked_i32(i32::MIN as i64, "x").unwrap(), i32::MIN);
+    }
+    #[test]
+    fn verb_needs_foreground_only_for_focus_and_maximize() {
+        assert!(verb_needs_foreground("focus"));
+        assert!(verb_needs_foreground("maximize"));
+        for v in [
+            "move",
+            "resize",
+            "minimize",
+            "restore",
+            "close",
+            "topmost",
+            "wait",
+            "focus_window",
+            "unknown",
+        ] {
+            assert!(
+                !verb_needs_foreground(v),
+                "{v} must not take the foreground"
+            );
+        }
+    }
+
+    #[test]
+    fn allow_foreground_false_refuses_focus_and_maximize_but_not_the_other_verbs() {
+        for v in ["focus", "maximize"] {
+            assert_eq!(
+                foreground_decision(v, false),
+                VerbDecision::RefuseForeground,
+                "{v} without the flag must be refused"
+            );
+        }
+        for v in ["move", "resize", "minimize", "restore", "close", "topmost"] {
+            assert_eq!(
+                foreground_decision(v, false),
+                VerbDecision::Proceed,
+                "{v} must proceed with no flag"
+            );
+        }
+        let e = foreground_refusal("focus");
+        assert_eq!(e.code, crate::gate::NO_FOREGROUND_POLICY);
+        let t = e.text();
+        assert!(t.contains("allow_foreground:true"), "{t}");
+        assert!(t.contains("window action:focus"), "{t}");
+        assert!(t.contains("it takes the foreground"), "{t}");
+        assert!(!t.contains("would take the foreground"), "{t}");
+        let e = foreground_refusal("maximize");
+        assert!(e.text().contains("window action:maximize"), "{}", e.text());
+    }
+
+    #[test]
+    fn allow_foreground_true_does_not_refuse_any_verb_before_dispatch() {
+        for v in [
+            "focus", "maximize", "move", "resize", "minimize", "restore", "close", "topmost",
+        ] {
+            assert_eq!(
+                foreground_decision(v, true),
+                VerbDecision::Proceed,
+                "allow_foreground:true must not refuse {v}"
+            );
+        }
+    }
+
+    /// LIVE opt-in (ignored by default): activating the fixture really takes
+    /// the foreground and the reply reports the measured before/after. Run with
+    /// cargo test -p desktop-engine --lib live_focus_with_allow_foreground -- --ignored --nocapture.
+    #[test]
+    #[ignore]
+    fn live_focus_with_allow_foreground_activates_and_reports() {
+        let _g = crate::fixture::desktop();
+        let f = crate::fixture::Fixture::new();
+        let hi = f.hwnd() as i64;
+        let before = crate::fixture::foreground_now();
+        let out = do_window(&WinArgs {
+            action: "focus".to_string(),
+            title: None,
+            hwnd: None,
+            x: None,
+            y: None,
+            width: None,
+            height: None,
+            target: Some(serde_json::json!({ "hwnd": hi })),
+            allow_foreground: true,
+        });
+        let outer: Value = serde_json::from_str(&out).expect("outer frame");
+        let sc = outer.get("structuredContent").expect("payload");
+        assert_eq!(sc["ok"], Value::from(true), "focus: {sc}");
+        assert_eq!(
+            crate::fixture::foreground_now(),
+            hi,
+            "fixture became foreground"
+        );
+        assert_eq!(sc["foregroundBefore"], Value::from(before));
+        assert_eq!(sc["foregroundAfter"], Value::from(hi));
+        assert_eq!(sc["foregroundChanged"], Value::from(true));
+        assert_eq!(sc["foregroundUnchanged"], Value::from(false));
+        // Leave the owner foreground exactly as we found it.
+        if before != 0 {
+            unsafe {
+                SetForegroundWindow(before as HWND);
+            }
+        }
+        println!("LIVE_FOCUS_OK before={before} after={hi} changed=true");
     }
 }

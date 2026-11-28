@@ -46,7 +46,9 @@ struct Fixture {
 impl Fixture {
     fn start() -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture");
-        listener.set_nonblocking(true).expect("nonblocking listener");
+        listener
+            .set_nonblocking(true)
+            .expect("nonblocking listener");
         let port = listener.local_addr().expect("addr").port();
         let stop = Arc::new(AtomicBool::new(false));
         let flag = stop.clone();
@@ -93,9 +95,17 @@ fn serve(mut stream: TcpStream) -> std::io::Result<()> {
     let path = request.split_whitespace().nth(1).unwrap_or("/");
     let (status, ctype, body) = match path {
         "/" => ("200 OK", "text/html; charset=utf-8", INDEX.to_string()),
-        "/network.json" => ("200 OK", "application/json; charset=utf-8", JSON.to_string()),
+        "/network.json" => (
+            "200 OK",
+            "application/json; charset=utf-8",
+            JSON.to_string(),
+        ),
         "/favicon.ico" => ("204 No Content", "text/plain", String::new()),
-        _ => ("404 Not Found", "text/plain", "<h1>missing</h1>".to_string()),
+        _ => (
+            "404 Not Found",
+            "text/plain",
+            "<h1>missing</h1>".to_string(),
+        ),
     };
     let response = format!(
         "HTTP/1.1 {status}\r\nContent-Type: {ctype}\r\nContent-Length: {}\r\n\
@@ -157,10 +167,7 @@ fn ctx_fetch(s: &mut Session, name: &str) -> String {
         json!({"action": "eval", "name": name, "expression": expr}),
     );
     assert!(!is_error(&r), "context fetch failed: {}", text_of(&r));
-    structured(&r)["value"]
-        .as_str()
-        .unwrap_or("")
-        .to_string()
+    structured(&r)["value"].as_str().unwrap_or("").to_string()
 }
 
 #[test]
@@ -208,7 +215,11 @@ fn mock_fulfils_the_paused_request_and_restore_reverts_it() {
     );
 
     let restored = net(&mut s, json!({"action": "restore"}));
-    assert!(!is_error(&restored), "restore failed: {}", text_of(&restored));
+    assert!(
+        !is_error(&restored),
+        "restore failed: {}",
+        text_of(&restored)
+    );
     assert_eq!(structured(&restored)["offline"], false, "{restored}");
 
     click_fetch(&mut s);
@@ -236,7 +247,11 @@ fn offline_fails_the_fetch_and_restore_lifts_it() {
     );
 
     let restored = net(&mut s, json!({"action": "restore"}));
-    assert!(!is_error(&restored), "restore failed: {}", text_of(&restored));
+    assert!(
+        !is_error(&restored),
+        "restore failed: {}",
+        text_of(&restored)
+    );
 
     click_fetch(&mut s);
     assert_eq!(
@@ -262,7 +277,11 @@ fn abort_fails_the_fetch_and_restore_lifts_it() {
     );
 
     let restored = net(&mut s, json!({"action": "restore"}));
-    assert!(!is_error(&restored), "restore failed: {}", text_of(&restored));
+    assert!(
+        !is_error(&restored),
+        "restore failed: {}",
+        text_of(&restored)
+    );
 
     click_fetch(&mut s);
     assert_eq!(
@@ -299,11 +318,22 @@ fn a_context_route_dies_with_its_context() {
     );
     assert!(!is_error(&armed), "scoped mock failed: {}", text_of(&armed));
 
-    let destroyed = s.call("browser_context", json!({"action": "destroy", "name": "netjar"}));
-    assert!(!is_error(&destroyed), "destroy failed: {}", text_of(&destroyed));
+    let destroyed = s.call(
+        "browser_context",
+        json!({"action": "destroy", "name": "netjar"}),
+    );
+    assert!(
+        !is_error(&destroyed),
+        "destroy failed: {}",
+        text_of(&destroyed)
+    );
 
     let after = net(&mut s, json!({"action": "restore", "context": id}));
-    assert!(!is_error(&after), "restore after teardown failed: {}", text_of(&after));
+    assert!(
+        !is_error(&after),
+        "restore after teardown failed: {}",
+        text_of(&after)
+    );
     assert_eq!(
         structured(&after)["removed"],
         0,
@@ -341,7 +371,11 @@ fn restore_with_no_active_route_reports_removed_zero() {
     let _serial = serial();
     let mut s = Session::spawn();
     let resp = net(&mut s, json!({"action": "restore"}));
-    assert!(!is_error(&resp), "restore with nothing armed: {}", text_of(&resp));
+    assert!(
+        !is_error(&resp),
+        "restore with nothing armed: {}",
+        text_of(&resp)
+    );
     let sc = structured(&resp);
     assert_eq!(sc["removed"], 0, "nothing to remove: {sc}");
     assert_eq!(sc["offline"], false, "offline stays off: {sc}");
@@ -360,11 +394,18 @@ fn restore_is_idempotent_after_a_real_route() {
 
     let first = net(&mut s, json!({"action": "restore"}));
     assert!(!is_error(&first), "first restore: {}", text_of(&first));
-    assert!(structured(&first)["removed"].as_u64().unwrap_or(0) >= 1, "route removed: {first}");
+    assert!(
+        structured(&first)["removed"].as_u64().unwrap_or(0) >= 1,
+        "route removed: {first}"
+    );
 
     let second = net(&mut s, json!({"action": "restore"}));
     assert!(!is_error(&second), "second restore: {}", text_of(&second));
-    assert_eq!(structured(&second)["removed"], 0, "restore is idempotent: {second}");
+    assert_eq!(
+        structured(&second)["removed"],
+        0,
+        "restore is idempotent: {second}"
+    );
 }
 
 #[test]
@@ -390,7 +431,10 @@ fn abort_is_scoped_to_the_named_context() {
 
     let a = ctx_fetch(&mut s, "neta");
     let b = ctx_fetch(&mut s, "netb");
-    assert!(a.starts_with("error:"), "the routed context sees the abort: {a}");
+    assert!(
+        a.starts_with("error:"),
+        "the routed context sees the abort: {a}"
+    );
     assert_eq!(b, "value:real", "the other context keeps real network: {b}");
 
     let destroyed = s.call("browser_context", json!({"action": "destroy_all"}));

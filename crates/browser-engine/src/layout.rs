@@ -204,7 +204,11 @@ async fn resolve(
             let n = count.as_i64().unwrap_or(0).max(0) as usize;
             for i in 0..n {
                 out.push(Node {
-                    label: if n > 1 { format!("{s}[{i}]") } else { s.clone() },
+                    label: if n > 1 {
+                        format!("{s}[{i}]")
+                    } else {
+                        s.clone()
+                    },
                     key: s.clone(),
                     selector: s.clone(),
                     index: i,
@@ -505,7 +509,6 @@ fn visible_of(info: &Value, has_box: bool) -> bool {
         .unwrap_or(1.0);
     has_box && display != "none" && vis != "hidden" && vis != "collapse" && opacity > 0.0
 }
-
 
 /// Parsed `checks` input.
 struct Checks {
@@ -1003,7 +1006,6 @@ async fn assert_layout_inner(
     Ok(out)
 }
 
-
 /// `layout`: boxes, scroll sizes, computed visibility and overlapping pairs
 /// for every match of the requested selectors/refs.
 pub async fn layout(
@@ -1034,23 +1036,17 @@ pub async fn layout(
         let info = element_info(browser, node, &[], frame).await?;
         let geom = box_geom(browser, node.node_id, frame).await?;
         let Some(info) = info else { continue };
-        let (scroll_x, scroll_y) = match realm_eval(
-            browser,
-            "layout",
-            frame,
-            "[window.scrollX, window.scrollY]",
-        )
-        .await
-        {
-            Ok(v) => {
-                let a = v.as_array().cloned().unwrap_or_default();
-                (
-                    a.first().and_then(|x| x.as_f64()).unwrap_or(0.0),
-                    a.get(1).and_then(|x| x.as_f64()).unwrap_or(0.0),
-                )
-            }
-            Err(e) => return Err(ToolErr::from(e)),
-        };
+        let (scroll_x, scroll_y) =
+            match realm_eval(browser, "layout", frame, "[window.scrollX, window.scrollY]").await {
+                Ok(v) => {
+                    let a = v.as_array().cloned().unwrap_or_default();
+                    (
+                        a.first().and_then(|x| x.as_f64()).unwrap_or(0.0),
+                        a.get(1).and_then(|x| x.as_f64()).unwrap_or(0.0),
+                    )
+                }
+                Err(e) => return Err(ToolErr::from(e)),
+            };
         let js_rect = info.get("rect").and_then(rect_of).unwrap_or(Rect {
             x: 0.0,
             y: 0.0,

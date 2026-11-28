@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>accordion</title>
+<style>body{font:16px/1.4 system-ui,sans-serif;margin:16px}button{margin:4px}output{display:block;margin-top:12px}</style>
+</head><body>
+<button id="s" aria-expanded="false" aria-controls="p">Section 1</button><div id="p" hidden>Panel one</div><output id="out">idle</output>
+<script>
+const b=document.getElementById('s'),p=document.getElementById('p');b.onclick=()=>{const open=b.getAttribute('aria-expanded')==='true';b.setAttribute('aria-expanded',String(!open));p.hidden=open;document.getElementById('out').textContent=!open?'expanded':'collapsed';};
+</script>
+</body></html>

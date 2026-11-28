@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>swipe-to-reveal</title>
+<style>body{font:16px/1.4 system-ui,sans-serif;margin:16px}button{margin:4px}output{display:block;margin-top:12px}</style>
+</head><body>
+<div id="row">Row <button id="del" hidden>Delete</button></div><button id="rv">Reveal action</button><output id="out">idle</output>
+<script>
+document.getElementById('rv').onclick=()=>{document.getElementById('del').hidden=false;document.getElementById('out').textContent='visible';};
+</script>
+</body></html>

@@ -26,7 +26,8 @@ fn navigate_to_a_dead_port_is_not_a_blank_success() {
     );
     let code = structured(&nav)["code"].as_str().unwrap_or("").to_string();
     assert_eq!(
-        code, "blank_load",
+        code,
+        "blank_load",
         "a requested page that never loaded must carry the typed code: {}",
         text_of(&nav)
     );

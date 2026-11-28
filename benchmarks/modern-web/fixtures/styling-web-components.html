@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>styling-web-components</title>
+<style>body{font:16px/1.4 system-ui,sans-serif;margin:16px}button{margin:4px}output{display:block;margin-top:12px}</style>
+</head><body>
+<my-badge id="b"></my-badge><button id="s">Style badge</button><output id="out">idle</output>
+<script>
+class Badge extends HTMLElement{connectedCallback(){this.attachShadow({mode:'open'}).innerHTML='<span>Badge</span>';}}customElements.define('my-badge',Badge);document.getElementById('s').onclick=()=>{document.getElementById('b').setAttribute('data-variant','accent');document.getElementById('out').textContent='accent';};
+</script>
+</body></html>

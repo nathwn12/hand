@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>style-parent-with-has</title>
+<style>body{font:16px/1.4 system-ui,sans-serif;margin:16px}button{margin:4px}output{display:block;margin-top:12px}
+#card:has(#c:checked){outline:2px solid rgb(0,0,255)}</style>
+</head><body>
+<div id="card"><label><input type="checkbox" id="c"> Enable</label></div><output id="out">idle</output>
+<script>
+document.getElementById('c').onchange=e=>{document.getElementById('out').textContent=getComputedStyle(document.getElementById('card')).outlineStyle;};
+</script>
+</body></html>

@@ -1,0 +1,110 @@
+[
+  {
+    "id": "negative-wrong-name",
+    "url": "/fixtures/negative-wrong-name.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Save"
+      }
+    ],
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Save"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "saved"
+          },
+          "timeoutMs": 800
+        }
+      }
+    ],
+    "expectedFailure": {
+      "stage": "snapshot",
+      "detail": "expectSnapshot missing"
+    }
+  },
+  {
+    "id": "negative-dialog-never-opens",
+    "url": "/fixtures/negative-dialog-never-opens.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Open dialog"
+      }
+    ],
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Open dialog"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#out",
+          "expected": {
+            "text": "open"
+          },
+          "timeoutMs": 800
+        }
+      }
+    ],
+    "expectedFailure": {
+      "stage": "expect",
+      "detail": "verdict=false"
+    }
+  },
+  {
+    "id": "negative-expanded-never-flips",
+    "url": "/fixtures/negative-expanded-never-flips.html",
+    "expectSnapshot": [
+      {
+        "role": "button",
+        "name": "Toggle panel"
+      }
+    ],
+    "act": [
+      {
+        "tool": "browser_click",
+        "args": {
+          "element": "@ref:Toggle panel"
+        }
+      }
+    ],
+    "expect": [
+      {
+        "tool": "browser_assert",
+        "args": {
+          "kind": "dom",
+          "target": "#b",
+          "expected": {
+            "attribute": {
+              "name": "aria-expanded",
+              "value": "true"
+            }
+          },
+          "timeoutMs": 800
+        }
+      }
+    ],
+    "expectedFailure": {
+      "stage": "expect",
+      "detail": "verdict=false"
+    }
+  }
+]

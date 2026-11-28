@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>accessibility</title>
+<style>body{font:16px/1.4 system-ui,sans-serif;margin:16px}button{margin:4px}output{display:block;margin-top:12px}
+</style>
+</head><body>
+<main><h1>Page title</h1><button id="go" aria-label="Start now">Go</button></main><output id="out">idle</output>
+<script>
+document.getElementById('go').onclick=()=>{document.getElementById('out').textContent='started';};
+</script>
+</body></html>

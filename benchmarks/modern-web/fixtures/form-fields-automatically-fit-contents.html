@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>form-fields-automatically-fit-contents</title>
+<style>body{font:16px/1.4 system-ui,sans-serif;margin:16px}button{margin:4px}output{display:block;margin-top:12px}</style>
+</head><body>
+<label for="t">Title</label><input id="t" size="4"><output id="out">idle</output>
+<script>
+document.getElementById('t').addEventListener('input',e=>{e.target.style.width=String(e.target.value.length)+'ch';document.getElementById('out').textContent=e.target.style.width;});
+</script>
+</body></html>
