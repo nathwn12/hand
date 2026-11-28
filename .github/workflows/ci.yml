@@ -70,7 +70,7 @@ jobs:
           key: ci-static-stable
           shared-key: hand-static
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         if: steps.scope.outputs.code == 'true'
         with:
           node-version: 22

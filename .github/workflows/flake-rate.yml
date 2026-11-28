@@ -51,7 +51,7 @@ jobs:
       - name: Provision pinned browser
         shell: pwsh
         run: powershell -ExecutionPolicy Bypass -File crates\browser-engine\scripts\fetch-chromium.ps1
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       # continue-on-error lives only here: every run executes even when an
