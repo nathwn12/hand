@@ -5,11 +5,10 @@
 # never the trigger. The file list comes from the GitHub API, never from a
 # checkout of untrusted PR code, and every checkout is fetch-depth: 1.
 #
-# Toolchain: hand declares rust-version 1.88, but the current tree uses
-# AtomicU32::try_update (stable since 1.95), so a 1.88 pin cannot compile
-# today. publish.yml already uses stable; CI follows that until the owning
-# lane either replaces the call or raises rust-version and adds a toolchain
-# pin. No rust-toolchain.toml is added here for that reason.
+# Toolchain: the manifest declares rust-version 1.95 because the tree uses
+# AtomicU32::try_update (stable since 1.95), so nothing older compiles.
+# No rust-toolchain.toml is added here: CI and publish both follow stable,
+# which is always at or above that floor.
 name: ci
 
 on:
