@@ -62,7 +62,13 @@ jobs:
       - name: Provision pinned browser
         shell: pwsh
         run: powershell -ExecutionPolicy Bypass -File crates\browser-engine\scripts\fetch-chromium.ps1
-      - run: cargo test --locked -p browser-engine
+      # One test thread: every test here launches a real Chromium, and
+      # concurrent launches on a 4-core runner abort each other's first
+      # navigation with net::ERR_ABORTED (the failing test name moves between
+      # runs). browser_rows and desktop_matrix below are serialised for the
+      # same reason. Drop this only if parallel launches are proven clean on
+      # the runner.
+      - run: cargo test --locked -p browser-engine -- --test-threads=1
       - run: cargo test -p hand --test browser_rows -- --test-threads=1
       - run: cargo test -p hand --test desktop_matrix -- --test-threads=1
       - run: cargo build --locked --release

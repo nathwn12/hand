@@ -172,7 +172,9 @@ jobs:
         run: cargo test --locked -p mjpeg-avi
       - name: browser-engine
         if: steps.scope.outputs.browser == 'true' || steps.scope.outputs.full == 'true'
-        run: cargo test --locked -p browser-engine
+        # One test thread: each test launches a real Chromium, and concurrent
+        # launches abort each other's first navigation with net::ERR_ABORTED.
+        run: cargo test --locked -p browser-engine -- --test-threads=1
       - name: desktop-engine
         if: steps.scope.outputs.desktop == 'true' || steps.scope.outputs.full == 'true'
         run: cargo test --locked -p desktop-engine -- --skip live_
