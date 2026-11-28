@@ -10,6 +10,16 @@ use serde_json::{json, Value};
 pub const BROWSER_PREFIX: &str = "browser_";
 pub const DESKTOP_PREFIX: &str = "desktop_";
 
+/// Reserved, optional property that carries a pin's cross-field argument rules
+/// once they are lifted off the schema root. MCP clients validate a function's
+/// parameters as a plain object root: `oneOf`/`anyOf`/`allOf`/`enum`/`const`/`not`
+/// there rejects the whole session, while the same keywords inside `properties`
+/// are legal. Nothing is required to use this property and the engine's own
+/// argument validation is untouched.
+pub const CONSTRAINT_PROPERTY: &str = "__argumentConstraints";
+
+const TOP_LEVEL_COMBINATORS: [&str; 6] = ["oneOf", "anyOf", "allOf", "enum", "const", "not"];
+
 /// The 25 Gladius tools, in catalog order, followed by hand's own additions:
 /// `context` (isolated contexts), the two pointer primitives that had no
 /// legacy tool (`wheel`, `drag`), `form` (ordered form batches) and
@@ -119,6 +129,32 @@ fn present(tool: &mut Value) {
     }
 }
 
+/// Lift the root-level combinators of one tool body into a reserved property.
+/// Every original property, description and `required` entry is copied verbatim;
+/// only the illegal root keywords move, so runtime validation is unchanged.
+fn normalize_input_schema(tool: &mut Value) {
+    let Some(schema) = tool.get_mut("inputSchema").and_then(Value::as_object_mut) else {
+        return;
+    };
+    let mut moved = serde_json::Map::new();
+    for key in TOP_LEVEL_COMBINATORS {
+        if let Some(value) = schema.remove(key) {
+            moved.insert(key.to_string(), value);
+        }
+    }
+    if moved.is_empty() {
+        return;
+    }
+    if schema.get("properties").is_none() {
+        schema.insert("properties".to_string(), json!({}));
+    }
+    let props = schema
+        .get_mut("properties")
+        .and_then(Value::as_object_mut)
+        .expect("tool inputSchema.properties must be an object");
+    props.insert(CONSTRAINT_PROPERTY.to_string(), Value::Object(moved));
+}
+
 fn prefixed(prefix: &str, tools: Value) -> Vec<Value> {
     tools
         .get("tools")
@@ -136,6 +172,7 @@ fn prefixed(prefix: &str, tools: Value) -> Vec<Value> {
                         }
                     }
                     present(&mut tool);
+                    normalize_input_schema(&mut tool);
                     tool
                 })
                 .collect()

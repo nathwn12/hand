@@ -146,7 +146,7 @@ fn instructions() -> String {
                 props
                     .keys()
                     .map(String::as_str)
-                    .filter(|key| !required.contains(key))
+                    .filter(|key| *key != catalog::CONSTRAINT_PROPERTY && !required.contains(key))
                     .collect()
             })
             .unwrap_or_default();
@@ -390,6 +390,37 @@ fn meta_version(v: &Value) -> Option<Value> {
         .cloned()
 }
 
+/// Add the mandatory 2026-07-28 completion marker to a successful result.
+/// Earlier revisions keep their original body: the absent-means-complete
+/// bridge belongs to the client, not to us, and must not be preempted.
+fn add_result_type(mut result: Value, modern: bool) -> Value {
+    if modern {
+        if let Some(obj) = result.as_object_mut() {
+            obj.insert("resultType".to_string(), json!("complete"));
+        }
+    }
+    result
+}
+
+/// Skills and resources are embedded by `build.rs`: build-time content cannot
+/// change within a build. Zero TTL and private scope are the conservative hints;
+/// `resultType` is required by the skills extension on these results whatever
+/// revision the peer negotiated.
+fn static_content_meta(result: &mut Value) {
+    if let Some(obj) = result.as_object_mut() {
+        obj.insert("resultType".to_string(), json!("complete"));
+        obj.insert("ttlMs".to_string(), json!(0));
+        obj.insert("cacheScope".to_string(), json!("private"));
+    }
+}
+
+/// A request is modern when its `_meta` says so OR when `initialize` on this
+/// connection negotiated 2026-07-28. The second case is the one OpenCode uses.
+async fn modern_peer(state: &Arc<State>, requested: &Option<Value>) -> bool {
+    requested.as_ref().and_then(|v| v.as_str()) == Some(MODERN)
+        || state.negotiated_version.lock().await.as_deref() == Some(MODERN)
+}
+
 struct BrowserCall {
     tool: String,
     /// The request's protocol version, so a cancellation answered later still
@@ -577,6 +608,10 @@ struct State {
     browser_calls: Arc<Mutex<HashMap<String, Arc<BrowserCall>>>>,
     desktop_calls: Arc<Mutex<HashMap<String, Arc<DesktopCall>>>>,
     tasks: Mutex<Vec<WorkerTask>>,
+    /// Version `initialize` actually echoed on this connection. A modern peer
+    /// does not repeat its version in `_meta` on every later request, so the
+    /// negotiated value must decide which results carry modern fields.
+    negotiated_version: Arc<Mutex<Option<String>>>,
 }
 
 impl State {
@@ -593,6 +628,7 @@ impl State {
             browser_calls: Arc::new(Mutex::new(HashMap::new())),
             desktop_calls: Arc::new(Mutex::new(HashMap::new())),
             tasks: Mutex::new(Vec::new()),
+            negotiated_version: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -882,28 +918,32 @@ async fn handle_frame(value: Value, state: &Arc<State>, tx: &mpsc::UnboundedSend
             return;
         }
     }
-    let modern = requested.as_ref().and_then(|v| v.as_str()) == Some(MODERN);
+    let mut modern = modern_peer(state, &requested).await;
 
     match method.as_str() {
         "initialize" => {
             let params = value.get("params").cloned().unwrap_or(Value::Null);
-            let _ = tx.send(result_frame(&id, handshake_result(&params)));
+            let result = handshake_result(&params);
+            let echoed = result["protocolVersion"]
+                .as_str()
+                .unwrap_or(LATEST_LEGACY)
+                .to_string();
+            modern = echoed == MODERN;
+            *state.negotiated_version.lock().await = Some(echoed);
+            let _ = tx.send(result_frame(&id, add_result_type(result, modern)));
         }
         "server/discover" => {
             let _ = tx.send(result_frame(&id, discover_result(modern)));
         }
         "ping" => {
-            let _ = tx.send(result_frame(&id, json!({})));
+            let _ = tx.send(result_frame(&id, add_result_type(json!({}), modern)));
         }
         "tools/list" => {
             let mut result = catalog::combined_list();
             if modern {
-                if let Some(obj) = result.as_object_mut() {
-                    obj.insert("resultType".to_string(), json!("complete"));
-                }
                 add_cache_hints(&mut result);
             }
-            let _ = tx.send(result_frame(&id, result));
+            let _ = tx.send(result_frame(&id, add_result_type(result, modern)));
         }
         "tools/call" => {
             let params = value.get("params").cloned().unwrap_or(Value::Null);
@@ -932,6 +972,10 @@ async fn handle_frame(value: Value, state: &Arc<State>, tx: &mpsc::UnboundedSend
                     let _ = tx.send(error_frame(&id, -32602, "unknown skill uri"));
                 }
             }
+        }
+        "resources/list" => {
+            let params = value.get("params").cloned().unwrap_or(Value::Null);
+            let _ = tx.send(result_frame(&id, resources_list_result(&params)));
         }
         "resources/read" => {
             let params = value.get("params").cloned().unwrap_or(Value::Null);
@@ -1465,7 +1509,11 @@ mod tests {
 }
 
 fn skills_list_result() -> Value {
-    let mut skills: Vec<Value> = Vec::new();
+    let mut result = json!({ "skills": Vec::<Value>::new() });
+    static_content_meta(&mut result);
+    let Some(skills) = result.get_mut("skills").and_then(|s| s.as_array_mut()) else {
+        return result;
+    };
     for name in skill_names() {
         if let Some(skill) = build_skill(&name) {
             skills.push(skill);
@@ -1476,11 +1524,7 @@ fn skills_list_result() -> Value {
         let ub = b.get("uri").and_then(|v| v.as_str()).unwrap_or("");
         ua.cmp(ub)
     });
-    json!({
-        "skills": skills,
-        "ttlMs": 0,
-        "cacheScope": "private"
-    })
+    result
 }
 
 fn skills_get_result(uri: &str) -> Result<Value, ()> {
@@ -1496,11 +1540,41 @@ fn skills_get_result(uri: &str) -> Result<Value, ()> {
     if built_uri != uri {
         return Err(());
     }
-    Ok(json!({
-        "skill": built,
-        "ttlMs": 0,
-        "cacheScope": "private"
-    }))
+    let mut result = json!({ "skill": built });
+    static_content_meta(&mut result);
+    Ok(result)
+}
+
+fn resources_list_result(params: &Value) -> Value {
+    let filter = params.get("uri").and_then(|u| u.as_str());
+    let mut resources: Vec<Value> = Vec::new();
+    for name in skill_names() {
+        if let Some(skill) = build_skill(&name) {
+            for entry in skill["resources"].as_array().into_iter().flatten() {
+                let Some(uri) = entry["uri"].as_str() else {
+                    continue;
+                };
+                if filter.is_some_and(|want| !uri.starts_with(want)) {
+                    continue;
+                }
+                let name = uri.rsplit('/').next().unwrap_or(uri).to_string();
+                let mime = if uri.ends_with(".md") {
+                    "text/markdown"
+                } else {
+                    "application/octet-stream"
+                };
+                resources.push(json!({ "uri": uri, "name": name, "mimeType": mime }));
+            }
+        }
+    }
+    resources.sort_by(|a, b| {
+        let ua = a["uri"].as_str().unwrap_or("");
+        let ub = b["uri"].as_str().unwrap_or("");
+        ua.cmp(ub)
+    });
+    let mut result = json!({ "resources": resources });
+    static_content_meta(&mut result);
+    result
 }
 
 fn resources_read_result(uri: &str) -> Result<Value, ()> {
@@ -1526,7 +1600,9 @@ fn resources_read_result(uri: &str) -> Result<Value, ()> {
             "blob": base64_encode(file.bytes)
         }])
     };
-    Ok(json!({ "contents": contents }))
+    let mut result = json!({ "contents": contents });
+    static_content_meta(&mut result);
+    Ok(result)
 }
 
 fn parse_skill_uri(uri: &str) -> Option<(String, String)> {
