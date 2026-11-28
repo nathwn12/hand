@@ -5,7 +5,8 @@
 //   node npm/release.mjs --publish    # gate, build, pack, handshake, publish, registry read-back
 //                                     # --publish runs npm login itself when the session is absent
 //   node npm/release.mjs --trust      # bind GitHub Actions as npm trusted publisher
-//   node npm/release.mjs --check      # read-only artifact proof (preflight, build, pack, version, handshake, data: navigation; loopback advisory)
+//   node npm/release.mjs --check      # read-only artifact proof (preflight, build, pack, version, handshake, data: navigation, protocol rules; loopback advisory)
+//                                     # --bin <path> checks an installed launcher or executable instead of the packed tarball
 //   node npm/release.mjs --status     # read-only npm user, registry, tag and trust state
 //   node npm/release.mjs <mode> --visible  # visible passkey window; parent waits for its exit marker
 // publish is idempotent: a version already on the registry is a skip only when
@@ -53,7 +54,18 @@ export const HISTORICAL_RELEASE_IDENTITY = Object.freeze({
 });
 
 const argv = process.argv.slice(2);
-const KNOWN = new Set(['--initial', '--publish', '--trust', '--check', '--status', '--visible', '--ci', '--skip-build']);
+// --bin points --check at an already-installed artifact: a JS launcher (run
+// with node) or a native executable. It is check-only; publish always proves
+// the exact artifact it is about to upload.
+let binOverride = null;
+const binIndex = argv.indexOf('--bin');
+if (binIndex >= 0) {
+  const value = argv[binIndex + 1];
+  if (!value || value.startsWith('--')) usage('--bin needs a path');
+  binOverride = resolve(process.cwd(), value);
+  argv.splice(binIndex, 2);
+}
+const KNOWN = new Set(['--initial', '--publish', '--trust', '--check', '--status', '--visible', '--ci', '--skip-build', '--bin']);
 const unknown = argv.filter((a) => !KNOWN.has(a));
 if (unknown.length) usage(`unknown flag: ${unknown.join(' ')}`);
 const ci = argv.includes('--ci');
@@ -61,6 +73,7 @@ const skipBuild = argv.includes('--skip-build');
 const visible = argv.includes('--visible');
 const check = argv.includes('--check');
 const status = argv.includes('--status');
+if (binOverride && !check) usage('--bin belongs to --check only');
 const chosen = ['--initial', '--publish', '--trust'].filter((f) => argv.includes(f));
 if ((check || status) && (chosen.length || ci)) usage('choose one mode: --check and --status are read-only');
 if (ci && !(chosen.length === 1 && chosen[0] === '--publish')) usage('--ci belongs to --publish only');
@@ -69,7 +82,8 @@ const modes = check || status ? [] : ['--initial', '--publish', '--trust'].filte
 
 function usage(line) {
   console.error(`FAIL usage: ${line}`);
-  console.error('  node npm/release.mjs [--initial | --publish | --trust | --check | --status] [--skip-build] [--visible]');
+  console.error('  node npm/release.mjs [--initial | --publish | --trust | --check | --status] [--skip-build] [--visible] [--bin <path>]');
+  console.error('  --bin is check-only: prove an installed launcher or executable instead of the packed tarball');
   console.error('  no flags = initial, publish, trust in that order');
   console.error('  --visible opens a passkey window for initial, publish or trust');
   process.exit(64);
@@ -333,27 +347,106 @@ function preflight({ allowDirty = false } = {}) {
   return head;
 }
 
+// Provider-enforced rules the old artifact proof never exercised. Every
+// failure is one printable line; collect them all so one run names every
+// defect. Nested schema keywords are legal -- only the root is rejected by
+// Gemini/OpenAI, which refuse the entire tool request before validation.
+function protocolRuleFailures(handshake) {
+  const failures = [];
+  const forbiddenRoot = ['oneOf', 'anyOf', 'allOf', 'enum', 'const', 'not'];
+  for (const tool of handshake.toolSchemas ?? []) {
+    const name = typeof tool?.name === 'string' && tool.name ? tool.name : '<unnamed>';
+    const schema = tool?.schema;
+    if (!schema || typeof schema !== 'object' || Array.isArray(schema)) continue;
+    for (const keyword of forbiddenRoot) {
+      if (Object.prototype.hasOwnProperty.call(schema, keyword)) {
+        failures.push(`tool-schema-combinator ${name}: root carries "${keyword}"`);
+      }
+    }
+  }
+
+  const listed = handshake.skillsList;
+  if (!listed || typeof listed !== 'object' || Array.isArray(listed)) {
+    failures.push('skills/list resultType: no result object');
+  } else {
+    if (listed.resultType !== 'complete') {
+      failures.push(`skills/list resultType: expected "complete", got ${JSON.stringify(listed.resultType)}`);
+    }
+    if (listed.ttlMs === undefined || listed.ttlMs === null) failures.push('skills/list ttlMs: missing');
+    if (listed.cacheScope === undefined || listed.cacheScope === null) failures.push('skills/list cacheScope: missing');
+    if (!Array.isArray(listed.skills)) {
+      failures.push('skills/list skills: expected an array');
+    } else {
+      listed.skills.forEach((skill, index) => {
+        const label = `skills/list skills[${index}]`;
+        if (!skill || typeof skill !== 'object' || Array.isArray(skill)) {
+          failures.push(`${label}: not an object`);
+          return;
+        }
+        // The spec puts the name in frontmatter, never at the entry root.
+        if (typeof skill.uri !== 'string' || !skill.uri) failures.push(`${label} uri: missing`);
+        const name = skill.frontmatter?.name;
+        if (typeof name !== 'string' || !name) failures.push(`${label} frontmatter.name: missing or empty`);
+        if (!Array.isArray(skill.resources)) {
+          failures.push(`${label} resources: expected an array`);
+          return;
+        }
+        skill.resources.forEach((resource, position) => {
+          const rlabel = `${label} resources[${position}]`;
+          if (!resource || typeof resource !== 'object' || Array.isArray(resource)) {
+            failures.push(`${rlabel}: not an object`);
+            return;
+          }
+          if (typeof resource.uri !== 'string' || !resource.uri) failures.push(`${rlabel} uri: missing`);
+          if (typeof resource.digest !== 'string' || !resource.digest) failures.push(`${rlabel} digest: missing`);
+          if (typeof resource.size !== 'number' || !Number.isFinite(resource.size)) failures.push(`${rlabel} size: not numeric`);
+        });
+      });
+    }
+  }
+
+  const got = handshake.skillsGet;
+  if (!got || typeof got !== 'object' || Array.isArray(got)) {
+    failures.push('skills/get resultType: no result object');
+  } else if (got.resultType !== 'complete') {
+    failures.push(`skills/get resultType: expected "complete", got ${JSON.stringify(got.resultType)}`);
+  }
+
+  if (handshake.capabilities && Object.prototype.hasOwnProperty.call(handshake.capabilities, 'resources')
+    && handshake.resourcesListError?.code === -32601) {
+    failures.push(`resources-list-missing: ${JSON.stringify(handshake.resourcesListError)}`);
+  }
+  return failures;
+}
+
 // One pack-and-prove path shared by --publish and --check. Nothing here
 // logs in, publishes, tags or writes to the registry.
-async function packAndVerify(head, noBuild = false) {
-  if (!noBuild) {
-    console.log(`build: cargo build --release (${pkg.version} at ${head.slice(0, 8)})`);
-    step('build', () => execFileSync('cargo', ['build', '--release'], { cwd: repo, stdio: ['ignore', 'inherit', 'inherit'] }));
-  }
-  const work = mkdtempSync(join(tmpdir(), 'hand-release-'));
-  const tarballName = step('pack', () => {
-    const out = npmOut(['pack', '--pack-destination', work], { cwd: here });
-    return out.split(/\r?\n/).filter(Boolean).pop();
-  });
-  const tarball = join(work, tarballName);
-  if (!existsSync(tarball)) fail('pack', `no tarball at ${tarball}`);
+async function packAndVerify(head, noBuild = false, binLauncher = null) {
+  let work, tarballName, tarball, launcher, version, bytes, sha256, files;
+  if (binLauncher) {
+    // The installed artifact is the subject: its own version identity is the
+    // fixture, so build, pack, extract and the HEAD-vs-version proof are skipped.
+    work = dirname(binLauncher);
+    console.log(`check: --bin ${binLauncher} (installed artifact; build and pack skipped)`);
+  } else {
+    if (!noBuild) {
+      console.log(`build: cargo build --release (${pkg.version} at ${head.slice(0, 8)})`);
+      step('build', () => execFileSync('cargo', ['build', '--release'], { cwd: repo, stdio: ['ignore', 'inherit', 'inherit'] }));
+    }
+    work = mkdtempSync(join(tmpdir(), 'hand-release-'));
+    tarballName = step('pack', () => {
+      const out = npmOut(['pack', '--pack-destination', work], { cwd: here });
+      return out.split(/\r?\n/).filter(Boolean).pop();
+    });
+    tarball = join(work, tarballName);
+    if (!existsSync(tarball)) fail('pack', `no tarball at ${tarball}`);
 
-  const extract = join(work, 'package-extract');
-  step('extract', () => execFileSync('tar', ['-xzf', tarball, '-C', work], { stdio: 'ignore' }));
-  const launcher = join(work, 'package', 'bin', 'hand-mcp.js');
-  if (!existsSync(launcher)) fail('extract', 'launcher missing after extract');
-  const version = step('version', () => run(process.execPath, [launcher, '--version'], { cwd: work }));
-  if (!version.includes(head.slice(0, 8))) fail('version', `artifact identity does not match HEAD: ${version}`);
+    step('extract', () => execFileSync('tar', ['-xzf', tarball, '-C', work], { stdio: 'ignore' }));
+    launcher = join(work, 'package', 'bin', 'hand-mcp.js');
+    if (!existsSync(launcher)) fail('extract', 'launcher missing after extract');
+    version = step('version', () => run(process.execPath, [launcher, '--version'], { cwd: work }));
+    if (!version.includes(head.slice(0, 8))) fail('version', `artifact identity does not match HEAD: ${version}`);
+  }
 
   // Prove the packed launcher can navigate, not only answer initialize/tools-list.
   // The loopback fixture is advisory: a VM network policy may abort loopback
@@ -391,7 +484,12 @@ async function packAndVerify(head, noBuild = false) {
   };
 
   const handshake = await new Promise((resolvePromise, rejectPromise) => {
-    const child = spawn(process.execPath, [launcher], { cwd: work, stdio: ['pipe', 'pipe', 'pipe'] });
+    // The packed launcher is a JS file; an installed --bin target may be a
+    // native executable. Everything after this line is identical for both.
+    const target = binLauncher ?? launcher;
+    const isScript = /\.m?js$/i.test(target);
+    const child = spawn(isScript ? process.execPath : target, isScript ? [target] : ['mcp'],
+      { cwd: binLauncher ? dirname(binLauncher) : work, stdio: ['pipe', 'pipe', 'pipe'] });
     let buf = '';
     const seen = [];
     // One request in flight at a time: every step after initialize is sent
@@ -403,12 +501,18 @@ async function packAndVerify(head, noBuild = false) {
       { id: 2, label: 'tools/list' },
       { id: 3, label: 'browser_navigate (loopback fixture)' },
       { id: 4, label: 'browser_navigate (data URL)' },
+      { id: 5, label: 'skills/list' },
+      { id: 6, label: 'skills/get' },
+      { id: 7, label: 'resources/list' },
     ];
     const request = (id) => {
       if (id === 1) return { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'release-check', version: '0.0.1' } } };
       if (id === 2) return { jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} };
       if (id === 3) return { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'browser_navigate', arguments: { url: fixtureUrl } } };
-      return { jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'browser_navigate', arguments: { url: dataUrl } } };
+      if (id === 4) return { jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'browser_navigate', arguments: { url: dataUrl } } };
+      if (id === 5) return { jsonrpc: '2.0', id: 5, method: 'skills/list', params: {} };
+      if (id === 6) return { jsonrpc: '2.0', id: 6, method: 'skills/get', params: { uri: 'skill://routing/SKILL.md' } };
+      return { jsonrpc: '2.0', id: 7, method: 'resources/list', params: {} };
     };
     let outstanding = steps[0];
     const send = (step) => {
@@ -445,11 +549,20 @@ async function packAndVerify(head, noBuild = false) {
       const list = seen.find((m) => m.id === 2);
       const loop = seen.find((m) => m.id === 3);
       const data = seen.find((m) => m.id === 4);
+      const skillsList = seen.find((m) => m.id === 5);
+      const skillsGet = seen.find((m) => m.id === 6);
+      const resourcesList = seen.find((m) => m.id === 7);
       resolvePromise({
         code,
         protocol: init?.result?.protocolVersion,
+        capabilities: init?.result?.capabilities,
         tools: list?.result?.tools?.length,
         names: (list?.result?.tools ?? []).map((t) => t.name),
+        toolSchemas: (list?.result?.tools ?? []).map((t) => ({ name: t?.name, schema: t?.inputSchema })),
+        skillsList: skillsList?.result,
+        skillsGet: skillsGet?.result,
+        resourcesList: resourcesList?.result,
+        resourcesListError: resourcesList?.error,
         loopbackError: loop?.result?.isError === true,
         loopbackUrl: navUrl(loop?.result),
         loopbackText: navText(loop?.result),
@@ -492,15 +605,29 @@ async function packAndVerify(head, noBuild = false) {
   console.log(`loopback: url=${JSON.stringify(handshake.loopbackUrl)} error=${JSON.stringify(loopbackDetail)}`);
   if (!loopbackOk) console.log('environmental: loopback navigation aborted on this host');
 
-  console.log(`check: ${tarballName} ${pkg.version} ${head.slice(0, 8)} tools=${handshake.tools} protocol=${handshake.protocol} data=${handshake.dataUrl} loopback=${loopbackOk ? 'ok' : 'environmental'} exit=${handshake.code}`);
-  const bytes = statSync(tarball).size;
-  const sha256 = createHash('sha256').update(readFileSync(tarball)).digest('hex');
-  const files = step('pack-list', () => run('tar', ['-tzf', tarball], { cwd: work })).split(/\r?\n/).filter(Boolean);
+  // The rules clients and model providers enforce, missing from the old gate.
+  // Print every failure before exiting so one run names the whole regression.
+  const ruleFailures = protocolRuleFailures(handshake);
+  for (const line of ruleFailures) console.error(line);
+  if (ruleFailures.length) process.exit(1);
+
+  console.log(`check: ${tarballName ?? binLauncher} ${pkg.version} ${head.slice(0, 8)} tools=${handshake.tools} protocol=${handshake.protocol} data=${handshake.dataUrl} loopback=${loopbackOk ? 'ok' : 'environmental'} exit=${handshake.code}`);
+  if (!binLauncher) {
+    bytes = statSync(tarball).size;
+    sha256 = createHash('sha256').update(readFileSync(tarball)).digest('hex');
+    files = step('pack-list', () => run('tar', ['-tzf', tarball], { cwd: work })).split(/\r?\n/).filter(Boolean);
+  }
   return { work, tarballName, tarball, version, handshake, bytes, sha256, files };
 }
 
 async function checkMode() {
   const head = preflight({ allowDirty: true });
+  if (binOverride) {
+    if (!existsSync(binOverride)) fail('check', `--bin launcher missing: ${binOverride}`);
+    await packAndVerify(head, true, binOverride);
+    console.log('check: all proofs passed; no login, no publish, no tag, no registry write');
+    return;
+  }
   const packed = await packAndVerify(head, skipBuild);
   console.log(`check: tarball ${packed.tarballName} bytes=${packed.bytes} sha256=${packed.sha256}`);
   console.log(`check: packed files (${packed.files.length}):`);
