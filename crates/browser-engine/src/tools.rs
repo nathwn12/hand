@@ -1932,6 +1932,14 @@ async fn tool_navigate(browser: &Browser, url: &str) -> Result<Value, ToolErr> {
     let requested_page = lower.starts_with("http://") || lower.starts_with("https://");
     browser.command("Page.enable", json!({}), true).await?;
     let _ = browser.ensure_network().await;
+    // CI evidence: when Chrome's sandbox cannot read the binary the network
+    // service crashes and restarts, and a first navigation in that window is
+    // cancelled before a socket exists. A cookie read is served by that
+    // service, so wait (bounded, best-effort) until it answers. This is a
+    // readiness probe, not a navigation retry.
+    browser
+        .wait_for_network_service(std::time::Duration::from_secs(2))
+        .await;
     // A fresh target starts on about:blank. Navigating before that initial
     // document has committed crosses a renderer-process boundary; Chrome
     // cancels the swap and Page.navigate answers net::ERR_ABORTED even though

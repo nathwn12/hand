@@ -13,7 +13,11 @@
 
   Owned paths ONLY: the cache root below plus the system temp dir. This
   script never reads, writes, or launches an ambient or shared browser and
-  never touches the user's installed Brave/Edge/Chrome profiles.
+  never touches the user's installed Brave/Edge/Chrome profiles. It does grant
+  the Windows AppContainer SID (ALL APPLICATION PACKAGES, S-1-15-2-1) read and
+  execute on the owned browser tree: without that grant Chrome's sandboxed
+  processes cannot open chrome.exe (0x5), the network service crash-loops,
+  and the first navigation is cancelled before a socket is opened.
 
   Recovery: delete the cache dir shown below (or re-run with -Force) and run
   this script again.
@@ -131,6 +135,49 @@ function Get-RelFiles([string]$Dir) {
     $out += [pscustomobject]@{ Rel = $rel; Full = $f.FullName; Size = $f.Length }
   }
   return $out
+}
+
+function Test-ChromeSandboxAce([string]$Exe) {
+  # Get-Acl renders this capability ACE as an NTAccount named
+  # 'APPLICATION PACKAGE AUTHORITY\ALL APPLICATION PACKAGES', and SDDL renders
+  # it as either the 'AC' alias or the literal SID S-1-15-2-1. Translate()
+  # throws on that NTAccount, so compare the SDDL account field instead.
+  $sddl = (Get-Acl -LiteralPath $Exe).Sddl
+  $idx = $sddl.IndexOf('D:')
+  if ($idx -lt 0) { return $false }
+  $dacl = [regex]::Replace($sddl.Substring($idx + 2), '(O:|G:|S:).*$', '')
+  $need = [int64][System.Security.AccessControl.FileSystemRights]::ReadAndExecute
+  foreach ($m in [regex]::Matches($dacl, '\(([^)]*)\)')) {
+    $f = $m.Groups[1].Value -split ';'
+    if ($f.Count -lt 6 -or $f[0] -ne 'A') { continue }
+    if ($f[5] -ne 'AC' -and $f[5] -ne 'S-1-15-2-1') { continue }
+    $rights = $f[2]
+    if ($rights -match '^0x[0-9a-fA-F]+$') {
+      $mask = [Convert]::ToInt64($rights.Substring(2), 16)
+      if (($mask -band $need) -eq $need) { return $true }
+    } elseif ($rights -match '(RX|FA|GA)') {
+      return $true
+    }
+  }
+  return $false
+}
+
+function Grant-ChromeSandboxRead([string]$Dir, [string]$Exe) {
+  $icacls = Join-Path $env:WINDIR 'System32\icacls.exe'
+  if (-not (Test-Path -LiteralPath $icacls -PathType Leaf)) {
+    Write-Host ('scripts\fetch-chromium.ps1: icacls not found at {0}; refusing to hand out an unverified browser.' -f $icacls)
+    exit 1
+  }
+  & $icacls $Dir '/grant' '*S-1-15-2-1:(OI)(CI)(RX)' '/T' '/Q' | Out-Null
+  if ($LASTEXITCODE -ne 0) {
+    Write-Host ('scripts\fetch-chromium.ps1: sandbox ACL grant FAILED on {0} (icacls exit {1}); refusing to hand out an unverified browser.' -f $Dir, $LASTEXITCODE)
+    exit 1
+  }
+  if (-not (Test-ChromeSandboxAce $Exe)) {
+    Write-Host ('scripts\fetch-chromium.ps1: sandbox read ACE for S-1-15-2-1 (AC) missing on {0} after grant; refusing to hand out an unverified browser.' -f $Exe)
+    exit 1
+  }
+  Write-Host ('sandbox read granted: {0} -> S-1-15-2-1 (RX, verified in SDDL).' -f $Dir)
 }
 
 function Test-PinnedBrowserPresent {
@@ -368,6 +415,7 @@ if ($Update) {
     Write-Host ('total size: {0} -> {1} ({2}{3} bytes)' -f $oldTotalSize, $totalSize, $sign, $sizeDelta)
     Write-Host ('zip sha256: {0} size={1}' -f $newZipHash, $newZipSize)
     Write-Host 'chromium manifest updated and verified.'
+    Grant-ChromeSandboxRead $newCacheDir $newExePath
   } finally {
     if (-not $updPlaced -and (Test-Path -LiteralPath $updStage)) {
       Remove-Item -LiteralPath $updStage -Recurse -Force -ErrorAction SilentlyContinue
@@ -381,7 +429,10 @@ if ($Update) {
 
 $present = Test-PinnedBrowserPresent
 if ($present) {
-  Write-Host ('already present, verified: {0} matches the pin; nothing changed.' -f $ExePath)
+  # Re-applied on every reuse: a cache RESTORE can bring back an ACL that
+  # denies the AppContainer SID even though bytes and hashes are intact.
+  Grant-ChromeSandboxRead $CacheDir $ExePath
+  Write-Host ('already present, verified: {0} matches the pin; sandbox read confirmed; nothing changed.' -f $ExePath)
   exit 0
 }
 
@@ -494,5 +545,6 @@ if (-not (Test-PinnedBrowserPresent)) {
   Write-Host 'scripts\fetch-chromium.ps1: post-place verification FAILED; refusing.'
   exit 1
 }
-Write-Host 'chromium provisioned and verified.'
+Grant-ChromeSandboxRead $CacheDir $ExePath
+Write-Host 'chromium provisioned, verified, and sandbox-readable.'
 Write-Host ("binary: {0}" -f $ExePath)
