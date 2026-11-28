@@ -1915,9 +1915,12 @@ async fn tool_navigate(browser: &Browser, url: &str) -> Result<Value, ToolErr> {
     // A fresh target starts on about:blank. Navigating before that initial
     // document has committed crosses a renderer-process boundary; Chrome
     // cancels the swap and Page.navigate answers net::ERR_ABORTED even though
-    // the destination is up. Settle the current document first, bounded so a
-    // dead peer cannot hold the call: an already-complete page returns at
-    // once, and this is the shared path an agent uses right after launch.
+    // the destination is up. Settle the current document first: a successful
+    // readyState=="complete" eval proves a committed document, which is the
+    // swap precondition, and an already-complete page returns at once. The
+    // 2s cap is the trade - a peer that never answers inside it navigates
+    // WITHOUT that proof rather than hanging the call. Do not raise it to
+    // chase a green run.
     browser
         .wait_for_load(std::time::Duration::from_secs(2))
         .await;
