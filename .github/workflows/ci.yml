@@ -14,8 +14,6 @@ name: ci
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
   pull_request:
 
 permissions:
@@ -23,8 +21,8 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name != 'push' }}
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 env:
   CARGO_INCREMENTAL: '0'
@@ -70,6 +68,8 @@ jobs:
         if: steps.scope.outputs.code == 'true'
         with:
           key: ci-static-stable
+          shared-key: hand-static
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: actions/setup-node@v4
         if: steps.scope.outputs.code == 'true'
         with:
@@ -149,6 +149,8 @@ jobs:
         if: steps.scope.outputs.code == 'true'
         with:
           key: ci-test-stable
+          shared-key: hand-test
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       # hand pins FULL Chrome (chrome-win64/chrome.exe launched with
       # --headless), not chrome-headless-shell. The pin and its integrity root
       # are crates/browser-engine/scripts/chromium-manifest.json; the cache is
