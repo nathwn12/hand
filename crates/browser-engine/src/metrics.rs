@@ -227,7 +227,11 @@ async fn probe_fixture(url: &str) -> String {
     };
     let slash = rest.find('/').unwrap_or(rest.len());
     let authority = &rest[..slash];
-    let path = if slash < rest.len() { &rest[slash..] } else { "/" };
+    let path = if slash < rest.len() {
+        &rest[slash..]
+    } else {
+        "/"
+    };
     let port: u16 = match authority.rsplit(':').next().and_then(|p| p.parse().ok()) {
         Some(p) => p,
         None => return format!("no answer: bad port in {url}"),

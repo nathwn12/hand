@@ -30,7 +30,7 @@ These are the only release commands. `<version>` means the current version in `n
 | O1 | `node npm/release.mjs --initial --visible` | agent | One-time npm web login with the passkey window. |
 | O2 | `node npm/release.mjs --publish --visible` | agent | Local publish fallback; gate, build, pack, prove, publish, authoritative read-back. |
 | O3 | `node npm/release.mjs --trust --visible` | agent | One-time GitHub Actions trusted-publisher binding. |
-| A1 | `node npm/release.mjs --check` | agent | Read-only artifact proof before any publish. |
+| A1 | `node npm/release.mjs --check` | agent | Read-only artifact proof, including HTTP navigation through the packaged launcher, before any publish. |
 | A2 | `node npm/release.mjs --status` | agent | Read-only npm user, registry, tag and trust state. |
 | A3 | `node npm/release.mjs --publish --ci` | CI only | OIDC publish with provenance; emits identity for the workflow's tag step. |
 | V1 | `npm view hand-mcp@<version> gitHead --json` | agent | Confirm the version exists and which commit owns it. |

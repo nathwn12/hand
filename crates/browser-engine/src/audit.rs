@@ -754,51 +754,26 @@ mod tests {
         );
     }
 
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
-
-    /// A real page over loopback HTTP: the audit must leave its focus as
-    /// found. Shares the crate's browser lock with the other live tests.
-    async fn serve_focus_fixture(body: &'static str) -> (String, tokio::task::JoinHandle<()>) {
-        let ln = tokio::net::TcpListener::bind("127.0.0.1:0")
-            .await
-            .expect("loopback bind");
-        let port = ln.local_addr().expect("loopback addr").port();
-        let srv = tokio::spawn(async move {
-            loop {
-                let (mut s, _) = match ln.accept().await {
-                    Ok(v) => v,
-                    _ => break,
-                };
-                tokio::spawn(async move {
-                    let mut buf = vec![0u8; 4096];
-                    let mut req = Vec::new();
-                    loop {
-                        match tokio::time::timeout(
-                            std::time::Duration::from_secs(5),
-                            s.read(&mut buf),
-                        )
-                        .await
-                        {
-                            Ok(Ok(0)) => break,
-                            Ok(Ok(n)) => {
-                                req.extend_from_slice(&buf[..n]);
-                                if req.windows(4).any(|w| w == b"\r\n\r\n") || req.len() > 8192 {
-                                    break;
-                                }
-                            }
-                            _ => break,
-                        }
-                    }
-                    let resp = format!(
-                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\nContent-Type: text/html; charset=utf-8\r\n\r\n{}",
-                    body.len(), body
-                );
-                    let _ = s.write_all(resp.as_bytes()).await;
-                    let _ = s.shutdown().await;
-                });
+    /// Supply the fixture HTML straight to Chrome as a `data:` URL instead
+    /// of standing up a loopback HTTP server. `data:` is an allowed navigation
+    /// target and these checks read computed styles, boxes and focus from the
+    /// live document, so the same bytes are semantically equivalent without a
+    /// network round trip. Real localhost navigation stays covered by metrics,
+    /// the `tests/` integration suite and the packaged-launcher check in the
+    /// release gate; none of those are skipped.
+    fn page_url(html: &str) -> String {
+        const HEX: &[u8; 16] = b"0123456789ABCDEF";
+        let mut url = String::from("data:text/html;charset=utf-8,");
+        for byte in html.bytes() {
+            if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~') {
+                url.push(byte as char);
+            } else {
+                url.push('%');
+                url.push(HEX[(byte >> 4) as usize] as char);
+                url.push(HEX[(byte & 0x0f) as usize] as char);
             }
-        });
-        (format!("http://127.0.0.1:{port}/fixture"), srv)
+        }
+        url
     }
 
     /// Run the real tool rather than injecting a record: the restore happens
@@ -826,7 +801,7 @@ mod tests {
     async fn audit_restores_the_page_focus() {
         let _guard = crate::metrics::BROWSER_FIXTURE_LOCK.lock().await;
         const PAGE: &str = r#"<!doctype html><html><head><title>Focus fixture</title><style>input:focus,button:focus{outline:2px solid #333}</style></head><body><input id="name" type="text"><button id="go" type="button">Go</button></body></html>"#;
-        let (url, srv) = serve_focus_fixture(PAGE).await;
+        let url = page_url(PAGE);
         let browser = crate::metrics::launch_and_navigate(&url).await;
 
         browser
@@ -861,7 +836,6 @@ mod tests {
             "viewport evidence: {observed}"
         );
 
-        srv.abort();
         let _ = browser.close().await;
     }
 
@@ -869,7 +843,7 @@ mod tests {
     async fn audit_with_body_focus_leaves_body_focused() {
         let _guard = crate::metrics::BROWSER_FIXTURE_LOCK.lock().await;
         const PAGE: &str = r#"<!doctype html><html><head><title>Body focus fixture</title><style>input:focus{outline:2px solid #333}</style></head><body><input id="name" type="text"><button id="go" type="button">Go</button></body></html>"#;
-        let (url, srv) = serve_focus_fixture(PAGE).await;
+        let url = page_url(PAGE);
         let browser = crate::metrics::launch_and_navigate(&url).await;
 
         let before = active_descriptor(&browser).await;
@@ -894,7 +868,6 @@ mod tests {
             "evidence: {ev}"
         );
 
-        srv.abort();
         let _ = browser.close().await;
     }
 
@@ -905,7 +878,7 @@ mod tests {
         // input, so the saved element is detached when the audit tries to
         // restore it. That failure must be named, never reported as success.
         const PAGE: &str = r#"<!doctype html><html><head><title>Failed restore fixture</title><style>input:focus,button:focus{outline:2px solid #333}</style></head><body><input id="victim" type="text"><button id="remover" type="button" onfocus="var v=document.getElementById('victim'); if(v){v.remove();}">Remove</button></body></html>"#;
-        let (url, srv) = serve_focus_fixture(PAGE).await;
+        let url = page_url(PAGE);
         let browser = crate::metrics::launch_and_navigate(&url).await;
 
         browser
@@ -947,7 +920,6 @@ mod tests {
             "viewport evidence: {observed}"
         );
 
-        srv.abort();
         let _ = browser.close().await;
     }
 }
