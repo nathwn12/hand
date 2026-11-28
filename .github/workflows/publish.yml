@@ -47,7 +47,9 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
+      - run: npm install -g npm@11
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       - run: cargo test --locked -p mjpeg-avi
       - run: cargo test --locked -p desktop-engine -- --skip live_
       - run: cargo test -p hand --test discovery
@@ -73,7 +75,7 @@ jobs:
       - run: node docs-check.mjs --strict
   publish:
     needs: [ci]
-    runs-on: windows-latest
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -81,6 +83,7 @@ jobs:
           node-version: 22
       - run: npm install -g npm@11
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       - id: publish
         run: node npm/release.mjs --publish --ci
       - name: Tag the published source commit
