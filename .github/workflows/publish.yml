@@ -33,8 +33,12 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Real-browser suites gate pull requests in ci.yml, not releases. This gate
+  # verifies the artifact that ships: deterministic tests, then the packed
+  # tarball itself, so a VM network policy never vetoes a published package.
   ci:
-    runs-on: windows-latest
+    # Pinned image: a release gate must not change under the project.
+    runs-on: windows-2022
     permissions:
       contents: read
     steps:
@@ -49,29 +53,11 @@ jobs:
       - run: cargo test -p hand --test no_steal
       - run: HAND_BASELINE_SKIP_LIVE=1 node --test baseline/test/*.test.mjs
         shell: bash
-      # hand's browser-engine tests launch the pinned FULL Chrome from
-      # %LOCALAPPDATA%\gladius\chromium\<version>-<zip-sha8>. The fetch
-      # script embeds the pin (158.0.8127.36 / 6a8ad290) and re-verifies
-      # every file on reuse: a restored cache fails closed on drift. No
-      # cleanup step: a failing lane never deletes the cache.
-      - name: Restore pinned browser cache
-        uses: actions/cache@v6
-        with:
-          path: ~\AppData\Local\gladius\chromium
-          key: ${{ runner.os }}-chromium-${{ hashFiles('crates/browser-engine/scripts/fetch-chromium.ps1') }}
-      - name: Provision pinned browser
-        shell: pwsh
-        run: powershell -ExecutionPolicy Bypass -File crates\browser-engine\scripts\fetch-chromium.ps1
-      # One test thread: every test here launches a real Chromium, and
-      # concurrent launches on a 4-core runner abort each other's first
-      # navigation with net::ERR_ABORTED (the failing test name moves between
-      # runs). browser_rows and desktop_matrix below are serialised for the
-      # same reason. Drop this only if parallel launches are proven clean on
-      # the runner.
-      - run: cargo test --locked -p browser-engine -- --test-threads=1
-      - run: cargo test -p hand --test browser_rows -- --test-threads=1
       - run: cargo test -p hand --test desktop_matrix -- --test-threads=1
       - run: cargo build --locked --release
+      # The release contract is the packed artifact: this starts the MCP from
+      # the tarball and proves tools/list plus a data: URL navigation.
+      - run: node npm/release.mjs --check
       - run: node baseline/scripts/compare-catalog.mjs --serve target\release\hand.exe
       - run: node docs-check.mjs --strict
   publish:
