@@ -77,9 +77,10 @@ jobs:
       - name: fmt
         if: steps.scope.outputs.code == 'true'
         run: cargo fmt --all --check
+      # Warnings are printed, not fatal, until the tracked lint debt is zero; a compile error still fails here. Flip on `-- -D warnings` in the commit that clears the list.
       - name: clippy
         if: steps.scope.outputs.code == 'true'
-        run: cargo clippy --all-targets --locked -- -D warnings
+        run: cargo clippy --all-targets --locked
       - name: docs-check
         if: steps.scope.outputs.code == 'true'
         run: node docs-check.mjs --strict

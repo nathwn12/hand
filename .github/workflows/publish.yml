@@ -31,14 +31,32 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo test --locked -p browser-engine
+      - run: cargo test --locked -p mjpeg-avi
       - run: cargo test --locked -p desktop-engine -- --skip live_
+      - run: cargo test -p hand --test discovery
+      - run: cargo test -p hand --test no_steal
       - run: HAND_BASELINE_SKIP_LIVE=1 node --test baseline/test/*.test.mjs
         shell: bash
+      # hand's browser-engine tests launch the pinned FULL Chrome from
+      # %LOCALAPPDATA%\gladius\chromium\<version>-<zip-sha8>. The fetch
+      # script embeds the pin (158.0.8127.36 / 6a8ad290) and re-verifies
+      # every file on reuse: a restored cache fails closed on drift. No
+      # cleanup step: a failing lane never deletes the cache.
+      - name: Restore pinned browser cache
+        uses: actions/cache@v6
+        with:
+          path: ~\AppData\Local\gladius\chromium
+          key: ${{ runner.os }}-chromium-${{ hashFiles('crates/browser-engine/scripts/fetch-chromium.ps1') }}
+      - name: Provision pinned browser
+        shell: pwsh
+        run: powershell -ExecutionPolicy Bypass -File crates\browser-engine\scripts\fetch-chromium.ps1
+      - run: cargo test --locked -p browser-engine
+      - run: cargo test -p hand --test browser_rows -- --test-threads=1
+      - run: cargo test -p hand --test desktop_matrix -- --test-threads=1
       - run: cargo build --locked --release
       - run: node baseline/scripts/compare-catalog.mjs --serve target\release\hand.exe
       - run: node docs-check.mjs --strict
