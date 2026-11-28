@@ -195,6 +195,7 @@ pub(crate) static BROWSER_FIXTURE_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mu
 #[cfg(test)]
 pub(crate) async fn launch_and_navigate(url: &str) -> Browser {
     let mut last = Value::Null;
+    let mut last_detail = Value::Null;
     for attempt in 0..4 {
         let browser = Browser::new();
         let resp = crate::tools::call("navigate", &json!({"url": url}), &browser).await;
@@ -202,6 +203,11 @@ pub(crate) async fn launch_and_navigate(url: &str) -> Browser {
             return browser;
         }
         last = resp;
+        // Capture this attempt's network evidence BEFORE close() drops the
+        // connection and its rings. The final panic must name observed facts
+        // (requestId/blockedReason/canceled/lastNetworkEntry/targetId), not a
+        // guess from an error string with no network evidence in it.
+        last_detail = browser.nav_diagnostics(url).await;
         let _ = browser.close().await;
         let backoff = 250u64 << attempt;
         let jitter = std::time::SystemTime::now()
@@ -211,7 +217,7 @@ pub(crate) async fn launch_and_navigate(url: &str) -> Browser {
         tokio::time::sleep(std::time::Duration::from_millis(backoff + jitter)).await;
     }
     let probe = probe_fixture(url).await;
-    panic!("navigate failed after retries: {last}; fixture probe: {probe}");
+    panic!("navigate failed after retries: {last}; navigation detail: {last_detail}; fixture probe: {probe}");
 }
 
 /// Direct-from-the-test-process probe of the same fixture URL, used only to

@@ -1,0 +1,18 @@
+# Quarantine ledger for ignored tests.
+#
+# Every entry needs all five fields:
+#   test                test function name, or a ::-qualified path ending in it
+#   issue               tracking issue URL (http or https)
+#   added               ISO date, YYYY-MM-DD, when the ignore was added
+#   owner               handle responsible for re-arming the test
+#   rearm_after_passes  positive integer: consecutive passes required to re-arm
+#
+# A quarantined test is reported in CI and tracked here, never removed silently.
+# An unledgered #[ignore] fails the guard; a stale entry only warns.
+# Entry shape:
+#   - test: some_test
+#     issue: https://github.com/nathwn12/hand/issues/1
+#     added: 2026-11-28
+#     owner: nathwn12
+#     rearm_after_passes: 3
+tests: []

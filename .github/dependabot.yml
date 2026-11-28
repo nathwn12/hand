@@ -26,11 +26,13 @@ updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
-      day: "monday"
+      # Monthly checks plus a deliberately low PR limit: a red gate must not
+      # spawn an endless queue of PRs nobody reviews. Grouping majors into one
+      # PR lets a single review clear them all.
+      interval: "monthly"
       time: "03:30"
       timezone: "Asia/Manila"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
     commit-message:
       prefix: "chore(deps)"
     labels:
@@ -43,6 +45,11 @@ updates:
         update-types:
           - "minor"
           - "patch"
+      majors:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
     ignore:
       # Upstream ships branch refs that are not real Rust releases (1.120.0).
       # Dependabot reads them as versions and rustup 404s, so the toolchain pin

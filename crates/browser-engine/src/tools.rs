@@ -1896,15 +1896,35 @@ pub async fn call(name: &str, args: &Value, browser: &Browser) -> Value {
     }
 }
 
+/// Add locally collected network evidence to a navigation failure WITHOUT
+/// touching its prose or its existing `code`/`reason`/`url` fields.
+fn attach_navigation_detail(err: &mut ToolErr, mut detail: Value, error_text: Option<&str>) {
+    if let Some(nav) = detail.as_object_mut() {
+        if let Some(t) = error_text {
+            nav.insert("errorText".to_string(), json!(t));
+        }
+    }
+    if let Some(obj) = err.sc.as_object_mut() {
+        obj.insert("navigation".to_string(), detail);
+    }
+}
+
 /// A requested http(s) page that never loaded is a typed failure, never an
 /// `ok:true` with a warning an agent can ignore. Explicit `about:blank`,
 /// `data:` and `file:` targets are not requested pages and keep working.
-fn blank_load_err(url: &str, detail: &str) -> ToolErr {
-    ToolErr::typed(
+async fn blank_load_err(
+    browser: &Browser,
+    url: &str,
+    detail: &str,
+    error_text: Option<&str>,
+) -> ToolErr {
+    let mut err = ToolErr::typed(
         format!("navigate: {detail}"),
         json!({"code": ToolCode::BlankLoad.as_str(),
                "reason": ToolReason::Navigated.as_str(), "url": url}),
-    )
+    );
+    attach_navigation_detail(&mut err, browser.nav_diagnostics(url).await, error_text);
+    err
 }
 
 async fn tool_navigate(browser: &Browser, url: &str) -> Result<Value, ToolErr> {
@@ -1932,11 +1952,20 @@ async fn tool_navigate(browser: &Browser, url: &str) -> Result<Value, ToolErr> {
         if !err.is_empty() {
             if requested_page {
                 return Err(blank_load_err(
+                    browser,
                     url,
                     &format!("net error loading {url}: {err}"),
-                ));
+                    Some(err),
+                )
+                .await);
             }
-            return Err(ToolErr::fallback(format!("navigate: {err}")));
+            let mut err_reply = ToolErr::fallback(format!("navigate: {err}"));
+            attach_navigation_detail(
+                &mut err_reply,
+                browser.nav_diagnostics(url).await,
+                Some(err),
+            );
+            return Err(err_reply);
         }
     }
     browser
@@ -1957,9 +1986,12 @@ async fn tool_navigate(browser: &Browser, url: &str) -> Result<Value, ToolErr> {
         .to_string();
     if requested_page && cur == "about:blank" {
         return Err(blank_load_err(
+            browser,
             url,
             &format!("requested {url} but the document stayed on about:blank"),
-        ));
+            None,
+        )
+        .await);
     }
     let titled = !title.is_empty();
     let on_blank = cur.is_empty() || cur == "about:blank";
@@ -1979,9 +2011,12 @@ async fn tool_navigate(browser: &Browser, url: &str) -> Result<Value, ToolErr> {
     if body_len == 0.0 {
         if requested_page {
             return Err(blank_load_err(
+                browser,
                 url,
                 &format!("requested {url} but the document is empty"),
-            ));
+                None,
+            )
+            .await);
         }
         reply["warning"] = json!("possible blank-load race: committed URL with empty document (empty title and empty body text); re-navigate to confirm");
     }

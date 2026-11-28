@@ -89,9 +89,12 @@ fn now_ms() -> u64 {
 }
 
 /// A captured CDP network event, shaped `{requestId,method,url,type,status,
-/// mime,failed,errorText,ts}` for the `network` tool. Kept in a bounded ring
-/// (`NET_CAP`); the reader pushes, the tool drains. Empty (and free) until
-/// the Network domain is enabled (lazily, on first network use).
+/// mime,finished,failed,errorText,blockedReason,canceled,ts}` for the
+/// `network` tool. Kept in a bounded ring (`NET_CAP`); the reader pushes,
+/// the tool drains. Empty (and free) until the Network domain is enabled
+/// (lazily, on first network use). `blockedReason` and `canceled` are the
+/// verbatim `Network.loadingFailed` fields, null when CDP omitted them;
+/// folding them into `failed` would lose which one actually fired.
 #[derive(Clone, Debug)]
 pub struct NetEntry {
     pub request_id: String,
@@ -103,6 +106,8 @@ pub struct NetEntry {
     pub finished: bool,
     pub failed: bool,
     pub error_text: String,
+    pub blocked_reason: Option<String>,
+    pub canceled: Option<bool>,
     pub ts: u64,
 }
 
@@ -112,7 +117,9 @@ impl NetEntry {
                "url": self.url, "type": self.rtype,
                "status": self.status, "mime": self.mime,
                "finished": self.finished, "failed": self.failed,
-               "errorText": self.error_text, "ts": self.ts})
+               "errorText": self.error_text,
+               "blockedReason": self.blocked_reason, "canceled": self.canceled,
+               "ts": self.ts})
     }
 }
 
@@ -146,6 +153,10 @@ struct NavObs {
     response_ts: Option<f64>,
     finish_ts: Option<f64>,
     redirects: Vec<Value>,
+    /// The `Network.loadingFailed` payload for this navigation, kept whole
+    /// so a failure can name requestId/blockedReason/canceled even when the
+    /// ring has no row for the request (domain enabled mid-flight).
+    failure: Option<Value>,
 }
 
 impl NavObs {
@@ -2499,6 +2510,71 @@ impl Browser {
         }
     }
 
+    /// Read-only evidence snapshot for a failed navigation: the nav
+    /// observer's requestId and `loadingFailed` facts, the newest ring entry
+    /// for this URL (or for the same request id), and the target id. All of
+    /// it is state the engine already holds - NO CDP round trip, no disarm,
+    /// no mutation - so it is safe on a failure path and costs nothing on a
+    /// successful one. Unknown facts stay null rather than being guessed.
+    pub(crate) async fn nav_diagnostics(&self, url: &str) -> Value {
+        let shared = {
+            let guard = self.state.lock().await;
+            match guard.as_ref() {
+                Some(inner) => inner.shared.clone(),
+                None => {
+                    return json!({"requestId": Value::Null, "blockedReason": Value::Null,
+                                  "canceled": Value::Null, "lastNetworkEntry": Value::Null,
+                                  "targetId": Value::Null});
+                }
+            }
+        };
+        let obs = shared.nav_obs.lock().await.clone();
+        let failure = obs.failure.clone().unwrap_or(Value::Null);
+        let obs_rid = obs.doc_id.clone();
+        let last = {
+            let q = shared.net_log.lock().await;
+            q.iter()
+                .rev()
+                .find(|e| e.url == url)
+                .or_else(|| {
+                    let want = failure
+                        .get("requestId")
+                        .and_then(|r| r.as_str())
+                        .or(obs_rid.as_deref());
+                    match want {
+                        Some(r) => q.iter().rev().find(|e| e.request_id == r),
+                        None => None,
+                    }
+                })
+                .map(|e| e.json())
+                .unwrap_or(Value::Null)
+        };
+        let request_id = failure
+            .get("requestId")
+            .and_then(|r| r.as_str())
+            .map(str::to_string)
+            .or(obs_rid)
+            .or_else(|| {
+                last.get("requestId")
+                    .and_then(|r| r.as_str())
+                    .map(str::to_string)
+            });
+        let blocked_reason = failure
+            .get("blockedReason")
+            .cloned()
+            .or_else(|| last.get("blockedReason").cloned())
+            .unwrap_or(Value::Null);
+        let canceled = failure
+            .get("canceled")
+            .cloned()
+            .or_else(|| last.get("canceled").cloned())
+            .unwrap_or(Value::Null);
+        let target_id = shared.target.lock().await.clone();
+        json!({"requestId": request_id, "blockedReason": blocked_reason,
+               "canceled": canceled, "lastNetworkEntry": last,
+               "targetId": target_id})
+    }
+
     /// Forget download events from earlier calls. Call immediately before
     /// arming `Browser.setDownloadBehavior` for one `browser_download` call.
     pub async fn download_reset(&self) {
@@ -4073,6 +4149,8 @@ async fn record_request(shared: &Arc<Shared>, p: &Value) {
         finished: false,
         failed: false,
         error_text: String::new(),
+        blocked_reason: None,
+        canceled: None,
         ts,
     };
     if q.len() >= NET_CAP {
@@ -4125,6 +4203,8 @@ async fn record_response(shared: &Arc<Shared>, p: &Value) {
         finished: false,
         failed: false,
         error_text: String::new(),
+        blocked_reason: None,
+        canceled: None,
         ts: now_ms(),
     };
     if q.len() >= NET_CAP {
@@ -4149,11 +4229,25 @@ async fn record_finish(shared: &Arc<Shared>, p: &Value) {
         .and_then(|e| e.as_str())
         .unwrap_or("")
         .to_string();
+    // loadingFailed carries these two facts; loadingFinished never does.
+    // Keep them verbatim and only overwrite when this event supplied them,
+    // so a later finish cannot erase the reason a request died.
+    let blocked_reason = p
+        .get("blockedReason")
+        .and_then(|b| b.as_str())
+        .map(str::to_string);
+    let canceled = p.get("canceled").and_then(|c| c.as_bool());
     let mut q = shared.net_log.lock().await;
     if let Some(e) = q.iter_mut().rev().find(|e| e.request_id == rid) {
         e.finished = true;
         e.failed = failed;
         e.error_text = error_text;
+        if blocked_reason.is_some() {
+            e.blocked_reason = blocked_reason;
+        }
+        if let Some(c) = canceled {
+            e.canceled = Some(c);
+        }
     }
 }
 
@@ -4209,6 +4303,33 @@ async fn record_nav_finish(shared: &Arc<Shared>, p: &Value) {
     if o.doc_id.as_deref() == Some(rid) {
         o.finish_ts = p.get("timestamp").and_then(|t| t.as_f64());
     }
+}
+
+/// Keep the whole `Network.loadingFailed` payload for the armed navigation.
+/// `record_nav_finish` only stamps a timestamp; without this the requestId,
+/// blockedReason and canceled facts survive solely in the ring, which may
+/// have no entry at all if Network was enabled after the request started.
+async fn record_nav_failed(shared: &Arc<Shared>, p: &Value) {
+    let mut o = shared.nav_obs.lock().await;
+    if !o.armed {
+        return;
+    }
+    let rid = match p.get("requestId").and_then(|r| r.as_str()) {
+        Some(r) => r,
+        None => return,
+    };
+    // A failure on a different request (a subresource, or a stale id from
+    // before this navigation) is not evidence about this navigation.
+    if o.doc_id.as_deref().is_some_and(|doc| doc != rid) {
+        return;
+    }
+    o.failure = Some(json!({
+        "requestId": rid,
+        "type": p.get("type").and_then(|t| t.as_str()),
+        "errorText": p.get("errorText").and_then(|e| e.as_str()),
+        "blockedReason": p.get("blockedReason").and_then(|b| b.as_str()),
+        "canceled": p.get("canceled").and_then(|c| c.as_bool()),
+    }));
 }
 
 async fn reader_loop(mut stream: WsReader, shared: Arc<Shared>) {
@@ -4329,11 +4450,15 @@ async fn reader_loop(mut stream: WsReader, shared: Arc<Shared>) {
             }
             continue;
         }
-        if v.get("method").and_then(|m| m.as_str()) == Some("Network.loadingFinished")
-            || v.get("method").and_then(|m| m.as_str()) == Some("Network.loadingFailed")
+        let nav_end_method = v.get("method").and_then(|m| m.as_str());
+        if nav_end_method == Some("Network.loadingFinished")
+            || nav_end_method == Some("Network.loadingFailed")
         {
             if let Some(p) = v.get("params") {
                 record_nav_finish(&shared, p).await;
+                if nav_end_method == Some("Network.loadingFailed") {
+                    record_nav_failed(&shared, p).await;
+                }
                 if let Some(rid) = p.get("requestId").and_then(|r| r.as_str()) {
                     shared.net_inflight.lock().await.remove(rid);
                     record_finish(&shared, p).await;
