@@ -190,14 +190,129 @@ pub async fn handle(browser: &Browser, args: &Value) -> Result<Value, ToolErr> {
 #[cfg(test)]
 pub(crate) static BROWSER_FIXTURE_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
+/// Server-side counts for each loopback fixture, keyed by its bound port.
+/// The failure panic reports these BEFORE its own probe connects, so a
+/// client-side cancel and a server-side drop are distinguishable by fact.
+#[cfg(test)]
+#[derive(Default)]
+pub(crate) struct FixtureStats {
+    accepted: std::sync::atomic::AtomicUsize,
+    requests: std::sync::atomic::AtomicUsize,
+}
+
+#[cfg(test)]
+static FIXTURE_STATS: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashMap<u16, std::sync::Arc<FixtureStats>>>,
+> = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+
+#[cfg(test)]
+pub(crate) fn fixture_stats(port: u16) -> std::sync::Arc<FixtureStats> {
+    use std::collections::hash_map::Entry;
+    let mut map = FIXTURE_STATS.lock().unwrap_or_else(|e| e.into_inner());
+    match map.entry(port) {
+        Entry::Occupied(e) => e.get().clone(),
+        Entry::Vacant(e) => e
+            .insert(std::sync::Arc::new(FixtureStats::default()))
+            .clone(),
+    }
+}
+
+#[cfg(test)]
+impl FixtureStats {
+    pub(crate) fn accepted(&self) {
+        use std::sync::atomic::Ordering;
+        self.accepted.fetch_add(1, Ordering::Relaxed);
+    }
+    pub(crate) fn request(&self) {
+        use std::sync::atomic::Ordering;
+        self.requests.fetch_add(1, Ordering::Relaxed);
+    }
+    pub(crate) fn snapshot(&self) -> String {
+        use std::sync::atomic::Ordering;
+        format!(
+            "acceptedConnections={} documentRequests={}",
+            self.accepted.load(Ordering::Relaxed),
+            self.requests.load(Ordering::Relaxed)
+        )
+    }
+}
+
+#[cfg(test)]
+fn fixture_port(url: &str) -> Option<u16> {
+    let rest = url.split_once("://").map(|(_, r)| r)?;
+    let slash = rest.find('/').unwrap_or(rest.len());
+    rest[..slash].rsplit(':').next()?.parse().ok()
+}
+
+#[cfg(test)]
+pub(crate) fn fixture_counts(url: &str) -> String {
+    match fixture_port(url).and_then(|p| FIXTURE_STATS.lock().ok().and_then(|m| m.get(&p).cloned()))
+    {
+        Some(s) => s.snapshot(),
+        None => "no fixture counters registered".to_string(),
+    }
+}
+
+#[cfg(test)]
+fn short_str(s: Option<&str>) -> &str {
+    s.unwrap_or("")
+}
+
+#[cfg(test)]
+fn compact_targets(v: Value) -> Value {
+    let short = short_str;
+    match v.get("targetInfos").and_then(Value::as_array) {
+        None => json!({"error": "no targetInfos in Target.getTargets reply"}),
+        Some(a) => json!({
+            "count": a.len(),
+            "targets": a.iter().take(12).map(|t| json!({
+                "targetId": short(t.get("targetId").and_then(Value::as_str)),
+                "type": short(t.get("type").and_then(Value::as_str)),
+                "url": short(t.get("url").and_then(Value::as_str)).chars().take(160).collect::<String>(),
+                "attached": t.get("attached").cloned().unwrap_or(Value::Null)
+            })).collect::<Vec<_>>()
+        }),
+    }
+}
+
+#[cfg(test)]
+fn compact_processes(v: Value) -> Value {
+    let list = v
+        .get("processInfo")
+        .and_then(Value::as_array)
+        .or_else(|| v.as_array());
+    match list {
+        None => json!({"error": "no processInfo in SystemInfo.getProcessInfo reply"}),
+        Some(a) => {
+            let mut kinds = std::collections::BTreeMap::new();
+            for p in a {
+                let k = p.get("type").and_then(Value::as_str).unwrap_or("unknown");
+                *kinds.entry(k.to_string()).or_insert(0usize) += 1;
+            }
+            json!({"count": a.len(), "byType": kinds})
+        }
+    }
+}
+
 /// Launch an owned browser and navigate through the normal entry point,
 /// retrying a transient CDP navigation failure with a fresh engine.
 #[cfg(test)]
 pub(crate) async fn launch_and_navigate(url: &str) -> Browser {
     let mut last = Value::Null;
     let mut last_detail = Value::Null;
+    let mut last_targets = Value::Null;
+    let mut last_processes = Value::Null;
     for attempt in 0..4 {
         let browser = Browser::new();
+        // Test-only discovery: targetCreated/targetDestroyed for this nav go
+        // into the reader's bounded navEvents ring and land in the panic.
+        let _ = browser
+            .command(
+                "Target.setDiscoverTargets",
+                json!({"discover": true}),
+                false,
+            )
+            .await;
         let resp = crate::tools::call("navigate", &json!({"url": url}), &browser).await;
         if resp.get("isError").is_none() {
             return browser;
@@ -208,6 +323,16 @@ pub(crate) async fn launch_and_navigate(url: &str) -> Browser {
         // (requestId/blockedReason/canceled/lastNetworkEntry/targetId), not a
         // guess from an error string with no network evidence in it.
         last_detail = browser.nav_diagnostics(url).await;
+        last_targets = browser
+            .command("Target.getTargets", json!({}), false)
+            .await
+            .map(compact_targets)
+            .unwrap_or_else(|e| json!({"error": e}));
+        last_processes = browser
+            .command("SystemInfo.getProcessInfo", json!({}), false)
+            .await
+            .map(compact_processes)
+            .unwrap_or_else(|e| json!({"error": e}));
         let _ = browser.close().await;
         let backoff = 250u64 << attempt;
         let jitter = std::time::SystemTime::now()
@@ -216,8 +341,10 @@ pub(crate) async fn launch_and_navigate(url: &str) -> Browser {
             .unwrap_or(0);
         tokio::time::sleep(std::time::Duration::from_millis(backoff + jitter)).await;
     }
+    // Counts are read BEFORE the probe, whose own connection would add one.
+    let counts = fixture_counts(url);
     let probe = probe_fixture(url).await;
-    panic!("navigate failed after retries: {last}; navigation detail: {last_detail}; fixture probe: {probe}");
+    panic!("navigate failed after retries: {last}; navigation detail: {last_detail}; fixture counts before probe: {counts}; targets: {last_targets}; processes: {last_processes}; fixture probe: {probe}");
 }
 
 /// Direct-from-the-test-process probe of the same fixture URL, used only to
@@ -302,12 +429,15 @@ mod tests {
             .await
             .expect("loopback bind");
         let port = ln.local_addr().expect("loopback addr").port();
+        let stats = crate::metrics::fixture_stats(port);
         let srv = tokio::spawn(async move {
             loop {
                 let (mut s, _) = match ln.accept().await {
                     Ok(v) => v,
                     _ => break,
                 };
+                stats.accepted();
+                let stats = stats.clone();
                 tokio::spawn(async move {
                     let mut buf = vec![0u8; 4096];
                     let mut req = Vec::new();
@@ -322,6 +452,7 @@ mod tests {
                             Ok(Ok(n)) => {
                                 req.extend_from_slice(&buf[..n]);
                                 if req.windows(4).any(|w| w == b"\r\n\r\n") || req.len() > 8192 {
+                                    stats.request();
                                     break;
                                 }
                             }

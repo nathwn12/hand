@@ -37,6 +37,11 @@ type WsReader = futures_util::stream::SplitStream<WsStream>;
 /// for a process this crate spawned itself, not a protocol rule.
 const CDP_MAX_PAYLOAD: usize = 512 << 20;
 
+/// Bounded record of CDP events around a navigation. Kept only so a failed
+/// navigation's diagnostics can say which target, frame and renderer swap
+/// actually happened, instead of guessing from an error string.
+const NAV_EVENT_CAP: usize = 64;
+
 /// The one WebSocket configuration every CDP connection uses (owned engine
 /// and `GLADIUS_CDP_URL` attach alike): the defaults are too small for CDP.
 fn cdp_ws_config() -> tokio_tungstenite::tungstenite::protocol::WebSocketConfig {
@@ -224,6 +229,10 @@ struct Shared {
     /// use it as the wake signal with a fine-cadence `readyState` poll as
     /// fallback, so a wait never depends on event delivery alone.
     load_notify: tokio::sync::Notify,
+    /// Last NAV_EVENT_CAP CDP events relevant to navigation (targets, frame
+    /// swaps, network), pushed by the reader and read only by failure
+    /// diagnostics. Arrival order is the only order that matters here.
+    nav_events: AsyncMutex<std::collections::VecDeque<Value>>,
     /// Stable tab index space: targetIds in first-seen (creation) order.
     /// CDP's getTargets order flaps under load (measured: a fresh tab sorted
     /// first on one call, second on the next), so indices must NOT follow
@@ -463,6 +472,7 @@ fn new_shared(sink: WsSink, excluded_contexts: Arc<Mutex<HashMap<String, String>
         owned: AtomicBool::new(false),
         dialog: AsyncMutex::new(None),
         load_notify: tokio::sync::Notify::new(),
+        nav_events: AsyncMutex::new(std::collections::VecDeque::new()),
         tab_order: AsyncMutex::new(Vec::new()),
         console: AsyncMutex::new(VecDeque::new()),
         net_inflight: AsyncMutex::new(HashSet::new()),
@@ -2570,9 +2580,10 @@ impl Browser {
             .or_else(|| last.get("canceled").cloned())
             .unwrap_or(Value::Null);
         let target_id = shared.target.lock().await.clone();
+        let events: Vec<Value> = shared.nav_events.lock().await.iter().cloned().collect();
         json!({"requestId": request_id, "blockedReason": blocked_reason,
                "canceled": canceled, "lastNetworkEntry": last,
-               "targetId": target_id})
+               "targetId": target_id, "navEvents": events})
     }
 
     /// Forget download events from earlier calls. Call immediately before
@@ -4332,6 +4343,70 @@ async fn record_nav_failed(shared: &Arc<Shared>, p: &Value) {
     }));
 }
 
+/// Record a concise, bounded slice of the events that decide a navigation:
+/// which target was created/destroyed/attached, which frame swapped to a new
+/// renderer document, and which network request failed. No event is dropped
+/// from the reader's own handling - this only observes the same Value.
+async fn record_nav_event(shared: &Shared, v: &Value) {
+    let method = match v.get("method").and_then(Value::as_str) {
+        Some(m) => m,
+        None => return,
+    };
+    if !matches!(
+        method,
+        "Target.targetCreated"
+            | "Target.targetDestroyed"
+            | "Target.targetInfoChanged"
+            | "Target.attachedToTarget"
+            | "Target.detachedFromTarget"
+            | "Page.frameNavigated"
+            | "Page.frameStartedLoading"
+            | "Page.frameSwapped"
+            | "Page.navigatedWithinDocument"
+            | "Page.lifecycleEvent"
+            | "Network.requestWillBeSent"
+            | "Network.responseReceived"
+            | "Network.loadingFailed"
+    ) {
+        return;
+    }
+    let params = v.get("params");
+    let get = |keys: &[&str]| -> &str {
+        for key in keys {
+            let mut cur = params;
+            for part in key.split('.') {
+                cur = cur.and_then(|c| c.get(part));
+            }
+            if let Some(s) = cur.and_then(Value::as_str) {
+                return s;
+            }
+        }
+        ""
+    };
+    let url: String = get(&["url", "frame.url", "request.url", "targetInfo.url"])
+        .chars()
+        .take(160)
+        .collect();
+    let event = json!({
+        "method": method,
+        "atMs": now_ms(),
+        "sessionId": v.get("sessionId").and_then(Value::as_str).unwrap_or(""),
+        "frameId": get(&["frameId", "frame.id"]),
+        "loaderId": get(&["loaderId", "frame.loaderId"]),
+        "targetId": get(&["targetId", "targetInfo.targetId"]),
+        "targetType": get(&["targetInfo.type"]),
+        "name": get(&["name"]),
+        "requestId": get(&["requestId"]),
+        "errorText": get(&["errorText"]),
+        "url": url,
+    });
+    let mut q = shared.nav_events.lock().await;
+    if q.len() >= NAV_EVENT_CAP {
+        q.pop_front();
+    }
+    q.push_back(event);
+}
+
 async fn reader_loop(mut stream: WsReader, shared: Arc<Shared>) {
     while let Some(msg) = stream.next().await {
         let text = match msg {
@@ -4349,6 +4424,7 @@ async fn reader_loop(mut stream: WsReader, shared: Arc<Shared>) {
             }
             continue;
         }
+        record_nav_event(&shared, &v).await;
         if v.get("method").and_then(|m| m.as_str()) == Some("Page.screencastFrame") {
             let params = v.get("params").cloned().unwrap_or(Value::Null);
             // Two DIFFERENT ids ride on this event: the top-level envelope

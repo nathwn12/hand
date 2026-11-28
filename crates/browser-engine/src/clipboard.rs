@@ -353,12 +353,15 @@ mod tests {
             .await
             .expect("loopback bind");
         let port = ln.local_addr().expect("loopback addr").port();
+        let stats = crate::metrics::fixture_stats(port);
         let srv = tokio::spawn(async move {
             loop {
                 let (mut s, _) = match ln.accept().await {
                     Ok(v) => v,
                     _ => break,
                 };
+                stats.accepted();
+                let stats = stats.clone();
                 tokio::spawn(async move {
                     let mut buf = vec![0u8; 4096];
                     let mut req = Vec::new();
@@ -373,6 +376,7 @@ mod tests {
                             Ok(Ok(n)) => {
                                 req.extend_from_slice(&buf[..n]);
                                 if req.windows(4).any(|w| w == b"\r\n\r\n") || req.len() > 8192 {
+                                    stats.request();
                                     break;
                                 }
                             }
