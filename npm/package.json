@@ -1,6 +1,6 @@
 {
   "name": "hand-mcp",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "The MCP server that sees and touches both the browser and Windows desktop.",
   "keywords": ["mcp", "mcp-server", "model-context-protocol", "browser-automation", "computer-use", "rust", "windows", "cdp", "tooling", "agent", "server", "browser"],
   "type": "module",

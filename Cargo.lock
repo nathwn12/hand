@@ -432,7 +432,7 @@ dependencies = [
 
 [[package]]
 name = "hand"
-version = "0.4.1"
+version = "0.5.0"
 dependencies = [
  "browser-engine",
  "desktop-engine",

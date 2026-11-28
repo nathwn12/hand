@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-11-28
+
+### Added
+
+- hand advertises the SEP-2640 skills extension (`io.modelcontextprotocol/skills`) on `initialize` beside the `resources` capability. `skills/list` publishes each skill with its frontmatter and sorted resource list (URI, SHA-256 digest, byte size); `resources/read` returns a `skill://` resource as `text/markdown` with the embedded bytes; `skills/get` returns one skill by URI. An unknown skill URI is a typed `-32602` error, with no fallback.
+- Skills are discovered at build time from `skills/<name>/SKILL.md`. `build.rs` walks `skills/`, parses the frontmatter and embeds each file with its digest and size in the binary. The first skill is `skills/routing/SKILL.md`, served as `skill://routing/SKILL.md`; `tests/skills.rs` checks the listing, the digest and size against the on-disk bytes, and that `resources/read` returns those same bytes.
+- `tests/skills.rs` now runs in the `test` job of ci.yml as `cargo test --locked -p hand --test skills`, gated on the full-suite scope, so the extension advertisement, the list/read/get round-trip and the unknown-URI error are checked in CI.
+
 ## [0.4.1] - 2026-11-28
 
 ### Fixed
