@@ -210,7 +210,50 @@ pub(crate) async fn launch_and_navigate(url: &str) -> Browser {
             .unwrap_or(0);
         tokio::time::sleep(std::time::Duration::from_millis(backoff + jitter)).await;
     }
-    panic!("navigate failed after retries: {last}");
+    let probe = probe_fixture(url).await;
+    panic!("navigate failed after retries: {last}; fixture probe: {probe}");
+}
+
+/// Direct-from-the-test-process probe of the same fixture URL, used only to
+/// explain a navigate failure: does loopback answer at all? Short string,
+/// because it lands in a panic message.
+#[cfg(test)]
+async fn probe_fixture(url: &str) -> String {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let rest = match url.split_once("://").map(|(_, r)| r) {
+        Some(r) => r,
+        None => return format!("no answer: bad url {url}"),
+    };
+    let slash = rest.find('/').unwrap_or(rest.len());
+    let authority = &rest[..slash];
+    let path = if slash < rest.len() { &rest[slash..] } else { "/" };
+    let port: u16 = match authority.rsplit(':').next().and_then(|p| p.parse().ok()) {
+        Some(p) => p,
+        None => return format!("no answer: bad port in {url}"),
+    };
+    let mut stream = match tokio::net::TcpStream::connect(("127.0.0.1", port)).await {
+        Ok(s) => s,
+        Err(e) => return format!("no answer: connect: {e}"),
+    };
+    let req = format!("GET {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n");
+    if let Err(e) = stream.write_all(req.as_bytes()).await {
+        return format!("no answer: write: {e}");
+    }
+    let mut buf = [0u8; 64];
+    match tokio::time::timeout(std::time::Duration::from_secs(3), stream.read(&mut buf)).await {
+        Ok(Ok(n)) => {
+            let head = String::from_utf8_lossy(&buf[..n]);
+            let line = head.lines().next().unwrap_or("").trim();
+            if line.is_empty() {
+                "answered: empty response".to_string()
+            } else {
+                format!("answered: {line}")
+            }
+        }
+        Ok(Err(e)) => format!("no answer: read: {e}"),
+        Err(_) => "no answer: Elapsed".to_string(),
+    }
 }
 
 #[cfg(test)]
@@ -261,6 +304,7 @@ mod tests {
                     body.len(), body
                 );
                     let _ = s.write_all(resp.as_bytes()).await;
+                    let _ = s.shutdown().await;
                 });
             }
         });
