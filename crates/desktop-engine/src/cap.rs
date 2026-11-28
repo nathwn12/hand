@@ -416,6 +416,8 @@ pub enum Occlusion {
 /// Read the visibility-region occlusion signal for `rect` (screen pixels,
 /// `[l, t, r, b]`) of `hwnd`. `Unknown` when the OS cannot answer any sample,
 /// so a failed read is never reported as a verdict.
+// The handle is a process-local opaque HWND validated non-null before any Win32 call; the crate's public surface takes HWND throughout.
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub fn occlusion_of(hwnd: HWND, rect: [i32; 4]) -> Occlusion {
     if hwnd.is_null() || rect[2] <= rect[0] || rect[3] <= rect[1] {
         return Occlusion::Unknown;

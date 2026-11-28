@@ -1,5 +1,6 @@
 /target/
 /bin
 npm/hand.exe
+npm/chromium-manifest.json
 benchmarks/modern-web/report-*.json
 benchmarks/engines/report-*.json

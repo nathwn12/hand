@@ -54,13 +54,15 @@ One connection, two domains, 44 tools:
 
 A desktop action posts to the chosen window: no global mouse, no physical pointer movement, no window activation, no clipboard write — unless a call explicitly opts in with `desktop_do` `allow_cursor` (real pointer after a point guard, restored), `allow_clipboard` (a real `CF_UNICODETEXT` write, with optional restore), or `allow_foreground` (real `SetForegroundWindow` for `focus_window`), or `desktop_window` `allow_foreground` for `focus`/`maximize`. A refusal names its reason: a cancelled or expired call answers `outcome: unknown` with `retry: unsafe` instead of implying the work stopped. A healthy run writes nothing to the terminal.
 
-Set `GLADIUS_CDP_URL` to attach to a browser you already run instead of launching one; hand does not launch, kill or sweep it, and closes only pages it created. `HAND_DEBUG` prints engine diagnostics to stderr (off by default). The first browser call provisions the pinned `chrome-headless-shell` into a per-user cache and reuses it after that.
+Set `GLADIUS_CDP_URL` to attach to a browser you already run instead of launching one; hand does not launch, kill or sweep it, and closes only pages it created. `HAND_DEBUG` prints engine diagnostics to stderr (off by default). The first browser call uses the pinned Chrome for Testing that the launcher caches on the first `mcp` start.
 
 ## Requirements
 
 - Windows 10 or 11, x64. The manifest declares `os: win32` and `cpu: x64`.
 - Node 22.14.0 or newer, to run the launcher.
 - An MCP client that speaks stdio.
+- On a fresh machine, the first `mcp` start downloads the pinned Chrome for Testing (~205 MB) from `storage.googleapis.com`, verifies its SHA-256 and caches it under the user's local app data; later starts reuse it.
+- `GLADIUS_CHROMIUM` points at an existing `chrome.exe`. `HAND_SKIP_PROVISION=1` skips auto-provisioning; `hand-mcp provision` performs it explicitly.
 - Screenshot `size` is measured from live captures for PNG and JPEG; for WebP it is read from the encoded file and has not been checked against a live capture.
 - Screenshot byte size depends on the page, so no fixed size target is promised.
 - Desktop actions never move the pointer, steal focus or write the clipboard unless a call opts in; other pointer or foreground activity on the machine can still affect an observation, and hand reports its own actions rather than trusting a raw flag.

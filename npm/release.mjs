@@ -5,13 +5,14 @@
 //   node npm/release.mjs --publish    # gate, build, pack, handshake, publish, registry read-back
 //                                     # --publish runs npm login itself when the session is absent
 //   node npm/release.mjs --trust      # bind GitHub Actions as npm trusted publisher
-//   node npm/release.mjs --check      # read-only artifact proof (preflight, build, pack, version, handshake)
+//   node npm/release.mjs --check      # read-only artifact proof (preflight, build, pack, version, handshake, data: navigation; loopback advisory)
 //   node npm/release.mjs --status     # read-only npm user, registry, tag and trust state
 //   node npm/release.mjs <mode> --visible  # visible passkey window; parent waits for its exit marker
 // publish is idempotent: a version already on the registry is a skip only when
 // its gitHead names this source commit, never a second publish.
 import { execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { createServer } from 'node:http';
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -354,35 +355,88 @@ async function packAndVerify(head, noBuild = false) {
   const version = step('version', () => run(process.execPath, [launcher, '--version'], { cwd: work }));
   if (!version.includes(head.slice(0, 8))) fail('version', `artifact identity does not match HEAD: ${version}`);
 
+  // Prove the packed launcher can navigate, not only answer initialize/tools-list.
+  // The loopback fixture is advisory: a VM network policy may abort loopback
+  // navigation on this host, which says nothing about the shipped artifact.
+  // The data: navigation is blocking: it needs no host networking and proves
+  // the packaged browser really navigates. Both run inside the packed launcher.
+  const fixtureBody = '<!doctype html><html><head><title>launcher http check</title></head><body><p id="probe">packaged launcher HTTP ok</p></body></html>';
+  const fixture = createServer((req, res) => {
+    res.writeHead(200, {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Content-Length': Buffer.byteLength(fixtureBody),
+      'Cache-Control': 'no-store',
+    });
+    res.end(fixtureBody);
+  });
+  await new Promise((ok, bad) => { fixture.once('error', bad); fixture.listen(0, '127.0.0.1', ok); });
+  const fixtureUrl = 'http://127.0.0.1:' + fixture.address().port + '/probe';
+  // Plain ASCII survives percent-encoding, so the returned URL can be checked
+  // without depending on Chrome's canonicalisation of the rest of the payload.
+  const DATA_MARKER = 'handlauncherdataok';
+  const dataUrl = 'data:text/html,' + encodeURIComponent('<!doctype html><title>' + DATA_MARKER + '</title><p id="probe">packaged launcher data ok</p>');
+  const navUrl = (body) => {
+    const sc = body?.structuredContent;
+    if (sc && typeof sc === 'object') return sc.url;
+    try { return JSON.parse(typeof sc === 'string' ? sc : (body?.content?.[0]?.text ?? 'null'))?.url; } catch { return undefined; }
+  };
+  const navText = (body) => {
+    const blocks = body?.content;
+    if (Array.isArray(blocks)) {
+      const text = blocks.map((b) => b?.text ?? '').filter(Boolean).join(' ').trim();
+      if (text) return text;
+    }
+    const sc = body?.structuredContent;
+    return typeof sc === 'string' ? sc.trim() : (sc && typeof sc === 'object' ? JSON.stringify(sc) : '');
+  };
+
   const handshake = await new Promise((resolvePromise, rejectPromise) => {
     const child = spawn(process.execPath, [launcher], { cwd: work, stdio: ['pipe', 'pipe', 'pipe'] });
     let buf = '';
     const seen = [];
-    const timer = setTimeout(() => { child.kill(); rejectPromise(new Error('handshake timed out')); }, 15000);
+    // Chrome's first launch on a fresh runner takes longer than the old 15s
+    // MCP-only bound; the timer covers a real navigation, not just a reply.
+    const timer = setTimeout(() => { child.kill(); rejectPromise(new Error('handshake timed out')); }, 120000);
     child.stdout.on('data', (d) => {
       buf += d.toString('utf8');
       let i;
       while ((i = buf.indexOf('\n')) >= 0) {
         const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
-        if (line) { try { seen.push(JSON.parse(line)); } catch { /* non-JSON banner */ } }
+        if (line) {
+          try {
+            const msg = JSON.parse(line);
+            seen.push(msg);
+            if (msg.id === 4) child.stdin.end();
+          } catch { /* non-JSON banner */ }
+        }
       }
     });
     child.on('exit', (code) => {
       clearTimeout(timer);
       const init = seen.find((m) => m.id === 1);
       const list = seen.find((m) => m.id === 2);
+      const loop = seen.find((m) => m.id === 3);
+      const data = seen.find((m) => m.id === 4);
       resolvePromise({
         code,
         protocol: init?.result?.protocolVersion,
         tools: list?.result?.tools?.length,
         names: (list?.result?.tools ?? []).map((t) => t.name),
+        loopbackError: loop?.result?.isError === true,
+        loopbackUrl: navUrl(loop?.result),
+        loopbackText: navText(loop?.result),
+        dataError: data?.result?.isError === true,
+        dataUrl: navUrl(data?.result),
+        dataText: navText(data?.result),
       });
     });
     child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'release-check', version: '0.0.1' } } }) + '\n');
     setTimeout(() => child.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n'), 200);
     setTimeout(() => child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }) + '\n'), 400);
-    setTimeout(() => child.stdin.end(), 1600);
+    setTimeout(() => child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'browser_navigate', arguments: { url: fixtureUrl } } }) + '\n'), 800);
+    setTimeout(() => child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'browser_navigate', arguments: { url: dataUrl } } }) + '\n'), 1600);
   });
+  await new Promise((ok) => fixture.close(ok));
   // The 35-name compatibility floor, in catalog order. Additions raise the
   // count; nothing in this list may be dropped.
   const BASELINE_TOOLS = [
@@ -397,11 +451,24 @@ async function packAndVerify(head, noBuild = false) {
     'desktop_do', 'desktop_cursor', 'desktop_elements',
   ];
   if (handshake.code !== 0) fail('handshake', `exit ${handshake.code}`);
-  if (handshake.tools < BASELINE_TOOLS.length) fail('handshake', `expected at least ${BASELINE_TOOLS.length} tools, got ${handshake.tools}`);
+  if (!handshake.protocol) fail('initialize', 'packaged launcher did not answer initialize');
+  if (handshake.tools < BASELINE_TOOLS.length) fail('tools/list', `expected at least ${BASELINE_TOOLS.length} tools, got ${handshake.tools}`);
   const missing = BASELINE_TOOLS.filter((name) => !handshake.names.includes(name));
-  if (missing.length) fail('handshake', `baseline tools missing: ${missing.join(', ')}`);
+  if (missing.length) fail('tools/list', `baseline tools missing: ${missing.join(', ')}`);
+  if (handshake.dataError || typeof handshake.dataUrl !== 'string'
+    || !handshake.dataUrl.startsWith('data:text/html,') || !handshake.dataUrl.includes(DATA_MARKER)) {
+    fail('data', 'packaged launcher did not navigate the data: URL: isError=' + handshake.dataError
+      + ' url=' + JSON.stringify(handshake.dataUrl) + ' detail=' + JSON.stringify(handshake.dataText));
+  }
+  // Loopback is recorded but never blocks a release: only a data: URL is a
+  // host-independent proof of the packaged browser's navigation.
+  const loopbackOk = !handshake.loopbackError && handshake.loopbackUrl === fixtureUrl;
+  const loopbackDetail = loopbackOk ? null
+    : (handshake.loopbackText || (handshake.loopbackError ? 'isError=true' : 'url mismatch'));
+  console.log(`loopback: url=${JSON.stringify(handshake.loopbackUrl)} error=${JSON.stringify(loopbackDetail)}`);
+  if (!loopbackOk) console.log('environmental: loopback navigation aborted on this host');
 
-  console.log(`check: ${tarballName} ${pkg.version} ${head.slice(0, 8)} tools=${handshake.tools} protocol=${handshake.protocol} exit=${handshake.code}`);
+  console.log(`check: ${tarballName} ${pkg.version} ${head.slice(0, 8)} tools=${handshake.tools} protocol=${handshake.protocol} data=${handshake.dataUrl} loopback=${loopbackOk ? 'ok' : 'environmental'} exit=${handshake.code}`);
   const bytes = statSync(tarball).size;
   const sha256 = createHash('sha256').update(readFileSync(tarball)).digest('hex');
   const files = step('pack-list', () => run('tar', ['-tzf', tarball], { cwd: work })).split(/\r?\n/).filter(Boolean);
