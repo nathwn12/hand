@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-11-28
+
+### Fixed
+
+- The pinned-browser provisioner now grants ALL APPLICATION PACKAGES (`S-1-15-2-1`) RX on the provisioned Chromium tree after fresh provisioning, after `-Update`, and on every cache reuse, and verifies the ACE from the SDDL DACL, exiting loudly instead of handing out an unreadable browser.
+- `tool_navigate` now waits, bounded at 2 s, for the network service to answer `Network.getCookies` before the first navigation. On a runner the sandbox could not open the provisioned `chrome.exe` (`Access is denied 0x5`), the network service crashed and restarted, and the first navigation to a loopback fixture was cancelled before any socket opened (`net::ERR_ABORTED`); measured on the same branch, 4 sandbox denials / 4 network-service crashes / 4 aborts became 0 / 0 / 0, and browser-engine went from 136/1 and 135/2 to 137 passing.
+
 ## [0.4.0] - 2026-11-28
 
 ### Added
