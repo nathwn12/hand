@@ -269,6 +269,26 @@ mod tests {
     use std::time::Duration;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+    const METRICS_PAGE: &str = "<!doctype html><html><body><div id='anchor'>metrics fixture</div><script>requestAnimationFrame(function(){ setTimeout(function(){ var d = document.createElement('div'); d.style.height = '120px'; d.style.background = '#ccc'; document.body.insertBefore(d, document.getElementById('anchor')); }, 30); });</script></body></html>";
+
+    /// The same fixture HTML supplied straight to Chrome for tests that read
+    /// metric mechanics rather than a network response. Every non-unreserved
+    /// byte is percent-encoded so '#' in a colour can never truncate the URL.
+    fn page_url(html: &str) -> String {
+        const HEX: &[u8; 16] = b"0123456789ABCDEF";
+        let mut url = String::from("data:text/html;charset=utf-8,");
+        for byte in html.bytes() {
+            if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~') {
+                url.push(byte as char);
+            } else {
+                url.push('%');
+                url.push(HEX[(byte >> 4) as usize] as char);
+                url.push(HEX[(byte & 0x0f) as usize] as char);
+            }
+        }
+        url
+    }
+
     /// Reuse the crate's local-server pattern (tokio::TcpListener::bind
     /// loopback + tokio::spawn) to serve a real fixture page over HTTP.
     async fn serve_fixture() -> (String, tokio::task::JoinHandle<()>) {
@@ -302,7 +322,7 @@ mod tests {
                             _ => break,
                         }
                     }
-                    let body = "<!doctype html><html><body><div id='anchor'>metrics fixture</div><script>requestAnimationFrame(function(){ setTimeout(function(){ var d = document.createElement('div'); d.style.height = '120px'; d.style.background = '#ccc'; document.body.insertBefore(d, document.getElementById('anchor')); }, 30); });</script></body></html>";
+                    let body = METRICS_PAGE;
                     let resp = format!(
                     "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\nContent-Type: text/html\r\n\r\n{}",
                     body.len(), body
@@ -375,7 +395,7 @@ mod tests {
     #[tokio::test]
     async fn metrics_reports_measured_values_and_reasons_for_nulls() {
         let _guard = crate::metrics::BROWSER_FIXTURE_LOCK.lock().await;
-        let (url, srv) = serve_fixture().await;
+        let url = page_url(METRICS_PAGE);
         let browser = crate::metrics::launch_and_navigate(&url).await;
         let bad = call("metrics", &json!({"bogus": 1}), &browser).await;
         assert_eq!(
@@ -384,7 +404,6 @@ mod tests {
         );
         tokio::time::sleep(Duration::from_millis(150)).await;
         let env = call("metrics", &json!({}), &browser).await;
-        srv.abort();
         let _ = browser.close().await;
         assert!(env.get("isError").is_none(), "metrics errored: {env}");
         let sc = env.get("structuredContent").expect("structuredContent");

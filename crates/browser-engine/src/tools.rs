@@ -1912,6 +1912,15 @@ async fn tool_navigate(browser: &Browser, url: &str) -> Result<Value, ToolErr> {
     let requested_page = lower.starts_with("http://") || lower.starts_with("https://");
     browser.command("Page.enable", json!({}), true).await?;
     let _ = browser.ensure_network().await;
+    // A fresh target starts on about:blank. Navigating before that initial
+    // document has committed crosses a renderer-process boundary; Chrome
+    // cancels the swap and Page.navigate answers net::ERR_ABORTED even though
+    // the destination is up. Settle the current document first, bounded so a
+    // dead peer cannot hold the call: an already-complete page returns at
+    // once, and this is the shared path an agent uses right after launch.
+    browser
+        .wait_for_load(std::time::Duration::from_secs(2))
+        .await;
     browser.begin_nav_observe().await;
     let nav = browser
         .command("Page.navigate", json!({"url": url}), true)
