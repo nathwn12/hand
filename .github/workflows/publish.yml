@@ -33,9 +33,10 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Real-browser suites gate pull requests in ci.yml, not releases. This gate
-  # verifies the artifact that ships: deterministic tests, then the packed
-  # tarball itself, so a VM network policy never vetoes a published package.
+  # Real-browser and desktop suites run advisory on pull requests in ci.yml,
+  # never in a release. This gate verifies the artifact that ships: deterministic
+  # tests, then the packed tarball itself, so a VM network policy never vetoes
+  # a published package.
   ci:
     # Pinned image: a release gate must not change under the project.
     runs-on: windows-2022
@@ -53,7 +54,9 @@ jobs:
       - run: cargo test -p hand --test no_steal
       - run: HAND_BASELINE_SKIP_LIVE=1 node --test baseline/test/*.test.mjs
         shell: bash
-      - run: cargo test -p hand --test desktop_matrix -- --test-threads=1
+      # The release gate runs only checks that do not need an interactive desktop
+      # or a real browser; desktop/clipboard conformance is exercised on pull
+      # requests and locally.
       - run: cargo build --locked --release
       # The release contract is the packed artifact: this starts the MCP from
       # the tarball and proves tools/list plus a data: URL navigation.
