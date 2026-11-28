@@ -58,6 +58,14 @@ jobs:
       # or a real browser; desktop/clipboard conformance is exercised on pull
       # requests and locally.
       - run: cargo build --locked --release
+      - name: Restore pinned browser cache
+        uses: actions/cache@v6
+        with:
+          path: ~\AppData\Local\gladius\chromium
+          key: chromium-win64-158.0.8127.36-${{ hashFiles('crates/browser-engine/scripts/chromium-manifest.json') }}
+      - name: Provision pinned browser
+        shell: pwsh
+        run: powershell -ExecutionPolicy Bypass -File crates\browser-engine\scripts\fetch-chromium.ps1
       # The release contract is the packed artifact: this starts the MCP from
       # the tarball and proves tools/list plus a data: URL navigation.
       - run: node npm/release.mjs --check
