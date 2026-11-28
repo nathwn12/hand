@@ -141,10 +141,12 @@ jobs:
               fi
             fi
           fi
-          echo "code=$code" >> "$GITHUB_OUTPUT"
-          echo "browser=$browser" >> "$GITHUB_OUTPUT"
-          echo "desktop=$desktop" >> "$GITHUB_OUTPUT"
-          echo "full=$full" >> "$GITHUB_OUTPUT"
+          {
+            echo "code=$code"
+            echo "browser=$browser"
+            echo "desktop=$desktop"
+            echo "full=$full"
+          } >> "$GITHUB_OUTPUT"
       - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         if: steps.scope.outputs.code == 'true'
         with:
@@ -236,10 +238,12 @@ jobs:
               fi
             fi
           fi
-          echo "code=$code" >> "$GITHUB_OUTPUT"
-          echo "browser=$browser" >> "$GITHUB_OUTPUT"
-          echo "desktop=$desktop" >> "$GITHUB_OUTPUT"
-          echo "full=$full" >> "$GITHUB_OUTPUT"
+          {
+            echo "code=$code"
+            echo "browser=$browser"
+            echo "desktop=$desktop"
+            echo "full=$full"
+          } >> "$GITHUB_OUTPUT"
       - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         if: steps.scope.outputs.code == 'true'
         with:
